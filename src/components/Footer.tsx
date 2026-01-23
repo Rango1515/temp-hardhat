@@ -31,9 +31,9 @@ const Footer = () => {
               their online presence.
             </p>
             <div className="flex flex-col gap-3">
-              <a href="tel:+19095551234" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group touch-feedback">
+              <a href="tel:+19096609657" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group touch-feedback">
                 <Phone className="w-4 h-4 group-hover:animate-pulse" />
-                <span>(909) 555-1234</span>
+                <span>(909) 660-9657</span>
               </a>
               <a href="mailto:info@hardhathosting.com" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group touch-feedback">
                 <Mail className="w-4 h-4 group-hover:animate-pulse" />
