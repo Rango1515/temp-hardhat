@@ -61,7 +61,7 @@ const Contact = () => {
                 </h3>
                 <div className="space-y-6">
                   <a
-                    href="tel:+19095551234"
+                    href="tel:+19096609657"
                     className="flex items-start gap-4 group touch-feedback rounded-lg p-2 -m-2"
                   >
                     <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 group-hover:glow transition-all group-hover:scale-105">
@@ -70,7 +70,7 @@ const Contact = () => {
                     <div>
                       <p className="text-sm text-muted-foreground">Call Us</p>
                       <p className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
-                        (909) 555-1234
+                        (909) 660-9657
                       </p>
                     </div>
                   </a>
