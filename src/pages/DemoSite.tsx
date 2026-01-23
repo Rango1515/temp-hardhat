@@ -1,8 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Phone, Mail, MapPin, Star, CheckCircle2, Clock, Shield, Award, Leaf, Calculator, Sparkles, Ruler } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Star, CheckCircle2, Clock, Shield, Award, Leaf, Calculator, Sparkles, Ruler, Play, ArrowRight, Hammer, Droplets, Sun, Thermometer, Home, Waves } from 'lucide-react';
 import { useScrollToTop } from '@/hooks/useSmoothScroll';
-import AnimatedSection from '@/components/ui/AnimatedSection';
 
 // Import demo images
 import concreteImg from '@/assets/demo-concrete.jpg';
@@ -18,185 +17,890 @@ import hvacImg from '@/assets/demo-hvac.jpg';
 import solarImg from '@/assets/demo-solar.jpg';
 import poolImg from '@/assets/demo-pool.jpg';
 
-type LayoutStyle = 'standard' | 'creative' | 'technical' | 'modern';
+// ============ CONCRETE - Industrial Bold Style ============
+const ConcreteDemo = () => (
+  <div className="min-h-screen bg-zinc-900 text-zinc-100">
+    <DemoBanner color="bg-zinc-800" />
+    
+    {/* Hero - Split diagonal */}
+    <section className="relative min-h-screen">
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900" />
+        <div className="absolute right-0 top-0 w-2/3 h-full">
+          <img src={concreteImg} alt="" className="w-full h-full object-cover opacity-40" />
+          <div className="absolute inset-0 bg-gradient-to-r from-zinc-900 via-zinc-900/80 to-transparent" />
+        </div>
+        {/* Diagonal line decoration */}
+        <div className="absolute bottom-0 left-0 w-full h-1/3 bg-gradient-to-t from-amber-500/10 to-transparent" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center">
+        <div className="max-w-2xl">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-1 bg-amber-500" />
+            <span className="text-amber-500 uppercase tracking-[0.3em] text-sm font-bold">Est. 1995</span>
+          </div>
+          <h1 className="text-6xl md:text-8xl font-black mb-6 leading-none tracking-tight">
+            SOLID<br />
+            <span className="text-amber-500">FOUNDATION</span><br />
+            CONCRETE
+          </h1>
+          <p className="text-xl text-zinc-400 mb-10 max-w-lg">
+            Industrial-strength concrete solutions. From foundations to decorative finishes, 
+            we build what lasts.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-amber-500 hover:bg-amber-400 text-zinc-900 font-bold px-8 py-6 text-lg">
+              <Phone className="w-5 h-5 mr-2" /> Get Quote
+            </Button>
+            <Button variant="outline" className="border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-8 py-6 text-lg">
+              View Projects
+            </Button>
+          </div>
+        </div>
+      </div>
+      
+      {/* Stats bar */}
+      <div className="absolute bottom-0 left-0 right-0 bg-zinc-800/90 backdrop-blur border-t border-zinc-700">
+        <div className="container mx-auto px-6 py-6 flex flex-wrap justify-between gap-8">
+          {[
+            { value: '25+', label: 'Years Experience' },
+            { value: '1000+', label: 'Projects Done' },
+            { value: '100%', label: 'Satisfaction' },
+            { value: '24/7', label: 'Support' },
+          ].map(stat => (
+            <div key={stat.label} className="text-center">
+              <div className="text-3xl font-black text-amber-500">{stat.value}</div>
+              <div className="text-sm text-zinc-500 uppercase tracking-wider">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
 
-interface DemoSiteData {
-  name: string;
-  tagline: string;
-  description: string;
-  image: string;
-  accentColor: string;
-  accentColorDark: string;
-  services: string[];
-  features: string[];
-  layoutStyle: LayoutStyle;
-  stats?: { label: string; value: string; icon: React.ElementType }[];
-  uniqueFeature?: { title: string; description: string; icon: React.ElementType };
-}
+    {/* Services - Industrial cards */}
+    <section className="py-24 bg-zinc-950">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-black mb-12 flex items-center gap-4">
+          <Hammer className="w-10 h-10 text-amber-500" />
+          WHAT WE BUILD
+        </h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-1">
+          {['Driveways & Patios', 'Foundations', 'Stamped Concrete', 'Concrete Repair', 'Commercial Flatwork', 'Retaining Walls'].map((service, i) => (
+            <div key={service} className="bg-zinc-900 p-8 hover:bg-zinc-800 transition-colors group cursor-pointer border-l-4 border-transparent hover:border-amber-500">
+              <span className="text-amber-500/40 text-6xl font-black">0{i + 1}</span>
+              <h3 className="text-2xl font-bold mt-4 group-hover:text-amber-500 transition-colors">{service}</h3>
+              <p className="text-zinc-500 mt-2">Professional {service.toLowerCase()} built to last.</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
 
-const demoSites: Record<string, DemoSiteData> = {
-  concrete: {
-    name: 'Solid Foundation Concrete',
-    tagline: 'Building Strong Foundations Since 1995',
-    description: 'Professional concrete contractor serving the Inland Empire with quality workmanship and reliable service.',
-    image: concreteImg,
-    accentColor: 'from-slate-600 to-slate-800',
-    accentColorDark: 'bg-slate-700',
-    services: ['Driveways & Patios', 'Foundations', 'Stamped Concrete', 'Concrete Repair', 'Commercial Flatwork'],
-    features: ['Licensed & Insured', 'Free Estimates', '25+ Years Experience', 'Satisfaction Guaranteed'],
-    layoutStyle: 'standard',
-  },
-  electrical: {
-    name: 'Volt Electric Pro',
-    tagline: '24/7 Emergency Electrical Services',
-    description: 'Trusted electrical contractor providing residential and commercial electrical solutions.',
-    image: electricalImg,
-    accentColor: 'from-amber-500 to-orange-600',
-    accentColorDark: 'bg-amber-600',
-    services: ['Electrical Repairs', 'Panel Upgrades', 'EV Charger Installation', 'Lighting Design', 'Emergency Services'],
-    features: ['Licensed Electricians', '24/7 Emergency', 'Upfront Pricing', 'Same Day Service'],
-    layoutStyle: 'standard',
-  },
-  landscaping: {
-    name: 'Green Valley Landscaping',
-    tagline: 'Transform Your Outdoor Space',
-    description: 'Full-service landscaping company creating beautiful outdoor living spaces.',
-    image: landscapingImg,
-    accentColor: 'from-emerald-500 to-green-700',
-    accentColorDark: 'bg-emerald-600',
-    services: ['Landscape Design', 'Hardscaping', 'Irrigation Systems', 'Lawn Maintenance', 'Tree Services'],
-    features: ['Custom Designs', 'Drought Tolerant', 'Weekly Maintenance', 'Free Consultations'],
-    layoutStyle: 'standard',
-    uniqueFeature: { title: 'Eco-Friendly', description: 'Sustainable landscaping solutions', icon: Leaf },
-  },
-  general: {
-    name: 'Hammer & Nail Construction',
-    tagline: 'Quality Craftsmanship, Every Project',
-    description: 'Full-service general contractor specializing in residential and commercial construction.',
-    image: generalImg,
-    accentColor: 'from-orange-500 to-red-600',
-    accentColorDark: 'bg-orange-600',
-    services: ['Home Remodels', 'Room Additions', 'Kitchen & Bath', 'Custom Homes', 'Commercial Build-Outs'],
-    features: ['Licensed Contractor', 'Financing Available', 'Warranty Included', 'Project Management'],
-    layoutStyle: 'standard',
-  },
-  plumbing: {
-    name: 'Crystal Clear Plumbing',
-    tagline: 'Your Local Plumbing Experts',
-    description: 'Professional plumbing services for homes and businesses throughout the Inland Empire.',
-    image: plumbingImg,
-    accentColor: 'from-blue-500 to-cyan-600',
-    accentColorDark: 'bg-blue-600',
-    services: ['Drain Cleaning', 'Water Heaters', 'Leak Detection', 'Pipe Repair', 'Sewer Line Services'],
-    features: ['24/7 Emergency', 'Upfront Pricing', 'Licensed & Bonded', 'Senior Discounts'],
-    layoutStyle: 'standard',
-  },
-  roofing: {
-    name: 'Apex Roofing Solutions',
-    tagline: 'Protecting Homes From the Top Down',
-    description: 'Expert roofing contractors providing quality roof installation and repair services.',
-    image: roofingImg,
-    accentColor: 'from-gray-600 to-gray-800',
-    accentColorDark: 'bg-gray-700',
-    services: ['Roof Replacement', 'Roof Repair', 'Storm Damage', 'Inspections', 'Maintenance Programs'],
-    features: ['Free Inspections', 'Insurance Claims Help', '25-Year Warranty', 'Financing Options'],
-    layoutStyle: 'standard',
-  },
-  architecture: {
-    name: 'Blueprint Architecture',
-    tagline: 'Where Vision Meets Design',
-    description: 'Award-winning architecture firm creating iconic buildings and spaces that inspire.',
-    image: architectureImg,
-    accentColor: 'from-slate-500 to-blue-700',
-    accentColorDark: 'bg-slate-600',
-    services: ['Residential Design', 'Commercial Projects', 'Interior Architecture', 'Sustainable Design', '3D Visualization'],
-    features: ['Award Winning', 'LEED Certified', 'Global Projects', 'Full Service'],
-    layoutStyle: 'creative',
-    stats: [
-      { label: 'Projects', value: '200+', icon: Ruler },
-      { label: 'Awards', value: '15', icon: Award },
-      { label: 'Team', value: '40+', icon: Shield },
-    ],
-  },
-  engineering: {
-    name: 'Precision Engineering',
-    tagline: 'Engineering Excellence, Built to Last',
-    description: 'Structural and civil engineering consultants delivering innovative solutions for complex projects.',
-    image: engineeringImg,
-    accentColor: 'from-teal-500 to-cyan-700',
-    accentColorDark: 'bg-teal-600',
-    services: ['Structural Analysis', 'Civil Engineering', 'Foundation Design', 'Seismic Retrofitting', 'Construction Oversight'],
-    features: ['PE Licensed', 'ISO Certified', 'BIM Services', 'Expert Testimony'],
-    layoutStyle: 'technical',
-    stats: [
-      { label: 'Projects', value: '500+', icon: Ruler },
-      { label: 'Engineers', value: '25', icon: Shield },
-      { label: 'Years', value: '30+', icon: Clock },
-    ],
-  },
-  interior: {
-    name: 'Studio Luxe Interiors',
-    tagline: 'Luxury Living, Designed for You',
-    description: 'Premier interior design studio creating sophisticated, personalized spaces that reflect your style.',
-    image: interiorImg,
-    accentColor: 'from-rose-400 to-pink-600',
-    accentColorDark: 'bg-rose-500',
-    services: ['Full Room Design', 'Color Consultation', 'Furniture Selection', 'Space Planning', 'Art Curation'],
-    features: ['Luxury Brands', 'Virtual Tours', 'Custom Pieces', 'White Glove Service'],
-    layoutStyle: 'creative',
-    uniqueFeature: { title: 'Virtual Design', description: 'See your space before we build it', icon: Sparkles },
-  },
-  hvac: {
-    name: 'Climate Control HVAC',
-    tagline: 'Comfort in Every Season',
-    description: 'Professional heating, ventilation, and air conditioning services for optimal indoor comfort.',
-    image: hvacImg,
-    accentColor: 'from-cyan-400 to-blue-600',
-    accentColorDark: 'bg-cyan-500',
-    services: ['AC Installation', 'Heating Systems', 'Duct Cleaning', 'Maintenance Plans', 'Indoor Air Quality'],
-    features: ['24/7 Service', 'Energy Efficient', 'Smart Thermostats', 'Financing Available'],
-    layoutStyle: 'technical',
-    uniqueFeature: { title: 'Energy Savings', description: 'Calculate your potential savings', icon: Calculator },
-  },
-  solar: {
-    name: 'SunPower Solar',
-    tagline: 'Harness the Power of the Sun',
-    description: 'Leading solar installation company helping homeowners save money and protect the environment.',
-    image: solarImg,
-    accentColor: 'from-amber-400 to-orange-500',
-    accentColorDark: 'bg-amber-500',
-    services: ['Solar Installation', 'Battery Storage', 'System Monitoring', 'Maintenance', 'Commercial Solar'],
-    features: ['25-Year Warranty', 'Tax Credits', 'Net Metering', 'No Money Down'],
-    layoutStyle: 'modern',
-    stats: [
-      { label: 'kW Installed', value: '5M+', icon: Leaf },
-      { label: 'Homes', value: '10K+', icon: Shield },
-      { label: 'CO2 Saved', value: '50K tons', icon: Award },
-    ],
-    uniqueFeature: { title: 'ROI Calculator', description: 'See your savings in real-time', icon: Calculator },
-  },
-  pool: {
-    name: 'Paradise Pools',
-    tagline: 'Your Backyard Paradise Awaits',
-    description: 'Custom luxury pool construction creating stunning outdoor oases for the ultimate home experience.',
-    image: poolImg,
-    accentColor: 'from-teal-400 to-cyan-500',
-    accentColorDark: 'bg-teal-500',
-    services: ['Custom Pools', 'Spas & Hot Tubs', 'Water Features', 'Pool Renovations', 'Outdoor Kitchens'],
-    features: ['3D Design', 'Financing Options', 'Warranty Included', 'Weekly Maintenance'],
-    layoutStyle: 'modern',
-    uniqueFeature: { title: 'Design Studio', description: 'Visualize your dream pool in 3D', icon: Sparkles },
-  },
-};
+    <DemoFooter name="Solid Foundation Concrete" />
+  </div>
+);
 
+// ============ ELECTRICAL - Neon Tech Style ============
+const ElectricalDemo = () => (
+  <div className="min-h-screen bg-slate-950 text-white">
+    <DemoBanner color="bg-yellow-500 text-slate-900" />
+    
+    {/* Hero - Glowing grid */}
+    <section className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0">
+        <img src={electricalImg} alt="" className="w-full h-full object-cover opacity-20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950 via-slate-950/90 to-slate-950" />
+        {/* Animated grid */}
+        <div className="absolute inset-0 opacity-20" style={{
+          backgroundImage: 'linear-gradient(rgba(250,204,21,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(250,204,21,0.1) 1px, transparent 1px)',
+          backgroundSize: '50px 50px'
+        }} />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center justify-center text-center">
+        <div>
+          {/* Glowing badge */}
+          <div className="inline-flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded-full px-6 py-2 mb-8">
+            <span className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+            <span className="text-yellow-500 text-sm font-semibold">24/7 EMERGENCY SERVICE</span>
+          </div>
+          
+          <h1 className="text-5xl md:text-7xl lg:text-8xl font-black mb-6">
+            <span className="text-yellow-500 drop-shadow-[0_0_30px_rgba(250,204,21,0.5)]">VOLT</span> ELECTRIC PRO
+          </h1>
+          <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto">
+            Powering homes and businesses with cutting-edge electrical solutions. 
+            Licensed. Insured. Always on call.
+          </p>
+          
+          <div className="flex flex-wrap justify-center gap-4 mb-16">
+            <Button className="bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-bold px-10 py-6 text-lg shadow-[0_0_30px_rgba(250,204,21,0.3)]">
+              <Phone className="w-5 h-5 mr-2" /> CALL NOW
+            </Button>
+            <Button variant="outline" className="border-slate-700 text-white hover:bg-slate-800 px-10 py-6 text-lg">
+              Schedule Service
+            </Button>
+          </div>
+          
+          {/* Feature pills */}
+          <div className="flex flex-wrap justify-center gap-4">
+            {['Same Day Service', 'Upfront Pricing', 'Licensed Electricians', 'Satisfaction Guaranteed'].map(feature => (
+              <div key={feature} className="flex items-center gap-2 bg-slate-800/50 rounded-full px-4 py-2">
+                <CheckCircle2 className="w-4 h-4 text-yellow-500" />
+                <span className="text-sm text-slate-300">{feature}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Services - Glowing cards */}
+    <section className="py-24 bg-slate-900">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-black text-center mb-16">
+          OUR <span className="text-yellow-500">SERVICES</span>
+        </h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[
+            { icon: '⚡', title: 'Electrical Repairs', desc: 'Fast fixes for any electrical issue' },
+            { icon: '🔌', title: 'Panel Upgrades', desc: 'Modernize your electrical system' },
+            { icon: '🔋', title: 'EV Charger Install', desc: 'Charge your electric vehicle at home' },
+            { icon: '💡', title: 'Lighting Design', desc: 'Beautiful, functional lighting solutions' },
+            { icon: '🚨', title: 'Emergency Service', desc: '24/7 response for urgent needs' },
+            { icon: '🏠', title: 'Home Automation', desc: 'Smart home electrical integration' },
+          ].map(service => (
+            <div key={service.title} className="bg-slate-800/50 rounded-2xl p-8 border border-slate-700 hover:border-yellow-500/50 transition-all hover:shadow-[0_0_30px_rgba(250,204,21,0.1)] group">
+              <span className="text-4xl">{service.icon}</span>
+              <h3 className="text-xl font-bold mt-4 group-hover:text-yellow-500 transition-colors">{service.title}</h3>
+              <p className="text-slate-400 mt-2">{service.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Volt Electric Pro" />
+  </div>
+);
+
+// ============ ARCHITECTURE - Minimal Elegant Style ============
+const ArchitectureDemo = () => (
+  <div className="min-h-screen bg-white text-slate-900">
+    <DemoBanner color="bg-slate-900 text-white" />
+    
+    {/* Hero - Full bleed minimal */}
+    <section className="relative h-screen">
+      <img src={architectureImg} alt="" className="w-full h-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 p-12">
+        <div className="container mx-auto">
+          <p className="text-slate-500 uppercase tracking-[0.5em] mb-4">Architecture Studio</p>
+          <h1 className="text-6xl md:text-8xl font-light tracking-tight">
+            Blueprint<br />
+            <span className="font-serif italic text-slate-600">Architecture</span>
+          </h1>
+        </div>
+      </div>
+    </section>
+
+    {/* About - Clean split */}
+    <section className="py-32">
+      <div className="container mx-auto px-6">
+        <div className="grid lg:grid-cols-2 gap-20 items-center">
+          <div>
+            <span className="text-slate-400 uppercase tracking-widest text-sm">About Us</span>
+            <h2 className="text-5xl font-light mt-4 mb-8 leading-tight">Where vision<br />meets <span className="font-serif italic">design</span></h2>
+            <p className="text-lg text-slate-600 leading-relaxed">
+              We create spaces that inspire, buildings that endure, and designs that define. 
+              Our award-winning team brings over 30 years of architectural excellence to every project.
+            </p>
+            <div className="grid grid-cols-3 gap-8 mt-12">
+              {[
+                { value: '200+', label: 'Projects' },
+                { value: '15', label: 'Awards' },
+                { value: '30+', label: 'Years' },
+              ].map(stat => (
+                <div key={stat.label}>
+                  <div className="text-4xl font-light">{stat.value}</div>
+                  <div className="text-sm text-slate-400 uppercase tracking-wider">{stat.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="relative">
+            <div className="aspect-[4/5] bg-slate-100" />
+            <div className="absolute -bottom-8 -left-8 w-2/3 aspect-square bg-slate-200" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Services - Minimal list */}
+    <section className="py-24 bg-slate-50">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-light mb-16">Services</h2>
+        <div className="space-y-0 border-t border-slate-200">
+          {['Residential Design', 'Commercial Projects', 'Interior Architecture', 'Sustainable Design', '3D Visualization'].map((service, i) => (
+            <div key={service} className="flex items-center justify-between py-8 border-b border-slate-200 group cursor-pointer hover:bg-white transition-colors px-4 -mx-4">
+              <div className="flex items-center gap-8">
+                <span className="text-slate-300 text-2xl font-light">0{i + 1}</span>
+                <span className="text-2xl font-light group-hover:translate-x-2 transition-transform">{service}</span>
+              </div>
+              <ArrowRight className="w-6 h-6 text-slate-300 group-hover:text-slate-900 transition-colors" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Blueprint Architecture" dark={false} />
+  </div>
+);
+
+// ============ ENGINEERING - Technical Blueprint Style ============
+const EngineeringDemo = () => (
+  <div className="min-h-screen bg-slate-900 text-white font-mono">
+    <DemoBanner color="bg-teal-500" />
+    
+    {/* Hero - Blueprint style */}
+    <section className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0 opacity-10" style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%2314b8a6' fill-opacity='0.8'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+      }} />
+      <div className="absolute inset-0">
+        <img src={engineeringImg} alt="" className="w-full h-full object-cover opacity-30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900/80" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center">
+        <div className="max-w-3xl">
+          <div className="flex items-center gap-4 mb-6 text-teal-400">
+            <div className="w-3 h-3 bg-teal-400 rounded-full animate-pulse" />
+            <span className="uppercase tracking-[0.2em] text-sm">Structural & Civil Engineering</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+            PRECISION<br />
+            <span className="text-teal-400">ENGINEERING</span>
+          </h1>
+          <p className="text-lg text-slate-400 mb-10 max-w-xl font-sans">
+            Engineering excellence built on science, innovation, and 30+ years of 
+            experience. We solve complex structural challenges with precision.
+          </p>
+          
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-teal-500 hover:bg-teal-400 text-slate-900 font-bold px-8 py-6">
+              Request Proposal →
+            </Button>
+            <Button variant="outline" className="border-slate-600 hover:bg-slate-800 px-8 py-6">
+              View Case Studies
+            </Button>
+          </div>
+          
+          {/* Tech specs */}
+          <div className="grid grid-cols-3 gap-6 mt-16 pt-8 border-t border-slate-700">
+            {[
+              { label: 'PE Licensed', value: 'YES' },
+              { label: 'ISO Certified', value: '9001:2015' },
+              { label: 'Engineers', value: '25+' },
+            ].map(spec => (
+              <div key={spec.label}>
+                <div className="text-xs text-teal-400 uppercase tracking-wider">{spec.label}</div>
+                <div className="text-xl mt-1">{spec.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Services - Tech cards */}
+    <section className="py-24 bg-slate-950">
+      <div className="container mx-auto px-6">
+        <div className="flex items-center gap-4 mb-12">
+          <Ruler className="w-8 h-8 text-teal-400" />
+          <h2 className="text-3xl font-bold">CAPABILITIES</h2>
+        </div>
+        <div className="grid md:grid-cols-2 gap-4">
+          {[
+            { title: 'Structural Analysis', desc: 'Advanced FEA modeling and load analysis' },
+            { title: 'Civil Engineering', desc: 'Site development and infrastructure design' },
+            { title: 'Foundation Design', desc: 'Deep foundations and soil mechanics' },
+            { title: 'Seismic Retrofitting', desc: 'Earthquake-resistant upgrades' },
+          ].map((service, i) => (
+            <div key={service.title} className="bg-slate-800/50 p-8 border border-slate-700 hover:border-teal-500/50 transition-colors">
+              <div className="flex items-start gap-4">
+                <span className="text-teal-400 text-sm">/{String(i + 1).padStart(2, '0')}</span>
+                <div>
+                  <h3 className="text-xl font-bold mb-2">{service.title}</h3>
+                  <p className="text-slate-400 font-sans text-sm">{service.desc}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Precision Engineering" />
+  </div>
+);
+
+// ============ INTERIOR - Luxe Magazine Style ============
+const InteriorDemo = () => (
+  <div className="min-h-screen bg-stone-50 text-stone-900">
+    <DemoBanner color="bg-rose-400 text-white" />
+    
+    {/* Hero - Magazine layout */}
+    <section className="min-h-screen grid lg:grid-cols-2">
+      <div className="flex items-center justify-center p-12 lg:p-20 order-2 lg:order-1">
+        <div>
+          <span className="text-rose-400 uppercase tracking-[0.3em] text-sm">Luxury Interiors</span>
+          <h1 className="text-5xl md:text-7xl font-light mt-4 mb-8 leading-[0.9]">
+            Studio<br />
+            <span className="font-serif italic">Luxe</span><br />
+            Interiors
+          </h1>
+          <p className="text-lg text-stone-500 mb-10 max-w-md">
+            We create sophisticated spaces that reflect your unique style and elevate everyday living.
+          </p>
+          <Button className="bg-rose-400 hover:bg-rose-500 text-white px-10 py-6 rounded-none">
+            Book Consultation
+          </Button>
+        </div>
+      </div>
+      <div className="relative order-1 lg:order-2 min-h-[50vh] lg:min-h-screen">
+        <img src={interiorImg} alt="" className="w-full h-full object-cover" />
+      </div>
+    </section>
+
+    {/* Services - Elegant grid */}
+    <section className="py-24">
+      <div className="container mx-auto px-6">
+        <div className="text-center mb-16">
+          <span className="text-rose-400 uppercase tracking-[0.3em] text-sm">What We Offer</span>
+          <h2 className="text-4xl font-light mt-4">Our Services</h2>
+        </div>
+        <div className="grid md:grid-cols-3 gap-px bg-stone-200">
+          {['Full Room Design', 'Color Consultation', 'Furniture Curation', 'Space Planning', 'Art Selection', 'Project Management'].map(service => (
+            <div key={service} className="bg-stone-50 p-12 text-center hover:bg-rose-50 transition-colors group">
+              <Sparkles className="w-8 h-8 text-rose-300 mx-auto mb-4 group-hover:text-rose-400 transition-colors" />
+              <h3 className="text-xl mb-2">{service}</h3>
+              <p className="text-stone-400 text-sm">Tailored solutions for your space</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Studio Luxe Interiors" dark={false} />
+  </div>
+);
+
+// ============ LANDSCAPING - Natural Organic Style ============
+const LandscapingDemo = () => (
+  <div className="min-h-screen bg-stone-900 text-stone-100">
+    <DemoBanner color="bg-emerald-600" />
+    
+    {/* Hero - Organic shapes */}
+    <section className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0">
+        <img src={landscapingImg} alt="" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/60 to-stone-900/30" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-end pb-24">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-2 bg-emerald-600/20 backdrop-blur border border-emerald-500/30 rounded-full px-5 py-2 mb-6">
+            <Leaf className="w-4 h-4 text-emerald-400" />
+            <span className="text-emerald-300 text-sm">Sustainable Landscaping</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold mb-6">
+            Green Valley<br />
+            <span className="text-emerald-400">Landscaping</span>
+          </h1>
+          <p className="text-xl text-stone-300 mb-10">
+            Transform your outdoor space into a living masterpiece. 
+            Eco-friendly designs that thrive in any climate.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-6">
+              Free Design Consultation
+            </Button>
+            <Button variant="outline" className="border-stone-600 text-white hover:bg-stone-800 px-8 py-6">
+              View Gallery
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Features - Organic cards */}
+    <section className="py-24 bg-stone-950">
+      <div className="container mx-auto px-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { icon: '🌿', title: 'Landscape Design', desc: 'Custom outdoor living spaces' },
+            { icon: '🪨', title: 'Hardscaping', desc: 'Patios, walkways, and walls' },
+            { icon: '💧', title: 'Irrigation', desc: 'Smart water management' },
+            { icon: '🌳', title: 'Tree Services', desc: 'Planting and maintenance' },
+          ].map(item => (
+            <div key={item.title} className="bg-stone-900 rounded-3xl p-8 border border-stone-800 hover:border-emerald-500/50 transition-all">
+              <span className="text-4xl">{item.icon}</span>
+              <h3 className="text-xl font-semibold mt-4 mb-2">{item.title}</h3>
+              <p className="text-stone-400">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Green Valley Landscaping" />
+  </div>
+);
+
+// ============ HVAC - Clean Technical Style ============
+const HVACDemo = () => (
+  <div className="min-h-screen bg-slate-50 text-slate-900">
+    <DemoBanner color="bg-cyan-500" />
+    
+    {/* Hero - Split modern */}
+    <section className="min-h-screen grid lg:grid-cols-2">
+      <div className="bg-slate-900 text-white flex items-center p-12 lg:p-20">
+        <div>
+          <div className="flex items-center gap-2 mb-6">
+            <Thermometer className="w-6 h-6 text-cyan-400" />
+            <span className="text-cyan-400 uppercase tracking-wider text-sm">Climate Control</span>
+          </div>
+          <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
+            COMFORT IN<br />
+            <span className="text-cyan-400">EVERY SEASON</span>
+          </h1>
+          <p className="text-lg text-slate-400 mb-10">
+            Professional HVAC services for homes and businesses. 
+            Energy-efficient solutions that save you money.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-bold px-8 py-6">
+              <Phone className="w-5 h-5 mr-2" /> Schedule Service
+            </Button>
+            <Button variant="outline" className="border-slate-600 hover:bg-slate-800 px-8 py-6">
+              Calculate Savings
+            </Button>
+          </div>
+          
+          <div className="flex gap-8 mt-12 pt-8 border-t border-slate-700">
+            {[
+              { value: '24/7', label: 'Emergency Service' },
+              { value: 'A+', label: 'BBB Rating' },
+            ].map(stat => (
+              <div key={stat.label}>
+                <div className="text-2xl font-bold text-cyan-400">{stat.value}</div>
+                <div className="text-sm text-slate-500">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="relative min-h-[50vh] lg:min-h-full">
+        <img src={hvacImg} alt="" className="w-full h-full object-cover" />
+      </div>
+    </section>
+
+    {/* Services */}
+    <section className="py-24">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-bold text-center mb-16">Our <span className="text-cyan-500">Services</span></h2>
+        <div className="grid md:grid-cols-3 gap-8">
+          {[
+            { icon: '❄️', title: 'AC Installation', desc: 'New system installation' },
+            { icon: '🔥', title: 'Heating Systems', desc: 'Furnace repair & install' },
+            { icon: '🌬️', title: 'Air Quality', desc: 'Purifiers & ventilation' },
+          ].map(service => (
+            <div key={service.title} className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-shadow border border-slate-100">
+              <span className="text-5xl">{service.icon}</span>
+              <h3 className="text-2xl font-bold mt-6 mb-3">{service.title}</h3>
+              <p className="text-slate-500">{service.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Climate Control HVAC" dark={false} />
+  </div>
+);
+
+// ============ SOLAR - Bright Eco Style ============
+const SolarDemo = () => (
+  <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white text-slate-900">
+    <DemoBanner color="bg-amber-500" />
+    
+    {/* Hero - Sunny bright */}
+    <section className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0">
+        <img src={solarImg} alt="" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-amber-50/95 via-amber-50/80 to-transparent" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-2 bg-amber-100 rounded-full px-5 py-2 mb-6">
+            <Sun className="w-5 h-5 text-amber-600" />
+            <span className="text-amber-700 font-medium">Harness the Power of the Sun</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black mb-6 text-slate-900">
+            SunPower<br />
+            <span className="text-amber-500">Solar</span>
+          </h1>
+          <p className="text-xl text-slate-600 mb-10">
+            Go solar and start saving from day one. Clean energy for a 
+            brighter future, with $0 down financing available.
+          </p>
+          
+          <div className="flex flex-wrap gap-4 mb-12">
+            <Button className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-8 py-6 shadow-lg">
+              <Calculator className="w-5 h-5 mr-2" /> Calculate Savings
+            </Button>
+            <Button variant="outline" className="border-slate-300 hover:bg-slate-100 px-8 py-6">
+              Learn More
+            </Button>
+          </div>
+          
+          {/* Impact stats */}
+          <div className="grid grid-cols-3 gap-6 bg-white rounded-2xl p-6 shadow-lg">
+            {[
+              { value: '5M+', label: 'kW Installed', icon: Sun },
+              { value: '10K+', label: 'Happy Homes', icon: Home },
+              { value: '50K', label: 'Tons CO2 Saved', icon: Leaf },
+            ].map(stat => (
+              <div key={stat.label} className="text-center">
+                <stat.icon className="w-6 h-6 text-amber-500 mx-auto mb-2" />
+                <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
+                <div className="text-xs text-slate-500">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Benefits */}
+    <section className="py-24 bg-white">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-bold text-center mb-16">Why Go <span className="text-amber-500">Solar</span>?</h2>
+        <div className="grid md:grid-cols-4 gap-6">
+          {[
+            { title: 'Save Money', desc: 'Reduce energy bills by up to 90%' },
+            { title: '25-Year Warranty', desc: 'Long-term protection guaranteed' },
+            { title: 'Tax Credits', desc: 'Federal & state incentives available' },
+            { title: 'Eco Friendly', desc: 'Reduce your carbon footprint' },
+          ].map(item => (
+            <div key={item.title} className="text-center p-6">
+              <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Sun className="w-8 h-8 text-amber-500" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">{item.title}</h3>
+              <p className="text-slate-500 text-sm">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="SunPower Solar" dark={false} />
+  </div>
+);
+
+// ============ POOL - Resort Paradise Style ============
+const PoolDemo = () => (
+  <div className="min-h-screen bg-slate-900 text-white">
+    <DemoBanner color="bg-teal-400 text-slate-900" />
+    
+    {/* Hero - Luxury resort */}
+    <section className="relative min-h-screen">
+      <div className="absolute inset-0">
+        <img src={poolImg} alt="" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-end pb-24">
+        <div className="max-w-3xl">
+          <div className="inline-flex items-center gap-2 mb-6">
+            <Waves className="w-6 h-6 text-teal-400" />
+            <span className="text-teal-400 uppercase tracking-[0.2em] text-sm font-medium">Luxury Pool Construction</span>
+          </div>
+          <h1 className="text-6xl md:text-8xl font-bold mb-6">
+            Paradise<br />
+            <span className="text-teal-400">Pools</span>
+          </h1>
+          <p className="text-xl text-slate-300 mb-10 max-w-xl">
+            Your backyard paradise awaits. Custom luxury pools, spas, and outdoor 
+            living spaces designed for the ultimate home experience.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-teal-400 hover:bg-teal-300 text-slate-900 font-bold px-10 py-6 text-lg">
+              Design Your Pool
+            </Button>
+            <Button variant="outline" className="border-white/30 hover:bg-white/10 px-10 py-6 text-lg">
+              <Play className="w-5 h-5 mr-2" /> Watch Video
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Pool types */}
+    <section className="py-24 bg-slate-950">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-bold text-center mb-16">Pool <span className="text-teal-400">Designs</span></h2>
+        <div className="grid md:grid-cols-3 gap-8">
+          {[
+            { title: 'Infinity Pools', desc: 'Stunning vanishing edge designs' },
+            { title: 'Natural Pools', desc: 'Organic, eco-friendly swimming' },
+            { title: 'Resort Style', desc: 'Bring the vacation home' },
+          ].map(pool => (
+            <div key={pool.title} className="group cursor-pointer">
+              <div className="aspect-[4/3] bg-slate-800 rounded-2xl mb-4 overflow-hidden">
+                <div className="w-full h-full bg-gradient-to-br from-teal-500/20 to-blue-500/20 flex items-center justify-center group-hover:scale-105 transition-transform">
+                  <Waves className="w-16 h-16 text-teal-400/50" />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold mb-2 group-hover:text-teal-400 transition-colors">{pool.title}</h3>
+              <p className="text-slate-400">{pool.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Paradise Pools" />
+  </div>
+);
+
+// ============ GENERAL CONTRACTOR - Bold Construction Style ============
+const GeneralDemo = () => (
+  <div className="min-h-screen bg-neutral-900 text-white">
+    <DemoBanner color="bg-orange-500" />
+    
+    {/* Hero - Bold diagonal */}
+    <section className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0">
+        <img src={generalImg} alt="" className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-r from-neutral-900 via-neutral-900/90 to-neutral-900/50" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center">
+        <div className="max-w-2xl">
+          <h1 className="text-6xl md:text-8xl font-black mb-6 leading-none">
+            HAMMER<br />
+            <span className="text-orange-500">&</span> NAIL<br />
+            <span className="text-neutral-500">CONSTRUCTION</span>
+          </h1>
+          <p className="text-xl text-neutral-400 mb-10">
+            Quality craftsmanship on every project. From renovations to custom builds, 
+            we bring your vision to life.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-orange-500 hover:bg-orange-400 text-white font-bold px-8 py-6">
+              <Phone className="w-5 h-5 mr-2" /> Start Your Project
+            </Button>
+            <Button variant="outline" className="border-neutral-600 hover:bg-neutral-800 px-8 py-6">
+              View Portfolio
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Services */}
+    <section className="py-24 bg-neutral-950">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-black mb-12">WHAT WE <span className="text-orange-500">BUILD</span></h2>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {['Home Remodels', 'Room Additions', 'Kitchen & Bath', 'Custom Homes', 'Commercial Build-Outs', 'Outdoor Living'].map(service => (
+            <div key={service} className="bg-neutral-800 p-8 rounded-lg hover:bg-neutral-700 transition-colors group">
+              <Hammer className="w-8 h-8 text-orange-500 mb-4" />
+              <h3 className="text-xl font-bold group-hover:text-orange-500 transition-colors">{service}</h3>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Hammer & Nail Construction" />
+  </div>
+);
+
+// ============ PLUMBING - Clean Professional Style ============
+const PlumbingDemo = () => (
+  <div className="min-h-screen bg-white text-slate-900">
+    <DemoBanner color="bg-blue-600" />
+    
+    {/* Hero - Trust focused */}
+    <section className="relative min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 text-white overflow-hidden">
+      <div className="absolute inset-0 opacity-20">
+        <img src={plumbingImg} alt="" className="w-full h-full object-cover" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center">
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur rounded-full px-5 py-2 mb-6">
+            <Droplets className="w-5 h-5" />
+            <span className="font-medium">Your Local Plumbing Experts</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold mb-6">
+            Crystal Clear<br />
+            Plumbing
+          </h1>
+          <p className="text-xl text-blue-100 mb-10">
+            Fast, reliable plumbing services for your home or business. 
+            Available 24/7 for emergencies.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <Button className="bg-white text-blue-600 hover:bg-blue-50 font-bold px-8 py-6">
+              <Phone className="w-5 h-5 mr-2" /> Call Now
+            </Button>
+            <Button variant="outline" className="border-white/30 hover:bg-white/10 px-8 py-6">
+              Book Online
+            </Button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {/* Services */}
+    <section className="py-24">
+      <div className="container mx-auto px-6">
+        <h2 className="text-4xl font-bold text-center mb-16">Our <span className="text-blue-600">Services</span></h2>
+        <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-6">
+          {['Drain Cleaning', 'Water Heaters', 'Leak Detection', 'Pipe Repair', 'Sewer Lines'].map(service => (
+            <div key={service} className="bg-slate-50 rounded-xl p-6 text-center hover:bg-blue-50 hover:border-blue-200 border-2 border-transparent transition-all">
+              <Droplets className="w-10 h-10 text-blue-600 mx-auto mb-4" />
+              <h3 className="font-bold">{service}</h3>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Crystal Clear Plumbing" dark={false} />
+  </div>
+);
+
+// ============ ROOFING - Strong Protective Style ============
+const RoofingDemo = () => (
+  <div className="min-h-screen bg-slate-900 text-white">
+    <DemoBanner color="bg-slate-700" />
+    
+    {/* Hero - Protective shield */}
+    <section className="relative min-h-screen">
+      <div className="absolute inset-0">
+        <img src={roofingImg} alt="" className="w-full h-full object-cover opacity-50" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/80 to-slate-900/60" />
+      </div>
+      
+      <div className="relative container mx-auto px-6 py-32 min-h-screen flex items-center justify-center text-center">
+        <div className="max-w-3xl">
+          <Shield className="w-16 h-16 text-slate-400 mx-auto mb-6" />
+          <h1 className="text-5xl md:text-7xl font-bold mb-6">
+            Apex Roofing<br />
+            <span className="text-slate-400">Solutions</span>
+          </h1>
+          <p className="text-xl text-slate-400 mb-10 max-w-xl mx-auto">
+            Protecting homes from the top down. Expert roofing services with 
+            warranties you can trust.
+          </p>
+          <div className="flex flex-wrap justify-center gap-4">
+            <Button className="bg-white text-slate-900 hover:bg-slate-100 font-bold px-8 py-6">
+              Free Inspection
+            </Button>
+            <Button variant="outline" className="border-slate-600 hover:bg-slate-800 px-8 py-6">
+              Storm Damage?
+            </Button>
+          </div>
+          
+          <div className="flex flex-wrap justify-center gap-8 mt-16">
+            {['Free Inspections', '25-Year Warranty', 'Insurance Help', 'Financing'].map(feature => (
+              <div key={feature} className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-slate-500" />
+                <span className="text-slate-400">{feature}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <DemoFooter name="Apex Roofing Solutions" />
+  </div>
+);
+
+// ============ SHARED COMPONENTS ============
+const DemoBanner = ({ color }: { color: string }) => (
+  <>
+    <div className="fixed top-4 left-4 z-50">
+      <Link to="/#portfolio">
+        <Button variant="outline" className="bg-black/50 border-white/20 text-white hover:bg-black/70 backdrop-blur group">
+          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+          Back
+        </Button>
+      </Link>
+    </div>
+    <div className={`${color} text-center py-2 text-sm font-medium`}>
+      🎨 Demo Preview • <Link to="/#contact" className="underline font-bold hover:no-underline">Get this for your business →</Link>
+    </div>
+  </>
+);
+
+const DemoFooter = ({ name, dark = true }: { name: string; dark?: boolean }) => (
+  <>
+    <section className={`py-16 ${dark ? 'bg-primary text-primary-foreground' : 'bg-slate-900 text-white'}`}>
+      <div className="container mx-auto px-6 text-center">
+        <h2 className="text-3xl md:text-4xl font-bold mb-4">Want a Website Like This?</h2>
+        <p className="text-lg opacity-80 mb-8 max-w-xl mx-auto">
+          Hardhat Hosting can build you a professional website just like this one.
+        </p>
+        <Link to="/#contact">
+          <Button size="lg" className={dark ? 'bg-white text-primary hover:bg-slate-100' : 'bg-white text-slate-900 hover:bg-slate-100'}>
+            Get This Website
+          </Button>
+        </Link>
+      </div>
+    </section>
+    <footer className={`py-8 border-t ${dark ? 'bg-card border-border/30' : 'bg-slate-100 border-slate-200'}`}>
+      <div className="container mx-auto px-6 text-center">
+        <p className={dark ? 'text-muted-foreground' : 'text-slate-500'}>Demo by Hardhat Hosting</p>
+        <Link to="/" className="text-primary hover:underline font-medium">hardhathosting.com</Link>
+      </div>
+    </footer>
+  </>
+);
+
+// ============ MAIN COMPONENT ============
 const DemoSite = () => {
   const { trade } = useParams<{ trade: string }>();
-  const site = trade ? demoSites[trade as keyof typeof demoSites] : null;
-  
-  // Scroll to top when demo loads
   useScrollToTop();
 
-  if (!site) {
+  const demoComponents: Record<string, React.FC> = {
+    concrete: ConcreteDemo,
+    electrical: ElectricalDemo,
+    architecture: ArchitectureDemo,
+    engineering: EngineeringDemo,
+    interior: InteriorDemo,
+    landscaping: LandscapingDemo,
+    hvac: HVACDemo,
+    solar: SolarDemo,
+    pool: PoolDemo,
+    general: GeneralDemo,
+    plumbing: PlumbingDemo,
+    roofing: RoofingDemo,
+  };
+
+  const DemoComponent = trade ? demoComponents[trade] : null;
+
+  if (!DemoComponent) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -209,258 +913,7 @@ const DemoSite = () => {
     );
   }
 
-  const isCreative = site.layoutStyle === 'creative';
-  const isTechnical = site.layoutStyle === 'technical';
-  const isModern = site.layoutStyle === 'modern';
-
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Back Link */}
-      <div className="fixed top-4 left-4 z-50">
-        <Link to="/#portfolio">
-          <Button variant="outline" className="glass group">
-            <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" />
-            Back to Hardhat Hosting
-          </Button>
-        </Link>
-      </div>
-
-      {/* Demo Banner */}
-      <div className={`${site.accentColorDark} text-white text-center py-2 text-sm font-medium`}>
-        🎨 This is a demo website preview • <Link to="/#contact" className="underline font-bold hover:no-underline">Get this website for your business →</Link>
-      </div>
-
-      {/* Hero Section - Varies by layout style */}
-      <section className={`relative ${isCreative ? 'min-h-screen' : 'min-h-[80vh]'} flex items-center`}>
-        {/* Background Image */}
-        <div className="absolute inset-0">
-          <img
-            src={site.image}
-            alt={site.name}
-            className="w-full h-full object-cover"
-          />
-          <div className={`absolute inset-0 bg-gradient-to-r ${site.accentColor} ${isCreative ? 'opacity-70' : 'opacity-80'}`} />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
-        </div>
-
-        <div className="relative container mx-auto px-4 py-24">
-          <AnimatedSection animation={isCreative ? 'blur-in' : 'fade-up'} className={isCreative ? 'text-center max-w-4xl mx-auto' : 'max-w-3xl'}>
-            {isCreative && (
-              <span className="inline-block text-white/80 uppercase tracking-[0.3em] text-sm mb-4">
-                {site.layoutStyle === 'creative' ? 'Design Studio' : 'Innovation'}
-              </span>
-            )}
-            <h1 className={`font-display text-white mb-4 drop-shadow-2xl ${isCreative ? 'text-6xl lg:text-8xl xl:text-9xl' : 'text-5xl lg:text-7xl xl:text-8xl'}`}>
-              {site.name}
-            </h1>
-            <p className={`text-white/90 mb-8 ${isCreative ? 'text-2xl lg:text-3xl' : 'text-xl lg:text-2xl'}`}>
-              {site.tagline}
-            </p>
-            <div className={`flex flex-wrap gap-4 ${isCreative ? 'justify-center' : ''}`}>
-              <Button size="lg" className="bg-white text-gray-900 hover:bg-gray-100 glow text-lg px-8 group">
-                <Phone className="w-5 h-5 mr-2 group-hover:animate-pulse" />
-                {isTechnical ? 'Schedule Consultation' : 'Call Now'}
-              </Button>
-              <Button size="lg" variant="outline" className="border-white/30 text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm text-lg px-8">
-                {isCreative ? 'View Portfolio' : isTechnical ? 'Request Proposal' : 'Get Free Quote'}
-              </Button>
-            </div>
-          </AnimatedSection>
-
-          {/* Stats for technical/modern layouts */}
-          {(isTechnical || isModern) && site.stats && (
-            <AnimatedSection animation="fade-up" delay={300} className="mt-16">
-              <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto lg:mx-0">
-                {site.stats.map((stat, index) => (
-                  <div key={stat.label} className="glass rounded-xl p-4 text-center" style={{ animationDelay: `${index * 100}ms` }}>
-                    <stat.icon className="w-6 h-6 text-white/80 mx-auto mb-2" />
-                    <div className="font-display text-2xl lg:text-3xl text-white">{stat.value}</div>
-                    <div className="text-white/70 text-sm">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            </AnimatedSection>
-          )}
-        </div>
-      </section>
-
-      {/* Trust Badges */}
-      <section className="py-8 bg-card border-y border-border/30">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center gap-8 lg:gap-12">
-            {site.features.map((feature, index) => (
-              <AnimatedSection key={feature} animation="fade-up" delay={index * 50} className="flex items-center gap-2 text-muted-foreground">
-                <CheckCircle2 className="w-5 h-5 text-primary" />
-                <span className="font-medium">{feature}</span>
-              </AnimatedSection>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Unique Feature Section for applicable layouts */}
-      {site.uniqueFeature && (
-        <section className="py-16 bg-secondary/30">
-          <div className="container mx-auto px-4">
-            <AnimatedSection animation="scale-in" className="max-w-xl mx-auto text-center">
-              <div className={`w-20 h-20 ${site.accentColorDark} rounded-2xl flex items-center justify-center mx-auto mb-6 glow`}>
-                <site.uniqueFeature.icon className="w-10 h-10 text-white" />
-              </div>
-              <h3 className="font-display text-3xl text-foreground mb-3">{site.uniqueFeature.title}</h3>
-              <p className="text-muted-foreground text-lg">{site.uniqueFeature.description}</p>
-              <Button className="mt-6 glow">Try It Now</Button>
-            </AnimatedSection>
-          </div>
-        </section>
-      )}
-
-      {/* About Section */}
-      <section className="py-20 lg:py-28">
-        <div className="container mx-auto px-4">
-          <AnimatedSection animation="fade-up" className="max-w-4xl mx-auto text-center">
-            <h2 className="font-display text-4xl lg:text-5xl text-foreground mb-6">
-              About <span className="text-gradient">{site.name}</span>
-            </h2>
-            <p className="text-lg lg:text-xl text-muted-foreground mb-10 leading-relaxed">
-              {site.description} We pride ourselves on delivering exceptional service, 
-              quality workmanship, and customer satisfaction. Our team of experienced 
-              professionals is dedicated to meeting your needs with precision and care.
-            </p>
-            <div className="flex justify-center items-center gap-2 mb-8">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star key={star} className="w-7 h-7 text-primary fill-primary" />
-              ))}
-              <span className="text-foreground ml-3 font-medium">5.0 Rating (100+ Reviews)</span>
-            </div>
-            
-            {/* Stats - Only show if not already shown in hero */}
-            {!site.stats && (
-              <div className="grid grid-cols-3 gap-6 mt-12">
-                <AnimatedSection animation="fade-up" delay={0} className="glass rounded-xl p-6">
-                  <Clock className="w-8 h-8 text-primary mx-auto mb-3" />
-                  <div className="font-display text-3xl text-foreground">25+</div>
-                  <div className="text-muted-foreground text-sm">Years Experience</div>
-                </AnimatedSection>
-                <AnimatedSection animation="fade-up" delay={100} className="glass rounded-xl p-6">
-                  <Shield className="w-8 h-8 text-primary mx-auto mb-3" />
-                  <div className="font-display text-3xl text-foreground">1000+</div>
-                  <div className="text-muted-foreground text-sm">Projects Completed</div>
-                </AnimatedSection>
-                <AnimatedSection animation="fade-up" delay={200} className="glass rounded-xl p-6">
-                  <Award className="w-8 h-8 text-primary mx-auto mb-3" />
-                  <div className="font-display text-3xl text-foreground">100%</div>
-                  <div className="text-muted-foreground text-sm">Satisfaction Rate</div>
-                </AnimatedSection>
-              </div>
-            )}
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* Services Section */}
-      <section className="py-20 lg:py-28 bg-secondary/50">
-        <div className="container mx-auto px-4">
-          <AnimatedSection animation="fade-up" className="text-center mb-12">
-            <h2 className="font-display text-4xl lg:text-5xl text-foreground mb-4">
-              Our <span className="text-gradient">Services</span>
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              We offer a comprehensive range of professional services to meet all your needs.
-            </p>
-          </AnimatedSection>
-          <div className={`grid gap-6 max-w-5xl mx-auto ${isCreative ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2 lg:grid-cols-3'}`}>
-            {site.services.map((service, index) => (
-              <AnimatedSection
-                key={service}
-                animation={isCreative ? 'scale-in' : 'fade-up'}
-                delay={index * 100}
-              >
-                <div className={`glass rounded-xl p-6 card-3d group h-full ${isCreative ? 'text-center' : ''}`}>
-                  <div className={`w-12 h-12 rounded-lg ${site.accentColorDark} bg-opacity-20 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform ${isCreative ? 'mx-auto' : ''}`}>
-                    <CheckCircle2 className="w-6 h-6 text-primary" />
-                  </div>
-                  <h3 className="font-display text-xl text-foreground mb-2">{service}</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Professional {service.toLowerCase()} services tailored to your specific needs.
-                  </p>
-                </div>
-              </AnimatedSection>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Contact Section */}
-      <section className="py-20 lg:py-28">
-        <div className="container mx-auto px-4">
-          <AnimatedSection animation="fade-up">
-            <div className="max-w-4xl mx-auto glass rounded-2xl p-8 lg:p-12">
-              <div className="text-center mb-10">
-                <h2 className="font-display text-4xl lg:text-5xl text-foreground mb-4">
-                  Get Your <span className="text-gradient">Free Quote</span> Today
-                </h2>
-                <p className="text-muted-foreground text-lg">
-                  Contact us for a free estimate on your next project.
-                </p>
-              </div>
-              <div className="grid md:grid-cols-3 gap-8 text-center">
-                {[
-                  { icon: Phone, title: 'Call Us', value: '(909) 555-1234' },
-                  { icon: Mail, title: 'Email Us', value: 'info@example.com' },
-                  { icon: MapPin, title: 'Visit Us', value: 'Rancho Cucamonga, CA' },
-                ].map((contact, index) => (
-                  <AnimatedSection key={contact.title} animation="fade-up" delay={index * 100} className="flex flex-col items-center gap-3">
-                    <div className={`${site.accentColorDark} p-5 rounded-full glow group-hover:scale-110 transition-transform`}>
-                      <contact.icon className="w-7 h-7 text-white" />
-                    </div>
-                    <h4 className="font-display text-lg text-foreground">{contact.title}</h4>
-                    <p className="text-muted-foreground">{contact.value}</p>
-                  </AnimatedSection>
-                ))}
-              </div>
-            </div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="relative py-20 overflow-hidden">
-        <div className="absolute inset-0">
-          <img
-            src={site.image}
-            alt=""
-            className="w-full h-full object-cover opacity-30"
-          />
-          <div className={`absolute inset-0 bg-gradient-to-r ${site.accentColor} opacity-90`} />
-        </div>
-        <AnimatedSection animation="fade-up" className="relative container mx-auto px-4 text-center">
-          <h2 className="font-display text-4xl lg:text-5xl text-white mb-4">
-            Want a Website Like This?
-          </h2>
-          <p className="text-white/80 text-lg mb-8 max-w-xl mx-auto">
-            Hardhat Hosting can build you a professional website just like this one. 
-            Get started today and grow your business online.
-          </p>
-          <Link to="/#contact">
-            <Button size="lg" className="bg-white text-gray-900 hover:bg-gray-100 text-lg px-10 group">
-              Get This Website
-              <ArrowLeft className="w-4 h-4 ml-2 rotate-180 group-hover:translate-x-1 transition-transform" />
-            </Button>
-          </Link>
-        </AnimatedSection>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-card py-10 border-t border-border/30">
-        <div className="container mx-auto px-4 text-center text-muted-foreground text-sm">
-          <p className="mb-2">This is a demo website by Hardhat Hosting</p>
-          <Link to="/" className="text-primary hover:underline font-medium">
-            hardhathosting.com
-          </Link>
-        </div>
-      </footer>
-    </div>
-  );
+  return <DemoComponent />;
 };
 
 export default DemoSite;
