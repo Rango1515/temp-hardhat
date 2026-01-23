@@ -1,4 +1,5 @@
 import { Globe, Palette, Wrench, Shield, Zap, Headphones } from "lucide-react";
+import AnimatedSection from "@/components/ui/AnimatedSection";
 
 const services = [
   {
@@ -35,9 +36,9 @@ const services = [
 
 const Services = () => {
   return (
-    <section id="services" className="py-20 md:py-32 bg-background">
+    <section id="services" className="py-20 md:py-32 bg-background section-divider">
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
+        <AnimatedSection animation="fade-up" className="text-center mb-16">
           <span className="inline-block text-primary font-semibold tracking-wide uppercase mb-4">
             Our Services
           </span>
@@ -49,25 +50,27 @@ const Services = () => {
             From website design to hosting and maintenance, we handle it all so you can 
             focus on what you do best – building and growing your business.
           </p>
-        </div>
+        </AnimatedSection>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {services.map((service, index) => (
-            <div
+            <AnimatedSection
               key={service.title}
-              className="group glass rounded-xl p-8 card-hover hover:border-primary/30 animate-fade-in"
-              style={{ animationDelay: `${index * 0.1}s` }}
+              animation="fade-up"
+              delay={index * 100}
             >
-              <div className="w-14 h-14 bg-primary/20 rounded-xl flex items-center justify-center mb-6 group-hover:bg-primary/30 group-hover:glow transition-all">
-                <service.icon className="w-7 h-7 text-primary" />
+              <div className="group glass rounded-xl p-8 card-3d hover:border-primary/30 h-full">
+                <div className="w-14 h-14 bg-primary/20 rounded-xl flex items-center justify-center mb-6 group-hover:bg-primary/30 group-hover:glow group-hover:scale-110 transition-all duration-300">
+                  <service.icon className="w-7 h-7 text-primary" />
+                </div>
+                <h3 className="font-display text-2xl text-foreground mb-3 group-hover:text-primary transition-colors">
+                  {service.title}
+                </h3>
+                <p className="text-muted-foreground leading-relaxed">
+                  {service.description}
+                </p>
               </div>
-              <h3 className="font-display text-2xl text-foreground mb-3">
-                {service.title}
-              </h3>
-              <p className="text-muted-foreground leading-relaxed">
-                {service.description}
-              </p>
-            </div>
+            </AnimatedSection>
           ))}
         </div>
       </div>
