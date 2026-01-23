@@ -37,7 +37,7 @@ const Contact = () => {
         <div className="grid lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
           {/* Contact Info */}
           <div className="space-y-8">
-            <div className="bg-card rounded-2xl p-8 border border-border/50 card-hover">
+            <div className="glass rounded-2xl p-8 card-hover">
               <h3 className="font-display text-2xl text-foreground mb-6">
                 Contact Information
               </h3>
@@ -46,7 +46,7 @@ const Contact = () => {
                   href="tel:+19095551234"
                   className="flex items-start gap-4 group"
                 >
-                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 group-hover:glow transition-all">
                     <Phone className="w-5 h-5 text-primary" />
                   </div>
                   <div>
@@ -61,7 +61,7 @@ const Contact = () => {
                   href="mailto:info@hardhathosting.com"
                   className="flex items-start gap-4 group"
                 >
-                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                  <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 group-hover:glow transition-all">
                     <Mail className="w-5 h-5 text-primary" />
                   </div>
                   <div>
@@ -73,7 +73,7 @@ const Contact = () => {
                 </a>
 
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center">
                     <MapPin className="w-5 h-5 text-primary" />
                   </div>
                   <div>
@@ -85,7 +85,7 @@ const Contact = () => {
                 </div>
 
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                  <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center">
                     <Clock className="w-5 h-5 text-primary" />
                   </div>
                   <div>
@@ -98,11 +98,11 @@ const Contact = () => {
               </div>
             </div>
 
-            <div className="bg-secondary rounded-2xl p-8">
-              <h4 className="font-display text-xl text-secondary-foreground mb-2">
+            <div className="bg-primary/10 border border-primary/20 rounded-2xl p-8 glow">
+              <h4 className="font-display text-xl text-foreground mb-2">
                 Free Consultation
               </h4>
-              <p className="text-secondary-foreground/70">
+              <p className="text-muted-foreground">
                 Not sure where to start? Schedule a free 30-minute call with our team 
                 to discuss your website needs.
               </p>
@@ -110,7 +110,7 @@ const Contact = () => {
           </div>
 
           {/* Contact Form */}
-          <form onSubmit={handleSubmit} className="bg-card rounded-2xl p-8 border border-border/50 card-hover">
+          <form onSubmit={handleSubmit} className="glass rounded-2xl p-8 card-hover">
             <h3 className="font-display text-2xl text-foreground mb-6">
               Send Us a Message
             </h3>
@@ -125,7 +125,7 @@ const Contact = () => {
                     id="name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground"
+                    className="w-full px-4 py-3 rounded-lg bg-muted/50 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground placeholder:text-muted-foreground"
                     placeholder="John Smith"
                     required
                   />
@@ -139,7 +139,7 @@ const Contact = () => {
                     id="phone"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground"
+                    className="w-full px-4 py-3 rounded-lg bg-muted/50 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground placeholder:text-muted-foreground"
                     placeholder="(909) 555-1234"
                   />
                 </div>
@@ -154,7 +154,7 @@ const Contact = () => {
                   id="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground"
+                  className="w-full px-4 py-3 rounded-lg bg-muted/50 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground placeholder:text-muted-foreground"
                   placeholder="john@yourcompany.com"
                   required
                 />
@@ -169,7 +169,7 @@ const Contact = () => {
                   id="company"
                   value={formData.company}
                   onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground"
+                  className="w-full px-4 py-3 rounded-lg bg-muted/50 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground placeholder:text-muted-foreground"
                   placeholder="Your Construction Company"
                 />
               </div>
@@ -183,13 +183,13 @@ const Contact = () => {
                   value={formData.message}
                   onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                   rows={4}
-                  className="w-full px-4 py-3 rounded-lg bg-muted border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none text-foreground"
+                  className="w-full px-4 py-3 rounded-lg bg-muted/50 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none text-foreground placeholder:text-muted-foreground"
                   placeholder="Tell us about your business and what you're looking for..."
                   required
                 />
               </div>
 
-              <Button type="submit" size="lg" className="w-full">
+              <Button type="submit" size="lg" className="w-full glow">
                 Send Message
                 <Send className="w-4 h-4" />
               </Button>

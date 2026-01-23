@@ -2,13 +2,21 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 
+// Import demo images
+import concreteImg from '@/assets/demo-concrete.jpg';
+import electricalImg from '@/assets/demo-electrical.jpg';
+import landscapingImg from '@/assets/demo-landscaping.jpg';
+import generalImg from '@/assets/demo-general.jpg';
+import plumbingImg from '@/assets/demo-plumbing.jpg';
+import roofingImg from '@/assets/demo-roofing.jpg';
+
 const portfolioItems = [
   {
     title: "Solid Foundation Concrete",
     category: "Concrete",
     slug: "concrete",
     description: "Professional concrete contractor website with project gallery and quote request forms.",
-    color: "from-slate-600 to-slate-800",
+    image: concreteImg,
     features: ["Online Quotes", "Project Gallery", "Service Areas"],
   },
   {
@@ -16,7 +24,7 @@ const portfolioItems = [
     category: "Electrical",
     slug: "electrical",
     description: "Modern electrical services website with emergency contact and service scheduling.",
-    color: "from-amber-500 to-orange-600",
+    image: electricalImg,
     features: ["24/7 Emergency", "Online Booking", "Certifications"],
   },
   {
@@ -24,7 +32,7 @@ const portfolioItems = [
     category: "Landscaping",
     slug: "landscaping",
     description: "Beautiful landscaping company site showcasing outdoor transformations.",
-    color: "from-emerald-500 to-green-700",
+    image: landscapingImg,
     features: ["Before/After", "Design Ideas", "Seasonal Specials"],
   },
   {
@@ -32,7 +40,7 @@ const portfolioItems = [
     category: "General Contractor",
     slug: "general",
     description: "Full-service construction company with portfolio and testimonials.",
-    color: "from-orange-500 to-red-600",
+    image: generalImg,
     features: ["Video Tours", "Testimonials", "Financing"],
   },
   {
@@ -40,7 +48,7 @@ const portfolioItems = [
     category: "Plumbing",
     slug: "plumbing",
     description: "Plumbing services website with emergency booking and maintenance plans.",
-    color: "from-blue-500 to-cyan-600",
+    image: plumbingImg,
     features: ["Live Chat", "Maintenance Plans", "Coupons"],
   },
   {
@@ -48,14 +56,14 @@ const portfolioItems = [
     category: "Roofing",
     slug: "roofing",
     description: "Roofing contractor site with storm damage assessment and financing options.",
-    color: "from-gray-700 to-gray-900",
+    image: roofingImg,
     features: ["Free Inspections", "Insurance Help", "Warranties"],
   },
 ];
 
 const Portfolio = () => {
   return (
-    <section id="portfolio" className="py-20 md:py-32 bg-muted/50">
+    <section id="portfolio" className="py-20 md:py-32 bg-secondary/50">
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
           <span className="inline-block text-primary font-semibold tracking-wide uppercase mb-4">
@@ -75,16 +83,17 @@ const Portfolio = () => {
           {portfolioItems.map((item, index) => (
             <div
               key={item.title}
-              className="group bg-card rounded-2xl overflow-hidden card-hover border border-border/50 animate-fade-in"
+              className="group glass rounded-2xl overflow-hidden card-hover animate-fade-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
-              {/* Preview Header */}
-              <div className={`h-48 bg-gradient-to-br ${item.color} relative overflow-hidden`}>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="bg-card/10 backdrop-blur-sm rounded-lg p-6 border border-white/20">
-                    <span className="font-display text-2xl text-white">{item.title}</span>
-                  </div>
-                </div>
+              {/* Preview Image */}
+              <div className="h-48 relative overflow-hidden">
+                <img
+                  src={item.image}
+                  alt={item.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
                 {/* Browser dots */}
                 <div className="absolute top-4 left-4 flex gap-2">
                   <div className="w-3 h-3 rounded-full bg-white/30" />
@@ -96,7 +105,7 @@ const Portfolio = () => {
               {/* Content */}
               <div className="p-6">
                 <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-semibold text-primary bg-primary/10 px-3 py-1 rounded-full">
+                  <span className="text-xs font-semibold text-primary bg-primary/20 px-3 py-1 rounded-full">
                     {item.category}
                   </span>
                 </div>
@@ -119,7 +128,7 @@ const Portfolio = () => {
                 <Link to={`/demo/${item.slug}`}>
                   <Button variant="outline" className="w-full group-hover:border-primary group-hover:text-primary transition-colors">
                     Preview Site
-                    <ExternalLink className="w-4 h-4" />
+                    <ExternalLink className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
               </div>
@@ -131,9 +140,11 @@ const Portfolio = () => {
           <p className="text-muted-foreground mb-4">
             Don't see your trade? We create custom websites for all construction industries.
           </p>
-          <Button variant="default" size="lg">
-            Request Custom Demo
-          </Button>
+          <a href="#contact">
+            <Button variant="default" size="lg" className="glow">
+              Request Custom Demo
+            </Button>
+          </a>
         </div>
       </div>
     </section>
