@@ -55,10 +55,10 @@ const Services = () => {
           {services.map((service, index) => (
             <div
               key={service.title}
-              className="group bg-card rounded-xl p-8 card-hover border border-border/50 hover:border-primary/30 animate-fade-in"
+              className="group glass rounded-xl p-8 card-hover hover:border-primary/30 animate-fade-in"
               style={{ animationDelay: `${index * 0.1}s` }}
             >
-              <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
+              <div className="w-14 h-14 bg-primary/20 rounded-xl flex items-center justify-center mb-6 group-hover:bg-primary/30 group-hover:glow transition-all">
                 <service.icon className="w-7 h-7 text-primary" />
               </div>
               <h3 className="font-display text-2xl text-foreground mb-3">
