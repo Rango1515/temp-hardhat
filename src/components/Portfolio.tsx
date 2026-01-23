@@ -1,10 +1,12 @@
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const portfolioItems = [
   {
     title: "Solid Foundation Concrete",
     category: "Concrete",
+    slug: "concrete",
     description: "Professional concrete contractor website with project gallery and quote request forms.",
     color: "from-slate-600 to-slate-800",
     features: ["Online Quotes", "Project Gallery", "Service Areas"],
@@ -12,6 +14,7 @@ const portfolioItems = [
   {
     title: "Volt Electric Pro",
     category: "Electrical",
+    slug: "electrical",
     description: "Modern electrical services website with emergency contact and service scheduling.",
     color: "from-amber-500 to-orange-600",
     features: ["24/7 Emergency", "Online Booking", "Certifications"],
@@ -19,6 +22,7 @@ const portfolioItems = [
   {
     title: "Green Valley Landscaping",
     category: "Landscaping",
+    slug: "landscaping",
     description: "Beautiful landscaping company site showcasing outdoor transformations.",
     color: "from-emerald-500 to-green-700",
     features: ["Before/After", "Design Ideas", "Seasonal Specials"],
@@ -26,6 +30,7 @@ const portfolioItems = [
   {
     title: "Hammer & Nail Construction",
     category: "General Contractor",
+    slug: "general",
     description: "Full-service construction company with portfolio and testimonials.",
     color: "from-orange-500 to-red-600",
     features: ["Video Tours", "Testimonials", "Financing"],
@@ -33,6 +38,7 @@ const portfolioItems = [
   {
     title: "Crystal Clear Plumbing",
     category: "Plumbing",
+    slug: "plumbing",
     description: "Plumbing services website with emergency booking and maintenance plans.",
     color: "from-blue-500 to-cyan-600",
     features: ["Live Chat", "Maintenance Plans", "Coupons"],
@@ -40,6 +46,7 @@ const portfolioItems = [
   {
     title: "Apex Roofing Solutions",
     category: "Roofing",
+    slug: "roofing",
     description: "Roofing contractor site with storm damage assessment and financing options.",
     color: "from-gray-700 to-gray-900",
     features: ["Free Inspections", "Insurance Help", "Warranties"],
@@ -109,10 +116,12 @@ const Portfolio = () => {
                     </span>
                   ))}
                 </div>
-                <Button variant="outline" className="w-full group-hover:border-primary group-hover:text-primary transition-colors">
-                  Preview Site
-                  <ExternalLink className="w-4 h-4" />
-                </Button>
+                <Link to={`/demo/${item.slug}`}>
+                  <Button variant="outline" className="w-full group-hover:border-primary group-hover:text-primary transition-colors">
+                    Preview Site
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </Link>
               </div>
             </div>
           ))}
