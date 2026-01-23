@@ -4,6 +4,7 @@ import Services from "@/components/Services";
 import Portfolio from "@/components/Portfolio";
 import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
+import FloatingCTA from "@/components/FloatingCTA";
 
 const Index = () => {
   return (
@@ -14,6 +15,7 @@ const Index = () => {
       <Portfolio />
       <Contact />
       <Footer />
+      <FloatingCTA />
     </div>
   );
 };
