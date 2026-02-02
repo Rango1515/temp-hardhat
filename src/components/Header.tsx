@@ -90,9 +90,9 @@ const Header = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center gap-4">
-            <a href="tel:+19095551234" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group">
+            <a href="tel:+19096874971" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group">
               <Phone className="w-4 h-4 group-hover:animate-pulse" />
-              <span className="font-medium">(909) 555-1234</span>
+              <span className="font-medium">(909) 687-4971</span>
             </a>
             <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')}>
               <Button variant="default" size="lg" className="glow animate-pulse-border">
@@ -142,13 +142,13 @@ const Header = () => {
                 </a>
               ))}
               <div className="flex flex-col gap-3 pt-4 mt-2 border-t border-border/20">
-                <a href="tel:+19095551234" className="flex items-center gap-2 text-muted-foreground px-4 py-2">
+                <a href="tel:+19096874971" className="flex items-center gap-2 text-muted-foreground px-4 py-2">
                   <Phone className="w-4 h-4" />
-                  <span>(909) 555-1234</span>
+                  <span>(909) 687-4971</span>
                 </a>
-                <a href="mailto:info@hardhathosting.com" className="flex items-center gap-2 text-muted-foreground px-4 py-2">
+                <a href="mailto:rango4944@gmail.com" className="flex items-center gap-2 text-muted-foreground px-4 py-2">
                   <Mail className="w-4 h-4" />
-                  <span>info@hardhathosting.com</span>
+                  <span>rango4944@gmail.com</span>
                 </a>
                 <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="px-4">
                   <Button variant="default" size="lg" className="w-full mt-2 glow">
