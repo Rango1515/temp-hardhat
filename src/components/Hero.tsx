@@ -27,7 +27,7 @@ const Hero = () => {
             <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 mb-6">
               <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
               <span className="text-foreground/90 text-sm font-medium">
-                Rancho Cucamonga's #1 Construction Web Hosting
+                Rancho Cucamonga's #1 Small Business Web Hosting
               </span>
             </div>
           </AnimatedSection>
@@ -41,8 +41,9 @@ const Hero = () => {
 
           <AnimatedSection animation="fade-up" delay={200}>
             <p className="text-lg md:text-xl text-muted-foreground mb-8 max-w-xl">
-              Professional web hosting and stunning websites designed specifically for 
-              construction companies. Concrete, electrical, landscaping, and more.
+              Professional web hosting and stunning websites for contractors, local businesses, 
+              and entrepreneurs. From construction to retail, salons to consulting - if you have 
+              a business, we build your online home.
             </p>
           </AnimatedSection>
 
@@ -69,7 +70,7 @@ const Hero = () => {
 
           <AnimatedSection animation="fade-up" delay={400}>
             <div className="flex flex-wrap gap-6">
-              {["Fast Setup", "24/7 Support", "Mobile Optimized"].map((feature, index) => (
+              {["Fast Setup", "24/7 Support", "All Industries"].map((feature, index) => (
                 <div 
                   key={feature} 
                   className="flex items-center gap-2 text-foreground/80 group"

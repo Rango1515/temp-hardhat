@@ -25,10 +25,13 @@ const Footer = () => {
                 </span>
               </div>
             </Link>
-            <p className="text-muted-foreground mb-6 max-w-md">
-              Professional web hosting and website design for construction companies 
-              in Rancho Cucamonga and the Inland Empire. We help contractors build 
-              their online presence.
+            <p className="text-muted-foreground mb-4 max-w-md">
+              Professional web hosting and website design for contractors and small businesses 
+              in Rancho Cucamonga and the Inland Empire. From construction trades to retail shops, 
+              salons to professional services - we help every business build their online presence.
+            </p>
+            <p className="text-sm text-primary/80 italic mb-6 max-w-md">
+              Not a contractor? No problem. We build high-performance sites for every industry.
             </p>
             <div className="flex flex-col gap-3">
               <a href="tel:+19096874971" className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors group touch-feedback">
@@ -82,11 +85,11 @@ const Footer = () => {
               Industries We Serve
             </h4>
             <nav className="flex flex-col gap-3">
-              <Link to="/demo/concrete" className="text-muted-foreground hover:text-primary transition-colors">Concrete Contractors</Link>
-              <Link to="/demo/electrical" className="text-muted-foreground hover:text-primary transition-colors">Electricians</Link>
-              <Link to="/demo/landscaping" className="text-muted-foreground hover:text-primary transition-colors">Landscaping</Link>
-              <Link to="/demo/plumbing" className="text-muted-foreground hover:text-primary transition-colors">Plumbing</Link>
-              <Link to="/demo/roofing" className="text-muted-foreground hover:text-primary transition-colors">Roofing</Link>
+              <Link to="/demo/concrete" className="text-muted-foreground hover:text-primary transition-colors">Construction Trades</Link>
+              <Link to="/demo/ecommerce" className="text-muted-foreground hover:text-primary transition-colors">Retail & E-commerce</Link>
+              <Link to="/demo/professional" className="text-muted-foreground hover:text-primary transition-colors">Professional Services</Link>
+              <Link to="/demo/salon" className="text-muted-foreground hover:text-primary transition-colors">Salons & Spas</Link>
+              <Link to="/demo/portfolio" className="text-muted-foreground hover:text-primary transition-colors">Creatives & Freelancers</Link>
               <Link to="/demo/general" className="text-muted-foreground hover:text-primary transition-colors">General Contractors</Link>
             </nav>
           </AnimatedSection>

@@ -10,6 +10,10 @@ import InteriorDemo from '@/components/demos/InteriorDemo';
 import SolarDemo from '@/components/demos/SolarDemo';
 import ConcreteDemo from '@/components/demos/ConcreteDemo';
 import PlumbingDemo from '@/components/demos/PlumbingDemo';
+import EcommerceDemo from '@/components/demos/EcommerceDemo';
+import ProfessionalDemo from '@/components/demos/ProfessionalDemo';
+import PortfolioDemo from '@/components/demos/PortfolioDemo';
+import SalonDemo from '@/components/demos/SalonDemo';
 
 // Placeholder components for demos not yet converted to multi-page
 import { DemoBanner, DemoFooter } from '@/components/demos/DemoShared';
@@ -178,6 +182,11 @@ const DemoSite = () => {
     general: GeneralDemo,
     plumbing: PlumbingDemo,
     roofing: RoofingDemo,
+    // New universal demos
+    ecommerce: EcommerceDemo,
+    professional: ProfessionalDemo,
+    portfolio: PortfolioDemo,
+    salon: SalonDemo,
   };
 
   const DemoComponent = trade ? demoComponents[trade] : null;
