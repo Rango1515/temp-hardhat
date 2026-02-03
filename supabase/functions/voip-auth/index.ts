@@ -127,7 +127,52 @@ serve(async (req) => {
       }
 
       case "signup": {
-        const { name, email, password } = await req.json();
+        const { name, email, password, inviteToken } = await req.json();
+
+        // Validate invite token first
+        if (!inviteToken) {
+          return new Response(
+            JSON.stringify({ error: "Invite token is required. Please contact an admin to get an invite." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Check if invite token exists and is valid
+        const invites = await query<{ id: number; email: string | null; expires_at: string | null; used: number }>(
+          "SELECT id, email, expires_at, used FROM signup_tokens WHERE token = ?",
+          [inviteToken.trim()]
+        );
+
+        if (invites.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "Invalid invite token" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const invite = invites[0];
+
+        if (invite.used) {
+          return new Response(
+            JSON.stringify({ error: "This invite token has already been used" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+          return new Response(
+            JSON.stringify({ error: "This invite token has expired" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // If token is email-specific, validate it matches
+        if (invite.email && invite.email.toLowerCase() !== email.toLowerCase().trim()) {
+          return new Response(
+            JSON.stringify({ error: "This invite token was issued for a different email address" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
 
         // Validation
         if (!name || name.length < 2 || name.length > 100) {
@@ -188,6 +233,12 @@ serve(async (req) => {
           [name.trim(), email.toLowerCase().trim(), passwordHash]
         );
 
+        // Mark invite token as used
+        await execute(
+          "UPDATE signup_tokens SET used = 1, used_by = ?, used_at = NOW() WHERE id = ?",
+          [result.lastInsertId, invite.id]
+        );
+
         // Create analytics entry
         await execute(
           "INSERT INTO user_analytics (user_id) VALUES (?)",
@@ -198,7 +249,7 @@ serve(async (req) => {
         const ip = req.headers.get("x-forwarded-for") || "unknown";
         await execute(
           "INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)",
-          [result.lastInsertId, "signup", JSON.stringify({ email }), ip]
+          [result.lastInsertId, "signup", JSON.stringify({ email, inviteTokenId: invite.id }), ip]
         );
 
         const token = await createJWT(result.lastInsertId, email, "client", name);

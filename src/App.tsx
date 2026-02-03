@@ -26,6 +26,7 @@ import AdminUsers from "./pages/voip/admin/Users";
 import AdminNumbers from "./pages/voip/admin/Numbers";
 import AdminAnalytics from "./pages/voip/admin/Analytics";
 import AdminRequests from "./pages/voip/admin/Requests";
+import AdminInviteTokens from "./pages/voip/admin/InviteTokens";
 
 const queryClient = new QueryClient();
 
@@ -59,6 +60,7 @@ const App = () => (
             <Route path="/voip/admin/numbers" element={<AdminRoute><AdminNumbers /></AdminRoute>} />
             <Route path="/voip/admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
             <Route path="/voip/admin/requests" element={<AdminRoute><AdminRequests /></AdminRoute>} />
+            <Route path="/voip/admin/invite-tokens" element={<AdminRoute><AdminInviteTokens /></AdminRoute>} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />

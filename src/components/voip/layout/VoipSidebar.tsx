@@ -12,6 +12,7 @@ import {
   BarChart3,
   FileText,
   PhoneCall,
+  Ticket,
 } from "lucide-react";
 
 const clientNavItems = [
@@ -29,6 +30,7 @@ const adminNavItems = [
   { href: "/voip/admin/numbers", label: "Numbers", icon: PhoneCall },
   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/voip/admin/requests", label: "Requests", icon: FileText },
+  { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
 ];
 
 export function VoipSidebar() {

@@ -27,6 +27,7 @@ export default function VoipAuth() {
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+  const [inviteToken, setInviteToken] = useState("");
 
   if (authLoading) {
     return (
@@ -62,6 +63,11 @@ export default function VoipAuth() {
     e.preventDefault();
     setError("");
 
+    if (!inviteToken.trim()) {
+      setError("Invite token is required. Please contact an admin to get an invite.");
+      return;
+    }
+
     if (signupPassword !== signupConfirmPassword) {
       setError("Passwords do not match");
       return;
@@ -84,7 +90,7 @@ export default function VoipAuth() {
 
     setIsLoading(true);
 
-    const result = await signup(signupName, signupEmail, signupPassword);
+    const result = await signup(signupName, signupEmail, signupPassword, inviteToken.trim());
 
     if (!result.success) {
       setError(result.error || "Signup failed");
@@ -182,6 +188,22 @@ export default function VoipAuth() {
 
               <TabsContent value="signup">
                 <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-invite">Invite Token</Label>
+                    <Input
+                      id="signup-invite"
+                      type="text"
+                      placeholder="Enter your invite token"
+                      value={inviteToken}
+                      onChange={(e) => setInviteToken(e.target.value)}
+                      required
+                      disabled={isLoading}
+                      className="font-mono"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Contact an admin to get an invite token
+                    </p>
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">Full Name</Label>
                     <Input

@@ -180,7 +180,31 @@ CREATE TABLE number_requests (
 
 ---
 
-## 8. Activity Logs Table
+## 8. Signup Tokens Table
+
+Manages invite tokens required for user registration.
+
+```sql
+CREATE TABLE signup_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    email VARCHAR(255) NULL COMMENT 'Optional: restrict token to specific email',
+    expires_at TIMESTAMP NULL,
+    used TINYINT(1) DEFAULT 0,
+    used_by INT NULL,
+    used_at TIMESTAMP NULL,
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (used_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_token (token),
+    INDEX idx_used (used)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+---
+
+## 9. Activity Logs Table
 
 Audit trail for all system actions.
 
@@ -203,7 +227,7 @@ CREATE TABLE activity_logs (
 
 ---
 
-## 9. Create Initial Admin User
+## 10. Create Initial Admin User
 
 Replace `YOUR_BCRYPT_HASH` with a bcrypt hash of your desired password.
 
