@@ -94,6 +94,11 @@ const Header = () => {
               <Phone className="w-4 h-4 group-hover:animate-pulse" />
               <span className="font-medium">(909) 687-4971</span>
             </a>
+            <Link to="/voip/auth">
+              <Button variant="outline" size="sm">
+                Client Portal
+              </Button>
+            </Link>
             <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')}>
               <Button variant="default" size="lg" className="glow animate-pulse-border">
                 Get Started
