@@ -16,8 +16,50 @@ import interiorImg from '@/assets/demo-interior.jpg';
 import hvacImg from '@/assets/demo-hvac.jpg';
 import solarImg from '@/assets/demo-solar.jpg';
 import poolImg from '@/assets/demo-pool.jpg';
+import ecommerceImg from '@/assets/demo-ecommerce.jpg';
+import professionalImg from '@/assets/demo-professional.jpg';
+import portfolioImg from '@/assets/demo-portfolio.jpg';
+import salonImg from '@/assets/demo-salon.jpg';
 
 const portfolioItems = [
+  // New Universal Categories (Featured at top)
+  {
+    title: "Luxe Boutique",
+    category: "E-commerce",
+    slug: "ecommerce",
+    description: "Sleek online shop with shopping cart, inventory management, and secure payments.",
+    image: ecommerceImg,
+    features: ["Shopping Cart", "Inventory", "Payments"],
+    layoutStyle: "modern",
+  },
+  {
+    title: "Sterling Associates",
+    category: "Professional Services",
+    slug: "professional",
+    description: "Corporate website for law firms, accountants, and consultants with client portal.",
+    image: professionalImg,
+    features: ["Client Portal", "Booking", "Resources"],
+    layoutStyle: "technical",
+  },
+  {
+    title: "The Creative Lab",
+    category: "Personal Branding",
+    slug: "portfolio",
+    description: "Bold portfolio site for creatives, freelancers, and influencers with project gallery.",
+    image: portfolioImg,
+    features: ["Portfolio", "Blog", "Contact"],
+    layoutStyle: "creative",
+  },
+  {
+    title: "Glow Beauty Studio",
+    category: "Local Service",
+    slug: "salon",
+    description: "Elegant salon website with online booking, service menu, and team profiles.",
+    image: salonImg,
+    features: ["Online Booking", "Reviews", "Gallery"],
+    layoutStyle: "creative",
+  },
+  // Construction & Trade Categories
   {
     title: "Solid Foundation Concrete",
     category: "Concrete",
@@ -142,7 +184,7 @@ const Portfolio = () => {
           </h2>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
             See what your business could look like online. These example sites showcase 
-            what we can build for your construction company.
+            what we can build for any industry.
           </p>
         </AnimatedSection>
 
@@ -223,7 +265,7 @@ const Portfolio = () => {
 
         <AnimatedSection animation="fade-up" delay={400} className="text-center mt-12">
           <p className="text-muted-foreground mb-4">
-            Don't see your trade? We create custom websites for all construction industries.
+            Don't see your industry? We create custom websites for all businesses - from trades to retail to professional services.
           </p>
           <a href="#contact">
             <Button variant="default" size="lg" className="glow animate-pulse-border group">

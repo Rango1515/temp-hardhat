@@ -36,7 +36,7 @@ const FloatingCTA = () => {
         className="glow-intense shadow-2xl animate-bounce-subtle group"
       >
         <MessageCircle className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
-        Get Started
+        Build Your Site
       </Button>
     </div>
   );

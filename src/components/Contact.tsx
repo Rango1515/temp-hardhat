@@ -13,9 +13,12 @@ const Contact = () => {
             READY TO GET
             <span className="text-gradient"> STARTED?</span>
           </h2>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto mb-4">
             Contact us today for a free consultation. We'll discuss your needs 
-            and show you how we can help your construction business grow online.
+            and show you how we can help your business grow online.
+          </p>
+          <p className="text-primary font-medium text-lg">
+            Not a contractor? No problem. We build high-performance sites for every industry.
           </p>
         </AnimatedSection>
 
