@@ -43,7 +43,7 @@ const Contact = () => {
                   </a>
 
                   <a
-                    href="mailto:rango4944@gmail.com"
+                    href="mailto:admin@hardhathosting.work"
                     className="flex items-start gap-4 group touch-feedback rounded-lg p-2 -m-2"
                   >
                     <div className="w-12 h-12 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 group-hover:glow transition-all group-hover:scale-105">
@@ -52,7 +52,7 @@ const Contact = () => {
                     <div>
                       <p className="text-sm text-muted-foreground">Email Us</p>
                       <p className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
-                        rango4944@gmail.com
+                        admin@hardhathosting.work
                       </p>
                     </div>
                   </a>
