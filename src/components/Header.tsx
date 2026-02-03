@@ -146,9 +146,9 @@ const Header = () => {
                   <Phone className="w-4 h-4" />
                   <span>(909) 687-4971</span>
                 </a>
-                <a href="mailto:rango4944@gmail.com" className="flex items-center gap-2 text-muted-foreground px-4 py-2">
+                <a href="mailto:admin@hardhathosting.work" className="flex items-center gap-2 text-muted-foreground px-4 py-2">
                   <Mail className="w-4 h-4" />
-                  <span>rango4944@gmail.com</span>
+                  <span>admin@hardhathosting.work</span>
                 </a>
                 <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="px-4">
                   <Button variant="default" size="lg" className="w-full mt-2 glow">
