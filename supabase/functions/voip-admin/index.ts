@@ -382,6 +382,85 @@ serve(async (req) => {
         break;
       }
 
+      // Invite tokens management
+      case "invite-tokens": {
+        if (req.method === "GET") {
+          const tokens = await query(
+            `SELECT st.*, u.name as created_by_name, ub.name as used_by_name, ub.email as used_by_email 
+             FROM signup_tokens st 
+             LEFT JOIN users u ON st.created_by = u.id 
+             LEFT JOIN users ub ON st.used_by = ub.id 
+             ORDER BY st.created_at DESC`
+          );
+
+          return new Response(
+            JSON.stringify({ tokens }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (req.method === "POST") {
+          const { email, expiresInDays } = await req.json();
+
+          // Generate a secure random token
+          const tokenBytes = new Uint8Array(24);
+          crypto.getRandomValues(tokenBytes);
+          const inviteToken = Array.from(tokenBytes)
+            .map(b => b.toString(16).padStart(2, "0"))
+            .join("");
+
+          const expiresAt = expiresInDays 
+            ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ")
+            : null;
+
+          const result = await execute(
+            `INSERT INTO signup_tokens (token, email, expires_at, created_by) VALUES (?, ?, ?, ?)`,
+            [inviteToken, email?.toLowerCase().trim() || null, expiresAt, adminId]
+          );
+
+          await execute(
+            "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
+            [adminId, "invite_created", "signup_token", result.lastInsertId, JSON.stringify({ email, expiresInDays })]
+          );
+
+          return new Response(
+            JSON.stringify({ 
+              id: result.lastInsertId, 
+              token: inviteToken,
+              email: email?.toLowerCase().trim() || null,
+              expiresAt,
+              message: "Invite token created successfully" 
+            }),
+            { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (req.method === "DELETE") {
+          const tokenId = url.searchParams.get("id");
+
+          if (!tokenId) {
+            return new Response(
+              JSON.stringify({ error: "Token ID is required" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          await execute("DELETE FROM signup_tokens WHERE id = ? AND used = 0", [tokenId]);
+
+          await execute(
+            "INSERT INTO activity_logs (user_id, action, entity_type, entity_id) VALUES (?, ?, ?, ?)",
+            [adminId, "invite_deleted", "signup_token", tokenId]
+          );
+
+          return new Response(
+            JSON.stringify({ message: "Token deleted successfully" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        break;
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
