@@ -46,7 +46,7 @@ export function VoipSidebar() {
           <div className="bg-primary p-2 rounded-lg">
             <Phone className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-display text-lg text-foreground">VoIP Dialer</span>
+          <span className="font-display text-lg text-foreground">Client Portal</span>
         </Link>
       </div>
 

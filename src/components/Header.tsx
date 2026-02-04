@@ -155,6 +155,11 @@ const Header = () => {
                   <Mail className="w-4 h-4" />
                   <span>admin@hardhathosting.work</span>
                 </a>
+                <Link to="/voip/auth" className="px-4">
+                  <Button variant="outline" size="lg" className="w-full">
+                    Client Portal
+                  </Button>
+                </Link>
                 <a href="#contact" onClick={(e) => handleNavClick(e, '#contact')} className="px-4">
                   <Button variant="default" size="lg" className="w-full mt-2 glow">
                     Get Started
