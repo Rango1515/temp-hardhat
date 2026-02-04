@@ -1,15 +1,17 @@
 import { useState, useCallback, useEffect } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { CallTimer } from "@/components/voip/dialer/CallTimer";
+import { DialPad } from "@/components/voip/dialer/DialPad";
 import { useVoipApi } from "@/hooks/useVoipApi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw } from "lucide-react";
+import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -41,6 +43,7 @@ export default function Dialer() {
 
   const [currentLead, setCurrentLead] = useState<Lead | null>(null);
   const [isLoadingLead, setIsLoadingLead] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callDuration, setCallDuration] = useState(0);
   const [selectedOutcome, setSelectedOutcome] = useState("");
@@ -56,6 +59,7 @@ export default function Dialer() {
       });
       if (result.data?.lead) {
         setCurrentLead(result.data.lead);
+        setPhoneNumber(result.data.lead.phone);
       }
     };
     fetchCurrentLead();
@@ -64,6 +68,7 @@ export default function Dialer() {
   const requestNextLead = async () => {
     setIsLoadingLead(true);
     setCurrentLead(null);
+    setPhoneNumber("");
     setSelectedOutcome("");
     setNotes("");
     setFollowupDate(undefined);
@@ -81,6 +86,7 @@ export default function Dialer() {
       });
     } else if (result.data?.lead) {
       setCurrentLead(result.data.lead);
+      setPhoneNumber(result.data.lead.phone);
       toast({
         title: "Lead Assigned",
         description: `${result.data.lead.name} - ${result.data.lead.phone}`,
@@ -95,15 +101,40 @@ export default function Dialer() {
     setIsLoadingLead(false);
   };
 
+  const handleDigitPress = (digit: string) => {
+    setPhoneNumber((prev) => prev + digit);
+  };
+
+  const handleBackspace = () => {
+    setPhoneNumber((prev) => prev.slice(0, -1));
+  };
+
+  const handleClear = () => {
+    setPhoneNumber("");
+  };
+
+  const handleUseLeadNumber = () => {
+    if (currentLead?.phone) {
+      setPhoneNumber(currentLead.phone);
+    }
+  };
+
   const handleCall = useCallback(() => {
-    if (!currentLead) return;
+    if (!phoneNumber) {
+      toast({
+        title: "No Phone Number",
+        description: "Enter a phone number to call",
+        variant: "destructive",
+      });
+      return;
+    }
     setCallStatus("calling");
     
     // Simulate call connection after 2s
     setTimeout(() => {
       setCallStatus("connected");
     }, 2000);
-  }, [currentLead]);
+  }, [phoneNumber, toast]);
 
   const handleHangup = useCallback(() => {
     setCallStatus("ended");
@@ -156,6 +187,7 @@ export default function Dialer() {
 
       // Reset and get next lead
       setCurrentLead(null);
+      setPhoneNumber("");
       setCallStatus("idle");
       setCallDuration(0);
       setSelectedOutcome("");
@@ -179,199 +211,283 @@ export default function Dialer() {
 
   return (
     <VoipLayout>
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Request Lead Button */}
-        {!currentLead && (
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column - Lead Info */}
           <Card>
-            <CardContent className="pt-6">
-              <div className="text-center space-y-4">
-                <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
-                  <Phone className="w-8 h-8 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold">Ready to Start Calling?</h2>
-                  <p className="text-muted-foreground mt-1">
-                    Request your next lead to begin
-                  </p>
-                </div>
-                <Button onClick={requestNextLead} disabled={isLoadingLead} size="lg">
-                  {isLoadingLead ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Getting Lead...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2" />
-                      Request Next Lead
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Current Lead Display */}
-        {currentLead && (
-          <>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="w-5 h-5" />
-                  Current Lead
-                </CardTitle>
-                <CardDescription>Lead assigned to you</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <User className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Name</p>
-                      <p className="font-medium">{currentLead.name}</p>
-                    </div>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <User className="w-5 h-5" />
+                {currentLead ? "Current Lead" : "Request Lead"}
+              </CardTitle>
+              <CardDescription>
+                {currentLead ? "Lead assigned to you" : "Get your next lead to start calling"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {!currentLead ? (
+                <div className="text-center space-y-4 py-6">
+                  <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                    <Phone className="w-8 h-8 text-primary" />
                   </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <Phone className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Phone</p>
-                      <p className="font-medium font-mono">{formatPhoneDisplay(currentLead.phone)}</p>
-                    </div>
+                  <div>
+                    <h3 className="font-semibold">Ready to Start Calling?</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Request your next lead to begin
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <Mail className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Email</p>
-                      <p className="font-medium">{currentLead.email || "None"}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <Globe className="w-5 h-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Website</p>
-                      {currentLead.website ? (
-                        <a
-                          href={currentLead.website}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-primary hover:underline truncate block max-w-48"
-                        >
-                          {currentLead.website.replace(/^https?:\/\//, "")}
-                        </a>
-                      ) : (
-                        <p className="font-medium">None</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Call Controls */}
-                <div className="flex flex-col items-center gap-4 pt-4 border-t">
-                  {callStatus === "connected" && (
-                    <CallTimer isRunning={true} onDurationChange={setCallDuration} />
-                  )}
-                  {callStatus === "calling" && (
-                    <p className="text-sm text-muted-foreground animate-pulse">Connecting...</p>
-                  )}
-                  
-                  <div className="flex gap-3">
-                    {callStatus === "idle" && (
-                      <Button onClick={handleCall} size="lg" className="bg-green-600 hover:bg-green-700">
-                        <PhoneCall className="w-5 h-5 mr-2" />
-                        Call {formatPhoneDisplay(currentLead.phone)}
-                      </Button>
-                    )}
-                    {(callStatus === "calling" || callStatus === "connected") && (
-                      <Button onClick={handleHangup} size="lg" variant="destructive">
-                        <PhoneOff className="w-5 h-5 mr-2" />
-                        End Call
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Outcome Selection */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Call Outcome</CardTitle>
-                <CardDescription>Record the result of this call</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <RadioGroup value={selectedOutcome} onValueChange={setSelectedOutcome}>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {OUTCOMES.map((outcome) => (
-                      <div key={outcome.value} className="flex items-center space-x-2">
-                        <RadioGroupItem value={outcome.value} id={outcome.value} />
-                        <Label htmlFor={outcome.value} className="cursor-pointer">
-                          {outcome.label}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </RadioGroup>
-
-                {selectedOutcome === "followup" && (
-                  <div className="space-y-2">
-                    <Label>Follow-up Date</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !followupDate && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {followupDate ? format(followupDate, "PPP") : "Pick a date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={followupDate}
-                          onSelect={setFollowupDate}
-                          initialFocus
-                          disabled={(date) => date < new Date()}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                )}
-
-                <div className="space-y-2">
-                  <Label htmlFor="notes">Notes (optional)</Label>
-                  <Textarea
-                    id="notes"
-                    placeholder="Add any notes about the call..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleSubmitOutcome}
-                    disabled={!selectedOutcome || isSubmitting}
-                    className="flex-1"
-                  >
-                    {isSubmitting ? (
+                  <Button onClick={requestNextLead} disabled={isLoadingLead} size="lg" className="w-full">
+                    {isLoadingLead ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Saving...
+                        Getting Lead...
                       </>
                     ) : (
-                      "Submit & Get Next Lead"
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Request Next Lead
+                      </>
                     )}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <User className="w-5 h-5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Name</p>
+                        <p className="font-medium truncate">{currentLead.name}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <Phone className="w-5 h-5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Phone</p>
+                        <p className="font-medium font-mono truncate">{formatPhoneDisplay(currentLead.phone)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <Mail className="w-5 h-5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Email</p>
+                        <p className="font-medium truncate">{currentLead.email || "None"}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                      <Globe className="w-5 h-5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs text-muted-foreground">Website</p>
+                        {currentLead.website ? (
+                          <a
+                            href={currentLead.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-primary hover:underline truncate block"
+                          >
+                            {currentLead.website.replace(/^https?:\/\//, "")}
+                          </a>
+                        ) : (
+                          <p className="font-medium">None</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={requestNextLead}
+                    disabled={isLoadingLead}
+                    variant="outline"
+                    className="w-full mt-4"
+                  >
+                    {isLoadingLead ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Getting Lead...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Request Different Lead
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Right Column - Dialer */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Phone className="w-5 h-5" />
+                Dialer
+              </CardTitle>
+              <CardDescription>Enter number or use lead phone</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Phone Number Display */}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="Enter phone number"
+                    className="text-center text-lg font-mono"
+                    disabled={callStatus !== "idle" && callStatus !== "ended"}
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleBackspace}
+                    disabled={callStatus !== "idle" && callStatus !== "ended"}
+                  >
+                    <Delete className="w-4 h-4" />
+                  </Button>
+                </div>
+                {currentLead && phoneNumber !== currentLead.phone && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleUseLeadNumber}
+                    className="w-full text-xs"
+                  >
+                    Use Lead Number: {formatPhoneDisplay(currentLead.phone)}
+                  </Button>
+                )}
+              </div>
+
+              {/* DialPad */}
+              <DialPad
+                onDigitPress={handleDigitPress}
+                disabled={callStatus !== "idle" && callStatus !== "ended"}
+              />
+
+              {/* Call Status */}
+              <div className="flex flex-col items-center gap-3 pt-2">
+                {callStatus === "connected" && (
+                  <CallTimer isRunning={true} onDurationChange={setCallDuration} />
+                )}
+                {callStatus === "calling" && (
+                  <p className="text-sm text-muted-foreground animate-pulse">Connecting...</p>
+                )}
+
+                {/* Call Controls */}
+                <div className="flex gap-3 w-full">
+                  {callStatus === "idle" || callStatus === "ended" ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={handleClear}
+                        className="flex-1"
+                        disabled={!phoneNumber}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        onClick={handleCall}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                        disabled={!phoneNumber}
+                      >
+                        <PhoneCall className="w-4 h-4 mr-2" />
+                        Call
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      onClick={handleHangup}
+                      variant="destructive"
+                      className="w-full"
+                    >
+                      <PhoneOff className="w-4 h-4 mr-2" />
+                      End Call
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Outcome Section - Only show when there's a lead */}
+        {currentLead && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Call Outcome</CardTitle>
+              <CardDescription>Record the result of this call</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <RadioGroup value={selectedOutcome} onValueChange={setSelectedOutcome}>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {OUTCOMES.map((outcome) => (
+                    <div key={outcome.value} className="flex items-center space-x-2">
+                      <RadioGroupItem value={outcome.value} id={outcome.value} />
+                      <Label htmlFor={outcome.value} className="cursor-pointer">
+                        {outcome.label}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </RadioGroup>
+
+              {selectedOutcome === "followup" && (
+                <div className="space-y-2">
+                  <Label>Follow-up Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !followupDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {followupDate ? format(followupDate, "PPP") : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={followupDate}
+                        onSelect={setFollowupDate}
+                        initialFocus
+                        disabled={(date) => date < new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes (optional)</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Add any notes about the call..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              <Button
+                onClick={handleSubmitOutcome}
+                disabled={!selectedOutcome || isSubmitting}
+                className="w-full"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Submit & Get Next Lead"
+                )}
+              </Button>
+            </CardContent>
+          </Card>
         )}
 
         {/* Help Text */}

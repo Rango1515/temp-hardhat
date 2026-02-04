@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Phone,
   History,
-  Hash,
   Key,
   Settings,
   Users,
@@ -20,7 +19,6 @@ const clientNavItems = [
   { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/voip/dialer", label: "Dialer", icon: Phone },
   { href: "/voip/calls", label: "Call History", icon: History },
-  { href: "/voip/numbers", label: "My Numbers", icon: Hash },
   { href: "/voip/settings", label: "Settings", icon: Settings },
 ];
 

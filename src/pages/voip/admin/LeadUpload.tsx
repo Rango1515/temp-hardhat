@@ -51,6 +51,26 @@ export default function LeadUpload() {
     fetchHistory();
   }, [fetchHistory]);
 
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  };
+
   const parseFile = async (selectedFile: File) => {
     setIsParsing(true);
     setParsedLeads([]);
@@ -58,6 +78,8 @@ export default function LeadUpload() {
     try {
       const text = await selectedFile.text();
       const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      const ext = selectedFile.name.split(".").pop()?.toLowerCase();
+      const isCSV = ext === "csv";
 
       // Check if first line is a header
       const firstLine = lines[0]?.toLowerCase() || "";
@@ -65,7 +87,8 @@ export default function LeadUpload() {
       const dataLines = hasHeader ? lines.slice(1) : lines;
 
       const leads: ParsedLead[] = dataLines.map((line) => {
-        const parts = line.split("|").map((p) => p.trim());
+        // Use comma for CSV, pipe for other formats
+        const parts = isCSV ? parseCSVLine(line) : line.split("|").map((p) => p.trim());
         const [name, phone, email, website] = parts;
 
         const cleanValue = (val: string | undefined) => {
@@ -112,10 +135,10 @@ export default function LeadUpload() {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       const ext = selectedFile.name.split(".").pop()?.toLowerCase();
-      if (!["txt", "doc", "docx"].includes(ext || "")) {
+      if (!["txt", "doc", "docx", "csv"].includes(ext || "")) {
         toast({
           title: "Invalid File Type",
-          description: "Please upload a .txt, .doc, or .docx file",
+          description: "Please upload a .txt, .doc, .docx, or .csv file",
           variant: "destructive",
         });
         return;
@@ -196,7 +219,7 @@ export default function LeadUpload() {
               Upload Leads
             </CardTitle>
             <CardDescription>
-              Upload a .txt file with one lead per line. Format: Name | Phone | Email | Website
+              Upload a file with one lead per line. Format: Name, Phone, Email, Website
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -205,12 +228,12 @@ export default function LeadUpload() {
               <Input
                 id="file"
                 type="file"
-                accept=".txt,.doc,.docx"
+                accept=".txt,.doc,.docx,.csv"
                 onChange={handleFileChange}
                 disabled={isParsing || isImporting}
               />
               <p className="text-xs text-muted-foreground">
-                Supported formats: .txt, .doc, .docx
+                Supported formats: .txt, .doc, .docx, .csv (use | for txt/doc, comma for csv)
               </p>
             </div>
 
