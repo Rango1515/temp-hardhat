@@ -1,172 +1,124 @@
 
-
-# Dialer Enhancement & System Improvements Plan
+# Lead Upload Enhancement & Dialer Notepad Plan
 
 ## Overview
-This plan addresses several improvements to the HardhatHosting Client Dashboard:
-1. Add numpad to the client Dialer with side-by-side layout
-2. Ensure Twilio test call works properly (already implemented)
-3. Remove "My Numbers" from client sidebar
-4. Add CSV file support to lead upload
-5. Additional recommendations for improved functionality
+This plan addresses three main improvements:
+1. Add ability to delete upload batches from the Lead Upload page
+2. Show call history for each uploaded file (who called, how long, outcome)
+3. Add a persistent notepad area to the Dialer page for workers
 
 ---
 
-## Phase 1: Dialer Layout Redesign
+## Phase 1: Delete Upload Batches
 
 ### Current State
-The dialer currently shows lead information vertically with a simple call button, but no numpad for manual entry.
-
-### Proposed Layout
-```text
-+------------------------+-------------------------+
-|  LEFT SIDE: LEAD       |  RIGHT SIDE: DIALER     |
-+------------------------+-------------------------+
-|  Current Lead:         |    Phone Number Display |
-|  Name: John Smith      |    +1 (555) 222-1111   |
-|  Phone: +1 555-222...  |                         |
-|  Email: john@gmail.com |    [1] [2] [3]          |
-|  Website: example.com  |    [4] [5] [6]          |
-|                        |    [7] [8] [9]          |
-|  Request Next Lead     |    [*] [0] [#]          |
-|      [Button]          |                         |
-|                        |   [Clear] [Call] [End]  |
-+------------------------+-------------------------+
-|           Call Outcome Section                   |
-+--------------------------------------------------+
-```
+The upload history table shows past uploads but has no way to delete them or their associated leads.
 
 ### Technical Changes
-**File: `src/pages/voip/Dialer.tsx`**
-- Import `DialPad` component from `@/components/voip/dialer/DialPad`
-- Import `Input` component for phone number display
-- Restructure layout using a responsive grid:
-  - Left column: Lead info card with "Request Next Lead" button
-  - Right column: Phone number input + DialPad + call controls
-- Add state for manual phone number entry
-- Update call button to use either lead phone or manual entry
-- When lead is assigned, auto-populate the phone field
 
----
-
-## Phase 2: Remove "My Numbers" from Client Sidebar
-
-### Technical Changes
-**File: `src/components/voip/layout/VoipSidebar.tsx`**
-
-Remove the "My Numbers" navigation item from `clientNavItems`:
-
-```typescript
-// Before (lines 19-25)
-const clientNavItems = [
-  { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/voip/dialer", label: "Dialer", icon: Phone },
-  { href: "/voip/calls", label: "Call History", icon: History },
-  { href: "/voip/numbers", label: "My Numbers", icon: Hash },  // Remove this
-  { href: "/voip/settings", label: "Settings", icon: Settings },
-];
-
-// After
-const clientNavItems = [
-  { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/voip/dialer", label: "Dialer", icon: Phone },
-  { href: "/voip/calls", label: "Call History", icon: History },
-  { href: "/voip/settings", label: "Settings", icon: Settings },
-];
-```
-
-Also remove the unused `Hash` import from lucide-react.
-
----
-
-## Phase 3: Add CSV Support to Lead Upload
-
-### Current State
-The lead upload currently accepts `.txt`, `.doc`, and `.docx` files only.
-
-### Technical Changes
 **File: `src/pages/voip/admin/LeadUpload.tsx`**
+- Add a delete button (Trash icon) to each row in the upload history table
+- Add confirmation dialog before deleting
+- Call new API endpoint to delete upload and cascade to leads
 
-1. Update file type validation (around line 115):
-```typescript
-// Before
-if (!["txt", "doc", "docx"].includes(ext || ""))
+**File: `supabase/functions/voip-leads/index.ts`**
+- Add new action: `delete-upload`
+- Deletes from `voip_lead_uploads` table
+- Cascade delete leads where `upload_id` matches (only NEW status leads)
+- Log deletion in audit table
 
-// After
-if (!["txt", "doc", "docx", "csv"].includes(ext || ""))
-```
+**Database Changes Required:**
+- Add cascade delete constraint OR handle in edge function logic
+- Option A: Soft delete - mark upload as deleted
+- Option B: Hard delete - remove upload and NEW leads (preserve COMPLETED/DNC leads)
 
-2. Update input accept attribute (around line 209):
-```typescript
-// Before
-accept=".txt,.doc,.docx"
-
-// After
-accept=".txt,.doc,.docx,.csv"
-```
-
-3. Update parsing logic to handle CSV format:
-   - Detect file type by extension
-   - For CSV: Split by comma instead of pipe (`|`)
-   - Handle quoted values in CSV (e.g., `"John, Smith",555-1234`)
-
-4. Update UI text to reflect new supported formats:
-```typescript
-// Line 199
-"Upload a .txt, .doc, .docx, or .csv file with one lead per line"
-
-// Line 213
-"Supported formats: .txt, .doc, .docx, .csv"
+### UI Design
+```text
+| File         | Date       | Imported | Duplicates | Invalid | Actions     |
+|--------------|------------|----------|------------|---------|-------------|
+| leads.csv    | Feb 4...   | 50       | 5          | 2       | [View] [X]  |
 ```
 
 ---
 
-## Phase 4: Twilio Configuration Testing
+## Phase 2: Show Call History Per Upload
 
 ### Current State
-The Twilio test call functionality is already implemented in both:
-- **Frontend:** `src/pages/voip/admin/TwilioSettings.tsx` (lines 76-106)
-- **Backend:** `supabase/functions/voip-twilio/index.ts` (lines 134-196)
+The upload history shows import stats but no visibility into call attempts made to those leads.
 
-### To Test With Your Credentials
-1. Navigate to `/voip/admin/twilio`
-2. Enter:
-   - Account SID: `ACd7e5bee593f843bc330a853e304fcf76`
-   - Auth Token: `0f316457fcf87d718b7f9a50e809696f`
-   - Outbound Number: `+17063974010`
-3. Toggle "Enable Twilio" ON
-4. Click "Save Settings"
-5. Enter a test phone number and click "Make Test Call"
+### Technical Changes
 
-The system will use Twilio's demo TwiML (`http://demo.twilio.com/docs/voice.xml`) to verify the configuration works.
+**File: `src/pages/voip/admin/LeadUpload.tsx`**
+- Add expandable row or modal for each upload showing call history
+- Display: Lead name, phone, caller, duration, outcome, date
+- Query joins `voip_calls` with `voip_leads` where `lead.upload_id` matches
+
+**File: `supabase/functions/voip-leads/index.ts`**
+- Add new action: `upload-calls`
+- Parameters: `uploadId`
+- Returns: List of calls for leads in that upload batch
+- Join query:
+  ```sql
+  SELECT c.*, l.name as lead_name, l.phone as lead_phone, u.email as caller_email
+  FROM voip_calls c
+  JOIN voip_leads l ON c.lead_id = l.id
+  LEFT JOIN voip_users u ON c.user_id = u.id
+  WHERE l.upload_id = ?
+  ORDER BY c.start_time DESC
+  ```
+
+### UI Design - Expandable Row
+```text
+| File: leads.csv | 50 imported | Feb 4, 2026
+|   [Expand/Collapse Call History v]
+|   +-------------------------------------------------+
+|   | Lead Name    | Phone        | Called By | Duration | Outcome     |
+|   |--------------|--------------|-----------|----------|-------------|
+|   | John Smith   | (555) 123... | worker1   | 2:35     | Interested  |
+|   | Jane Doe     | (555) 456... | worker2   | 0:45     | No Answer   |
+|   +-------------------------------------------------+
+```
 
 ---
 
-## Phase 5: Additional Recommendations
+## Phase 3: Dialer Notepad
 
-### 5.1 Mobile-Responsive Dialer
-The new side-by-side layout should stack vertically on mobile:
-- Use `lg:grid-cols-2 grid-cols-1` for responsive grid
-- Numpad and controls should appear below lead info on mobile
+### Current State
+The Dialer page has a notes field in the "Call Outcome" section, but it only appears when a lead is assigned and is submitted with the outcome.
 
-### 5.2 Backspace Button on DialPad
-Add a backspace/delete button to the DialPad for easier phone number editing:
-- Add a backspace callback prop to DialPad component
-- Include delete icon button below the numpad
+### Proposed Enhancement
+Add a persistent "Scratch Pad" or "Quick Notes" area that:
+- Appears regardless of whether a lead is assigned
+- Is NOT submitted with the call outcome (separate storage)
+- Persists during the session (localStorage)
+- Workers can jot down quick info during/before calls
 
-### 5.3 Quick Dial Integration
-When a lead is loaded, show a "Use Lead Number" button that populates the dialpad with the lead's phone number.
+### Technical Changes
 
-### 5.4 Call Status Indicator
-Add a visual indicator showing:
-- Twilio configured: Green dot
-- Twilio not configured: Yellow dot (demo mode)
-- This helps workers understand if calls are real or simulated
+**File: `src/pages/voip/Dialer.tsx`**
+- Add new state: `scratchPadNotes`
+- Use `localStorage` to persist notes across page refreshes
+- Add a collapsible Card below the two-column layout titled "Scratch Pad"
+- Include a Textarea with auto-save to localStorage
+- Add a "Clear" button to reset the notepad
 
-### 5.5 Lead Counter
-Show remaining leads count on the dialer page:
-- "X leads available in queue"
-- Helps workers know if there's more work available
+### UI Design
+```text
++----------------------------------+
+| Scratch Pad              [Clear] |
++----------------------------------+
+| Quick notes for your calls...    |
+|                                  |
+| [Textarea - auto-saves locally]  |
+|                                  |
++----------------------------------+
+```
+
+### Implementation Details
+- Use `useEffect` to load notes from localStorage on mount
+- Use `useEffect` with debounce to save notes on change
+- Key: `voip_dialer_scratchpad`
+- Does NOT sync to database (privacy for workers)
 
 ---
 
@@ -176,24 +128,62 @@ Show remaining leads count on the dialer page:
 
 | File | Changes |
 |------|---------|
-| `src/pages/voip/Dialer.tsx` | Add numpad, two-column layout, manual number input |
-| `src/components/voip/layout/VoipSidebar.tsx` | Remove "My Numbers" from client nav |
-| `src/pages/voip/admin/LeadUpload.tsx` | Add CSV support with comma parsing |
-| `src/components/voip/dialer/DialPad.tsx` | Add backspace button (optional) |
+| `src/pages/voip/admin/LeadUpload.tsx` | Add delete button, expandable call history, confirmation dialogs |
+| `supabase/functions/voip-leads/index.ts` | Add `delete-upload` and `upload-calls` actions |
+| `src/pages/voip/Dialer.tsx` | Add collapsible Scratch Pad with localStorage persistence |
 
-### No New Files Required
-All changes are modifications to existing components.
+### New Components
+- `AlertDialog` for delete confirmation (already available from shadcn)
+- `Collapsible` for expandable call history rows (already available)
 
 ### Backend Changes
-None required - Twilio and lead upload edge functions already support the needed functionality.
 
-### Testing Checklist
+**New Edge Function Actions:**
+
+1. `delete-upload` (POST):
+   - Admin only
+   - Parameters: `uploadId`
+   - Deletes leads with status = 'NEW' only (preserves call history)
+   - Deletes upload record
+   - Returns: `{ deleted: true, leadsRemoved: number }`
+
+2. `upload-calls` (GET):
+   - Admin only
+   - Parameters: `uploadId`
+   - Returns: `{ calls: [...] }` with lead name, caller info, duration, outcome
+
+### Database Considerations
+- Leads that have been called (have entries in `voip_calls`) should NOT be deleted
+- Only remove leads with status = 'NEW' that haven't been worked
+- Maintain referential integrity
+
+---
+
+## Implementation Order
+
+1. **Dialer Notepad** (simplest - no backend changes)
+   - Add localStorage-based scratch pad
+   - Collapsible card below main layout
+
+2. **Delete Upload** (requires backend)
+   - Add edge function action
+   - Add delete button with confirmation
+   - Handle cascade logic
+
+3. **Call History Per Upload** (most complex)
+   - Add edge function action with joins
+   - Add expandable rows in UI
+   - Format duration display
+
+---
+
+## Testing Checklist
+
 After implementation:
-1. Test dialer with numpad on desktop (side-by-side layout)
-2. Test dialer on mobile (stacked layout)
-3. Verify "My Numbers" is removed from client sidebar
-4. Upload a .csv file with leads and verify parsing
-5. Save Twilio credentials and make a test call
-6. Request a lead and verify phone auto-populates in dialpad
-7. Make a call (real or simulated) and submit outcome
-
+1. Test scratch pad persistence across page refreshes
+2. Test scratch pad clear button
+3. Upload a CSV and verify it appears in history
+4. Delete an upload and verify leads are removed (only NEW status)
+5. Expand an upload row to see call history
+6. Verify call duration displays correctly (mm:ss format)
+7. Verify caller name/email displays for each call
