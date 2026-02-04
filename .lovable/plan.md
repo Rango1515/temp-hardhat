@@ -1,497 +1,198 @@
 
+# Fix VoIP Auth Login Flow
 
-# Web-Based VoIP Dialer for Hardhat Hosting
+## Problem Summary
 
-## Overview
-Build a complete VoIP dialer web application integrated into the existing Hardhat Hosting website with client/admin dashboards, authentication, phone number management, call tracking, and analytics.
+Based on the edge function logs, the login is failing because:
 
----
+1. **MariaDB connection cannot be established** - The logs show `"connecting MariaDB server host:3306"` followed by `"failed to lookup address information: Name or service not known"`. This means the `MARIADB_HOST` secret is set to an invalid value (likely just "host" as a placeholder).
 
-## Architecture Approach
+2. **No detailed error logging** - When the database connection fails, the error is caught but the generic "Internal server error" message is returned, hiding the real issue.
 
-Since you want to use MariaDB with Lovable Cloud, we'll implement a **hybrid architecture**:
+3. **Duplicate login requests** - The frontend makes two API calls on login (one that's ignored).
 
-```text
-+------------------+       +-------------------+       +------------------+
-|   React Frontend | <---> | Edge Functions    | <---> | Your MariaDB     |
-|   (Lovable)      |       | (API Layer)       |       | (External Host)  |
-+------------------+       +-------------------+       +------------------+
-                                    |
-                                    v
-                           +-------------------+
-                           | VoIP Provider     |
-                           | (Mock Mode First) |
-                           +-------------------+
-```
+## Files to Modify
 
-**Edge Functions** will act as a secure proxy to your MariaDB database, handling:
-- Authentication (JWT token generation/validation)
-- Database queries via MySQL client
-- VoIP API calls (when ready)
-- Rate limiting and security
+### 1. Edge Function: `supabase/functions/voip-auth/index.ts`
+Add detailed logging for debugging and better error handling:
 
----
+- Log incoming request details (method, action, body fields present)
+- Wrap `req.json()` in try/catch to handle malformed JSON
+- Add specific error logging for database connection failures
+- Add a health check action to verify DB connectivity without login
+- Include request validation details in error responses for debugging
 
-## Phase 1: MariaDB Schema
+**Changes:**
+- Add debug logging at the start of each action handler
+- Add JSON parse error handling with specific 400 response
+- Add `action=health` endpoint to test DB connectivity
+- Log which specific field validation failed
 
-### SQL Table Creation Scripts
+### 2. Auth Context: `src/contexts/VoipAuthContext.tsx`
+Fix duplicate API calls and add frontend logging:
 
-```sql
--- 1. Users Table
-CREATE TABLE users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin', 'client') DEFAULT 'client',
-    status ENUM('active', 'suspended', 'pending') DEFAULT 'pending',
-    signup_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_email (email),
-    INDEX idx_role (role)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+- Remove the unused `supabase.functions.invoke` call (lines 53-57)
+- Add console.log for the request payload being sent
+- Add console.log for the full response (status + body)
+- Handle and display specific error messages from the backend
 
--- 2. API Keys Table
-CREATE TABLE api_keys (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    key_name VARCHAR(100) DEFAULT 'Default Key',
-    api_key VARCHAR(64) NOT NULL UNIQUE,
-    creation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expiration_date TIMESTAMP NULL,
-    status ENUM('active', 'revoked', 'expired') DEFAULT 'active',
-    last_used TIMESTAMP NULL,
-    usage_count INT DEFAULT 0,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_api_key (api_key),
-    INDEX idx_user_id (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+### 3. Database Helper: `supabase/functions/_shared/db.ts`
+Add a health check function and improve error logging:
 
--- 3. Phone Numbers Table
-CREATE TABLE phone_numbers (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    phone_number VARCHAR(20) NOT NULL UNIQUE,
-    friendly_name VARCHAR(100),
-    location_city VARCHAR(100),
-    location_state VARCHAR(50),
-    location_country VARCHAR(50) DEFAULT 'US',
-    owner_id INT NULL,
-    status ENUM('available', 'assigned', 'pending', 'suspended') DEFAULT 'available',
-    number_type ENUM('local', 'toll_free', 'mobile') DEFAULT 'local',
-    monthly_cost DECIMAL(10,2) DEFAULT 0.00,
-    provider VARCHAR(50) DEFAULT 'mock',
-    provider_sid VARCHAR(100) NULL,
-    assigned_date TIMESTAMP NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_owner (owner_id),
-    INDEX idx_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 4. Calls Table
-CREATE TABLE calls (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    from_number VARCHAR(20) NOT NULL,
-    to_number VARCHAR(20) NOT NULL,
-    direction ENUM('outbound', 'inbound') DEFAULT 'outbound',
-    duration_seconds INT DEFAULT 0,
-    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    end_time TIMESTAMP NULL,
-    status ENUM('initiated', 'ringing', 'in_progress', 'completed', 'failed', 'busy', 'no_answer') DEFAULT 'initiated',
-    call_sid VARCHAR(100) NULL,
-    recording_url VARCHAR(500) NULL,
-    cost DECIMAL(10,4) DEFAULT 0.0000,
-    notes TEXT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_user_id (user_id),
-    INDEX idx_start_time (start_time),
-    INDEX idx_status (status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 5. Analytics Table (Aggregated per user)
-CREATE TABLE user_analytics (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL UNIQUE,
-    total_calls INT DEFAULT 0,
-    successful_calls INT DEFAULT 0,
-    failed_calls INT DEFAULT 0,
-    total_duration_seconds INT DEFAULT 0,
-    total_cost DECIMAL(10,2) DEFAULT 0.00,
-    last_call_date TIMESTAMP NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 6. Number Requests Table (for client requests)
-CREATE TABLE number_requests (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    area_code VARCHAR(10) NULL,
-    city_preference VARCHAR(100) NULL,
-    number_type ENUM('local', 'toll_free', 'mobile') DEFAULT 'local',
-    business_name VARCHAR(200) NULL,
-    business_website VARCHAR(255) NULL,
-    reason TEXT NULL,
-    status ENUM('pending', 'approved', 'denied', 'fulfilled') DEFAULT 'pending',
-    admin_notes TEXT NULL,
-    assigned_number_id INT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    processed_at TIMESTAMP NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (assigned_number_id) REFERENCES phone_numbers(id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 7. Activity Logs Table (for audit trail)
-CREATE TABLE activity_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NULL,
-    action VARCHAR(100) NOT NULL,
-    entity_type VARCHAR(50) NULL,
-    entity_id INT NULL,
-    details JSON NULL,
-    ip_address VARCHAR(45) NULL,
-    user_agent TEXT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_user_action (user_id, action),
-    INDEX idx_created_at (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- Create initial admin user (password: Admin123! - change after first login)
-INSERT INTO users (name, email, password_hash, role, status) VALUES 
-('Admin', 'admin@hardhathosting.work', '$2b$10$HASH_HERE', 'admin', 'active');
-```
+- Add `testConnection()` function for health checks
+- Log connection parameters (without password) for debugging
+- Add better error messages for connection failures
 
 ---
 
-## Phase 2: Backend Edge Functions
+## What You Need to Fix Manually
 
-### 2.1 Edge Function Structure
+**CRITICAL**: The `MARIADB_HOST` secret must be updated with your actual MariaDB server address. Based on the logs showing `"connecting MariaDB server host:3306"`, the current value is likely just `host` which is invalid.
 
-```text
-supabase/functions/
-  voip-auth/
-    index.ts          # Login, signup, token refresh
-  voip-users/
-    index.ts          # User CRUD, role management
-  voip-numbers/
-    index.ts          # Phone number management
-  voip-calls/
-    index.ts          # Call logging, history, dialer
-  voip-analytics/
-    index.ts          # Analytics queries
-  voip-admin/
-    index.ts          # Admin-only operations
-  _shared/
-    db.ts             # MariaDB connection helper
-    auth.ts           # JWT validation helper
-    cors.ts           # CORS headers
-```
-
-### 2.2 Key Edge Functions
-
-**Authentication Edge Function (`voip-auth`):**
-- POST `/voip-auth?action=login` - Email/password login, returns JWT
-- POST `/voip-auth?action=signup` - User registration with validation
-- POST `/voip-auth?action=refresh` - Token refresh
-- POST `/voip-auth?action=logout` - Invalidate session
-
-**Calls Edge Function (`voip-calls`):**
-- GET `/voip-calls` - Get user's call history (paginated)
-- POST `/voip-calls` - Initiate new call (mock mode)
-- PATCH `/voip-calls?id=X` - Update call status
-- GET `/voip-calls/stats` - Get call statistics
-
-**Admin Edge Function (`voip-admin`):**
-- GET `/voip-admin/users` - List all users
-- PATCH `/voip-admin/users/:id` - Update user role/status
-- GET `/voip-admin/numbers` - Manage all numbers
-- POST `/voip-admin/numbers` - Create/assign numbers
-- GET `/voip-admin/analytics` - System-wide analytics
+You need to:
+1. Update `MARIADB_HOST` to your actual server hostname or IP (e.g., `db.yourserver.com` or `192.168.1.100`)
+2. Ensure the Edge Functions can reach that host (not `localhost` unless MariaDB is on the same network)
+3. Verify firewall rules allow connections from Supabase Edge Functions
 
 ---
 
-## Phase 3: Frontend Architecture
+## Technical Changes
 
-### 3.1 New Pages & Routes
-
-```text
-src/pages/
-  voip/
-    Auth.tsx               # Login/Signup page
-    ClientDashboard.tsx    # Client main dashboard
-    AdminDashboard.tsx     # Admin main dashboard
-    Dialer.tsx             # Softphone dialer interface
-    CallHistory.tsx        # Call logs with filters
-    MyNumbers.tsx          # Client's assigned numbers
-    RequestNumber.tsx      # Number request form
-    ApiKeys.tsx            # API key management
-    Settings.tsx           # Account settings
-    admin/
-      Users.tsx            # User management
-      Numbers.tsx          # Number inventory
-      Analytics.tsx        # System analytics
-      Requests.tsx         # Number requests queue
-```
-
-### 3.2 Updated App.tsx Routes
+### Edge Function Changes (`voip-auth/index.ts`)
 
 ```typescript
-// New routes to add
-<Route path="/voip/auth" element={<VoipAuth />} />
-<Route path="/voip/dashboard" element={<ProtectedRoute><ClientDashboard /></ProtectedRoute>} />
-<Route path="/voip/dialer" element={<ProtectedRoute><Dialer /></ProtectedRoute>} />
-<Route path="/voip/calls" element={<ProtectedRoute><CallHistory /></ProtectedRoute>} />
-<Route path="/voip/numbers" element={<ProtectedRoute><MyNumbers /></ProtectedRoute>} />
-<Route path="/voip/request-number" element={<ProtectedRoute><RequestNumber /></ProtectedRoute>} />
-<Route path="/voip/api-keys" element={<ProtectedRoute><ApiKeys /></ProtectedRoute>} />
-<Route path="/voip/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+// Add at the beginning of the serve handler, after OPTIONS check:
+console.log(`[voip-auth] ${req.method} action=${action}`);
 
-// Admin routes
-<Route path="/voip/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-<Route path="/voip/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
-<Route path="/voip/admin/numbers" element={<AdminRoute><AdminNumbers /></AdminRoute>} />
-<Route path="/voip/admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
-<Route path="/voip/admin/requests" element={<AdminRoute><AdminRequests /></AdminRoute>} />
+// Wrap req.json() in try/catch:
+let body;
+try {
+  body = await req.json();
+  console.log(`[voip-auth] Body keys: ${Object.keys(body).join(', ')}`);
+} catch (e) {
+  return new Response(
+    JSON.stringify({ error: "Invalid JSON body" }),
+    { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// Add health check action:
+case "health": {
+  try {
+    const testResult = await query("SELECT 1 as test");
+    return new Response(
+      JSON.stringify({ ok: true, db: "connected" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "Database connection failed" }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// Improve error logging in catch block:
+catch (error) {
+  console.error("[voip-auth] Error:", error.message);
+  const isDbError = error.message?.includes("lookup address") || 
+                   error.message?.includes("connection");
+  return new Response(
+    JSON.stringify({ 
+      error: isDbError 
+        ? "Database connection failed. Please try again later." 
+        : "Internal server error"
+    }),
+    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 ```
 
-### 3.3 Component Structure
-
-```text
-src/components/voip/
-  layout/
-    VoipHeader.tsx         # Dashboard header with user menu
-    VoipSidebar.tsx        # Navigation sidebar
-    VoipLayout.tsx         # Layout wrapper
-  auth/
-    LoginForm.tsx          # Email/password login
-    SignupForm.tsx         # Registration form
-    ProtectedRoute.tsx     # Auth guard
-    AdminRoute.tsx         # Admin role guard
-  dialer/
-    DialPad.tsx            # Numeric keypad
-    CallDisplay.tsx        # Current call info
-    CallControls.tsx       # Mute, hold, end buttons
-    CallTimer.tsx          # Duration counter
-  dashboard/
-    StatCard.tsx           # Metric display card
-    RecentCalls.tsx        # Recent activity list
-    QuickActions.tsx       # Common action buttons
-  numbers/
-    NumberCard.tsx         # Phone number display
-    RequestForm.tsx        # Number request form
-  admin/
-    UserTable.tsx          # User management table
-    NumberTable.tsx        # Number inventory table
-    AnalyticsCharts.tsx    # Charts for admin view
-```
-
----
-
-## Phase 4: UI Design Specifications
-
-### 4.1 Dialer Interface (Client)
-
-```text
-+------------------------------------------+
-|  [Logo]  VoIP Dialer        [User Menu]  |
-+------------------------------------------+
-|          |                               |
-|  [Nav]   |   +-------------------+       |
-|  - Home  |   |   909-687-4971    |       |
-|  - Dial  |   +-------------------+       |
-|  - Calls |   | 1 | 2 | 3 |               |
-|  - Nums  |   | 4 | 5 | 6 |               |
-|  - Keys  |   | 7 | 8 | 9 |               |
-|          |   | * | 0 | # |               |
-|          |   +-------------------+       |
-|          |   [    CALL    ]              |
-|          |                               |
-|          |   Recent Calls:               |
-|          |   - 909-xxx-xxxx (2m 34s)     |
-|          |   - 951-xxx-xxxx (failed)     |
-+------------------------------------------+
-```
-
-### 4.2 Admin Dashboard
-
-```text
-+------------------------------------------+
-|  [Logo]  Admin Dashboard    [User Menu]  |
-+------------------------------------------+
-|          |   +-------+ +-------+ +------+|
-|  [Nav]   |   | Users | | Calls | | Nums ||
-|  - Dash  |   |  142  | | 1,234 | |  56  ||
-|  - Users |   +-------+ +-------+ +------+|
-|  - Nums  |                               |
-|  - Anlyt |   [Call Volume Chart]         |
-|  - Reqs  |   ████████████████████        |
-|          |                               |
-|          |   Recent Activity             |
-|          |   +-------------------------+ |
-|          |   | User signup: john@...   | |
-|          |   | New call: 909-xxx       | |
-|          |   | Number assigned: ...    | |
-|          |   +-------------------------+ |
-+------------------------------------------+
-```
-
-### 4.3 Color Scheme & Styling
-
-- Maintains existing Hardhat Hosting brand colors
-- Primary: Orange/amber accent (construction theme)
-- Dashboard uses dark mode (slate-900 background)
-- Cards with glass morphism effect
-- Green indicators for active/success states
-- Red for errors/failed calls
-
----
-
-## Phase 5: Security Implementation
-
-### 5.1 Authentication Flow
-
-1. User submits email/password to `/voip-auth?action=login`
-2. Edge function validates against MariaDB (bcrypt compare)
-3. Returns JWT token (1hr expiry) + refresh token (7 days)
-4. Frontend stores in httpOnly-like secure storage
-5. All subsequent requests include `Authorization: Bearer <token>`
-6. Edge functions validate JWT before processing
-
-### 5.2 Input Validation
+### Auth Context Changes (`VoipAuthContext.tsx`)
 
 ```typescript
-// Using zod for all forms
-const loginSchema = z.object({
-  email: z.string().email().max(255),
-  password: z.string().min(8).max(100)
-});
+const login = useCallback(async (email: string, password: string) => {
+  try {
+    const payload = { email, password };
+    console.log("[VoipAuth] Login request payload:", { email, password: "***" });
 
-const signupSchema = z.object({
-  name: z.string().min(2).max(100).trim(),
-  email: z.string().email().max(255),
-  password: z.string()
-    .min(8)
-    .regex(/[A-Z]/, 'Must contain uppercase')
-    .regex(/[0-9]/, 'Must contain number')
-});
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-auth?action=login`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
 
-const phoneSchema = z.string().regex(/^\+?[1-9]\d{9,14}$/);
+    const result = await response.json();
+    console.log("[VoipAuth] Login response:", { status: response.status, result });
+
+    if (!response.ok) {
+      return { success: false, error: result.error || "Login failed" };
+    }
+    // ... rest of the function
+  } catch (error) {
+    console.error("[VoipAuth] Login error:", error);
+    return { success: false, error: "Connection error. Please try again." };
+  }
+}, []);
 ```
 
-### 5.3 Rate Limiting
-
-- Login: 5 attempts per 15 minutes per IP
-- API calls: 100 requests per minute per user
-- Call initiation: 10 per minute per user
-
----
-
-## Phase 6: Mock VoIP Mode
-
-Since we're starting with demo mode, calls will be simulated:
+### Database Helper Changes (`_shared/db.ts`)
 
 ```typescript
-// Mock call flow
-const mockCall = async (toNumber: string) => {
-  // 1. Create call record with 'initiated' status
-  // 2. After 2s, update to 'ringing'
-  // 3. After random 3-8s, either:
-  //    - 'in_progress' (80% chance) - run timer
-  //    - 'no_answer' (10% chance)
-  //    - 'failed' (10% chance)
-  // 4. After random 30-180s, 'completed'
-  // 5. Update analytics
-};
+export async function testConnection(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const db = await getDBClient();
+    await db.query("SELECT 1");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+// In getDBClient(), add logging:
+console.log(`[DB] Connecting to MariaDB at ${host}:${port || 3306}`);
 ```
 
 ---
 
-## Phase 7: Files Summary
+## Expected Request Schema
 
-### New Files to Create
+**Login Request (POST voip-auth?action=login):**
+```json
+{
+  "email": "user@example.com",  // required, string
+  "password": "password123"     // required, string
+}
+```
 
-| Category | File | Purpose |
-|----------|------|---------|
-| Pages | `src/pages/voip/Auth.tsx` | Login/signup page |
-| Pages | `src/pages/voip/ClientDashboard.tsx` | Client home |
-| Pages | `src/pages/voip/AdminDashboard.tsx` | Admin home |
-| Pages | `src/pages/voip/Dialer.tsx` | Softphone UI |
-| Pages | `src/pages/voip/CallHistory.tsx` | Call logs |
-| Pages | `src/pages/voip/MyNumbers.tsx` | User's numbers |
-| Pages | `src/pages/voip/RequestNumber.tsx` | Request form |
-| Pages | `src/pages/voip/ApiKeys.tsx` | Key management |
-| Pages | `src/pages/voip/Settings.tsx` | Account settings |
-| Pages | `src/pages/voip/admin/Users.tsx` | User management |
-| Pages | `src/pages/voip/admin/Numbers.tsx` | Number inventory |
-| Pages | `src/pages/voip/admin/Analytics.tsx` | System stats |
-| Pages | `src/pages/voip/admin/Requests.tsx` | Pending requests |
-| Components | `src/components/voip/layout/*` | Layout components |
-| Components | `src/components/voip/auth/*` | Auth components |
-| Components | `src/components/voip/dialer/*` | Dialer components |
-| Components | `src/components/voip/dashboard/*` | Dashboard widgets |
-| Hooks | `src/hooks/useVoipAuth.ts` | Auth state hook |
-| Hooks | `src/hooks/useVoipApi.ts` | API wrapper hook |
-| Context | `src/contexts/VoipAuthContext.tsx` | Auth context |
-| Edge Fn | `supabase/functions/voip-auth/index.ts` | Auth API |
-| Edge Fn | `supabase/functions/voip-calls/index.ts` | Calls API |
-| Edge Fn | `supabase/functions/voip-numbers/index.ts` | Numbers API |
-| Edge Fn | `supabase/functions/voip-admin/index.ts` | Admin API |
-| Edge Fn | `supabase/functions/voip-analytics/index.ts` | Stats API |
-| Shared | `supabase/functions/_shared/db.ts` | MariaDB helper |
-| Shared | `supabase/functions/_shared/auth.ts` | JWT helper |
+**Headers:**
+```
+Content-Type: application/json
+```
+No Authorization header required for login.
 
-### Files to Modify
+---
+
+## Verification Steps
+
+After fixes are applied:
+
+1. **Test Health Endpoint**: Call `GET /voip-auth?action=health` to verify DB connectivity
+2. **Check Browser Console**: Look for `[VoipAuth]` logs showing request/response
+3. **Check Edge Function Logs**: Look for `[voip-auth]` logs in Supabase logs
+4. **Update MARIADB_HOST**: This is the most critical fix - ensure it's a valid, reachable hostname
+
+---
+
+## Summary of Changes
 
 | File | Changes |
 |------|---------|
-| `src/App.tsx` | Add all VoIP routes |
-| `src/components/Header.tsx` | Add "Client Portal" login link |
+| `supabase/functions/voip-auth/index.ts` | Add debug logging, JSON parse error handling, health check endpoint, better error messages |
+| `src/contexts/VoipAuthContext.tsx` | Remove duplicate API call, add request/response logging |
+| `supabase/functions/_shared/db.ts` | Add connection logging, testConnection() function |
 
----
-
-## Phase 8: Required Secrets
-
-Before implementation, you'll need to provide:
-
-| Secret Name | Purpose |
-|-------------|---------|
-| `MARIADB_HOST` | Your MariaDB server hostname |
-| `MARIADB_PORT` | Database port (usually 3306) |
-| `MARIADB_USER` | Database username |
-| `MARIADB_PASSWORD` | Database password |
-| `MARIADB_DATABASE` | Database name |
-| `JWT_SECRET` | Secret for signing JWT tokens |
-
----
-
-## Implementation Order
-
-1. **Database Setup** - Run SQL scripts on your MariaDB server
-2. **Secrets Configuration** - Add MariaDB connection secrets
-3. **Shared Edge Functions** - Create database and auth helpers
-4. **Auth System** - Login/signup edge functions + frontend
-5. **Client Dashboard** - Basic dashboard with stats
-6. **Dialer** - Mock dialer interface
-7. **Call History** - Call logs and filtering
-8. **Numbers Management** - View and request numbers
-9. **API Keys** - Key generation and management
-10. **Admin Dashboard** - Admin-only features
-11. **Analytics** - Charts and reporting
-
----
-
-## Suggested Enhancements (Future)
-
-- **Real-time Notifications**: WebSocket for incoming calls
-- **Call Recording**: Store and playback recordings
-- **SMS Support**: Send/receive text messages
-- **Voicemail**: Missed call voicemail system
-- **IVR Builder**: Create automated phone menus
-- **Export Reports**: PDF/CSV call reports
-- **Webhooks**: Notify external systems of events
-- **Mobile PWA**: Progressive web app for mobile use
-
+All changes are minimal, non-destructive to the database schema, and can be easily reverted by removing the console.log statements.
