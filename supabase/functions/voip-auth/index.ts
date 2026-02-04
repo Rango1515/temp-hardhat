@@ -42,7 +42,7 @@ function checkRateLimit(ip: string): boolean {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -107,10 +107,12 @@ serve(async (req) => {
           );
         }
 
+        console.log(`[voip-auth] Looking up user: ${email.toLowerCase().trim()}`);
         const users = await query<User>(
           "SELECT id, name, email, password_hash, role, status FROM users WHERE email = ?",
           [email.toLowerCase().trim()]
         );
+        console.log(`[voip-auth] User query returned ${users.length} rows`);
 
         if (users.length === 0) {
           return new Response(
