@@ -202,11 +202,11 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             lead: {
-              id: lead.lead_id,
-              name: lead.name || "—",
-              phone: lead.phone,
-              email: lead.email || null,
-              website: lead.website || null,
+              id: lead.out_lead_id,
+              name: lead.out_name || "—",
+              phone: lead.out_phone,
+              email: lead.out_email || null,
+              website: lead.out_website || null,
             },
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
