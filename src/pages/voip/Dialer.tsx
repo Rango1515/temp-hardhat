@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { CallTimer } from "@/components/voip/dialer/CallTimer";
 import { DialPad } from "@/components/voip/dialer/DialPad";
+import { AppointmentModal } from "@/components/voip/AppointmentModal";
 import { useVoipApi } from "@/hooks/useVoipApi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete, StickyNote, ChevronDown, Trash2, Copy } from "lucide-react";
+import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete, StickyNote, ChevronDown, Trash2, Copy, CalendarPlus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,8 @@ export default function Dialer() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scratchPadNotes, setScratchPadNotes] = useState("");
   const [scratchPadOpen, setScratchPadOpen] = useState(true);
+  const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [appointmentOutcome, setAppointmentOutcome] = useState<string>("manual");
 
   // Load scratch pad notes from localStorage on mount
   useEffect(() => {
@@ -228,6 +231,12 @@ export default function Dialer() {
         description: `${outcomeLabel} - Lead ${result.data?.newStatus === "COMPLETED" ? "completed" : "updated"}`,
       });
 
+      // Show appointment modal for interested or followup outcomes
+      if (selectedOutcome === "interested" || selectedOutcome === "followup") {
+        setAppointmentOutcome(selectedOutcome);
+        setShowAppointmentModal(true);
+      }
+
       // Reset and get next lead
       setCurrentLead(null);
       setPhoneNumber("");
@@ -356,24 +365,36 @@ export default function Dialer() {
                     </div>
                   </div>
 
-                  <Button
-                    onClick={requestNextLead}
-                    disabled={isLoadingLead}
-                    variant="outline"
-                    className="w-full mt-4"
-                  >
-                    {isLoadingLead ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Getting Lead...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Request Different Lead
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      onClick={requestNextLead}
+                      disabled={isLoadingLead}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      {isLoadingLead ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Getting Lead...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2" />
+                          Request Different Lead
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setAppointmentOutcome("manual");
+                        setShowAppointmentModal(true);
+                      }}
+                    >
+                      <CalendarPlus className="w-4 h-4 mr-2" />
+                      Set Appointment
+                    </Button>
+                  </div>
                 </>
               )}
             </CardContent>
@@ -651,6 +672,16 @@ export default function Dialer() {
           Demo mode: Calls are simulated. Configure Twilio for real calls.
         </p>
       </div>
+
+      {/* Appointment Modal */}
+      <AppointmentModal
+        open={showAppointmentModal}
+        onOpenChange={setShowAppointmentModal}
+        leadId={currentLead?.id}
+        leadName={currentLead?.name}
+        leadPhone={currentLead?.phone || phoneNumber}
+        outcome={appointmentOutcome}
+      />
     </VoipLayout>
   );
 }

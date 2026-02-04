@@ -871,6 +871,102 @@ serve(async (req) => {
         );
       }
 
+      case "create-appointment": {
+        // Any authenticated user can create appointments
+        const { leadId, leadName, leadPhone, scheduledAt, notes, outcome } = await req.json();
+
+        if (!leadPhone || !scheduledAt) {
+          return new Response(
+            JSON.stringify({ error: "leadPhone and scheduledAt are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get creator's name
+        const { data: creator } = await supabase
+          .from("voip_users")
+          .select("name, email")
+          .eq("id", userId)
+          .single();
+
+        const creatorName = creator?.name || creator?.email || "Unknown";
+
+        const { error } = await supabase.from("voip_appointments").insert({
+          lead_id: leadId || null,
+          lead_name: leadName || null,
+          lead_phone: leadPhone,
+          scheduled_at: scheduledAt,
+          notes: notes || null,
+          created_by: userId,
+          created_by_name: creatorName,
+          outcome: outcome || "manual",
+          status: "scheduled",
+        });
+
+        if (error) throw error;
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "appointments": {
+        // Admin only - get all appointments
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: appointments, error } = await supabase
+          .from("voip_appointments")
+          .select("*")
+          .order("scheduled_at", { ascending: false });
+
+        if (error) throw error;
+
+        return new Response(
+          JSON.stringify({ appointments: appointments || [] }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "update-appointment": {
+        // Admin only - update appointment status
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { appointmentId, status } = await req.json();
+
+        if (!appointmentId || !["completed", "cancelled", "scheduled"].includes(status)) {
+          return new Response(
+            JSON.stringify({ error: "appointmentId and valid status are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error } = await supabase
+          .from("voip_appointments")
+          .update({
+            status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", appointmentId);
+
+        if (error) throw error;
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
