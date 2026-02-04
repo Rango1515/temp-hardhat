@@ -349,6 +349,133 @@ serve(async (req) => {
         );
       }
 
+      case "delete-upload": {
+        // Admin only - delete an upload and its NEW leads
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { uploadId } = await req.json();
+        if (!uploadId) {
+          return new Response(
+            JSON.stringify({ error: "uploadId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Delete only NEW leads (preserve called leads)
+        const { data: deletedLeads, error: deleteLeadsError } = await supabase
+          .from("voip_leads")
+          .delete()
+          .eq("upload_id", uploadId)
+          .eq("status", "NEW")
+          .select("id");
+
+        if (deleteLeadsError) throw deleteLeadsError;
+
+        // Delete the upload record
+        const { error: deleteUploadError } = await supabase
+          .from("voip_lead_uploads")
+          .delete()
+          .eq("id", uploadId);
+
+        if (deleteUploadError) throw deleteUploadError;
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "lead_upload_deleted",
+          entity_type: "leads",
+          entity_id: uploadId,
+          details: { leadsRemoved: deletedLeads?.length || 0 },
+        });
+
+        return new Response(
+          JSON.stringify({ deleted: true, leadsRemoved: deletedLeads?.length || 0 }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "upload-calls": {
+        // Admin only - get call history for an upload
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const uploadId = url.searchParams.get("uploadId");
+        if (!uploadId) {
+          return new Response(
+            JSON.stringify({ error: "uploadId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get leads for this upload
+        const { data: leads, error: leadsError } = await supabase
+          .from("voip_leads")
+          .select("id, name, phone")
+          .eq("upload_id", parseInt(uploadId));
+
+        if (leadsError) throw leadsError;
+
+        if (!leads || leads.length === 0) {
+          return new Response(
+            JSON.stringify({ calls: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const leadIds = leads.map(l => l.id);
+        const leadMap = new Map(leads.map(l => [l.id, { name: l.name, phone: l.phone }]));
+
+        // Get calls for these leads
+        const { data: calls, error: callsError } = await supabase
+          .from("voip_calls")
+          .select("id, lead_id, user_id, start_time, duration_seconds, outcome, notes")
+          .in("lead_id", leadIds)
+          .order("start_time", { ascending: false });
+
+        if (callsError) throw callsError;
+
+        // Get user info for callers
+        const userIds = [...new Set((calls || []).map(c => c.user_id).filter(Boolean))];
+        let userMap = new Map<number, string>();
+        
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from("voip_users")
+            .select("id, email, name")
+            .in("id", userIds);
+          
+          if (users) {
+            userMap = new Map(users.map(u => [u.id, u.name || u.email]));
+          }
+        }
+
+        // Combine data
+        const enrichedCalls = (calls || []).map(call => ({
+          id: call.id,
+          lead_name: leadMap.get(call.lead_id)?.name || "Unknown",
+          lead_phone: leadMap.get(call.lead_id)?.phone || "Unknown",
+          caller: userMap.get(call.user_id) || "Unknown",
+          start_time: call.start_time,
+          duration_seconds: call.duration_seconds,
+          outcome: call.outcome,
+          notes: call.notes,
+        }));
+
+        return new Response(
+          JSON.stringify({ calls: enrichedCalls }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
