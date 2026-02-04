@@ -28,9 +28,46 @@ serve(async (req) => {
   const userId = parseInt(payload.sub);
   const url = new URL(req.url);
 
+  const userRole = payload.role;
+
   try {
     switch (req.method) {
       case "GET": {
+        const action = url.searchParams.get("action");
+
+        // Admin-only: get calls for a specific user
+        if (action === "user-calls") {
+          if (userRole !== "admin") {
+            return new Response(
+              JSON.stringify({ error: "Admin access required" }),
+              { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const targetUserId = url.searchParams.get("userId");
+          if (!targetUserId) {
+            return new Response(
+              JSON.stringify({ error: "userId is required" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const { data: calls, error } = await supabase
+            .from("voip_calls")
+            .select("id, to_number, from_number, start_time, duration_seconds, outcome, status")
+            .eq("user_id", parseInt(targetUserId))
+            .order("start_time", { ascending: false })
+            .limit(50);
+
+          if (error) throw error;
+
+          return new Response(
+            JSON.stringify({ calls: calls || [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Default: get current user's calls
         const page = parseInt(url.searchParams.get("page") || "1");
         const limit = parseInt(url.searchParams.get("limit") || "20");
         const offset = (page - 1) * limit;
