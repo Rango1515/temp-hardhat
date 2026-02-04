@@ -31,6 +31,7 @@ import LeadUpload from "./pages/voip/admin/LeadUpload";
 import TwilioSettings from "./pages/voip/admin/TwilioSettings";
 import LeadInfo from "./pages/voip/admin/LeadInfo";
 import DuplicateReview from "./pages/voip/admin/DuplicateReview";
+import Appointments from "./pages/voip/admin/Appointments";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ const App = () => (
             <Route path="/voip/admin/numbers" element={<AdminRoute><AdminNumbers /></AdminRoute>} />
             <Route path="/voip/admin/leads" element={<AdminRoute><LeadUpload /></AdminRoute>} />
             <Route path="/voip/admin/lead-info" element={<AdminRoute><LeadInfo /></AdminRoute>} />
+            <Route path="/voip/admin/appointments" element={<AdminRoute><Appointments /></AdminRoute>} />
             <Route path="/voip/admin/duplicates" element={<AdminRoute><DuplicateReview /></AdminRoute>} />
             <Route path="/voip/admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
             <Route path="/voip/admin/requests" element={<AdminRoute><AdminRequests /></AdminRoute>} />

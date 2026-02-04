@@ -239,6 +239,66 @@ export type Database = {
           },
         ]
       }
+      voip_appointments: {
+        Row: {
+          created_at: string | null
+          created_by: number | null
+          created_by_name: string | null
+          id: number
+          lead_id: number | null
+          lead_name: string | null
+          lead_phone: string
+          notes: string | null
+          outcome: string | null
+          scheduled_at: string
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: number | null
+          created_by_name?: string | null
+          id?: number
+          lead_id?: number | null
+          lead_name?: string | null
+          lead_phone: string
+          notes?: string | null
+          outcome?: string | null
+          scheduled_at: string
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: number | null
+          created_by_name?: string | null
+          id?: number
+          lead_id?: number | null
+          lead_name?: string | null
+          lead_phone?: string
+          notes?: string | null
+          outcome?: string | null
+          scheduled_at?: string
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_appointments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_appointments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "voip_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_calls: {
         Row: {
           cost: number | null
