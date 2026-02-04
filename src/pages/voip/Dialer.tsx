@@ -154,7 +154,7 @@ export default function Dialer() {
     }
   };
 
-  const handleCall = useCallback(() => {
+  const handleCall = useCallback(async () => {
     if (!phoneNumber) {
       toast({
         title: "No Phone Number",
@@ -163,17 +163,49 @@ export default function Dialer() {
       });
       return;
     }
+    
     setCallStatus("calling");
     
-    // Simulate call connection after 2s
-    setTimeout(() => {
-      setCallStatus("connected");
-    }, 2000);
-  }, [phoneNumber, toast]);
+    // Make real Twilio call
+    const result = await apiCall<{ success: boolean; message?: string; callSid?: string }>(
+      "voip-twilio",
+      {
+        method: "POST",
+        params: { action: "make-call" },
+        body: {
+          toNumber: phoneNumber,
+          leadId: currentLead?.id || null,
+        },
+      }
+    );
+
+    if (result.error) {
+      toast({
+        title: "Call Failed",
+        description: result.error,
+        variant: "destructive",
+      });
+      setCallStatus("idle");
+      return;
+    }
+
+    toast({
+      title: "Call Initiated",
+      description: `Calling ${phoneNumber}...`,
+    });
+    
+    setCallStatus("connected");
+  }, [phoneNumber, toast, apiCall, currentLead?.id]);
 
   const handleHangup = useCallback(() => {
+    // Note: Ending calls via Twilio API would require additional webhook setup
+    // For now, this just updates the local state
     setCallStatus("ended");
-  }, []);
+    toast({
+      title: "Call Ended",
+      description: "Don't forget to log the call outcome",
+    });
+  }, [toast]);
 
   const handleSubmitOutcome = async () => {
     if (!currentLead || !selectedOutcome) {
