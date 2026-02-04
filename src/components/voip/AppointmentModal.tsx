@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,14 @@ export function AppointmentModal({
   const [phone, setPhone] = useState(leadPhone);
   const [name, setName] = useState(leadName);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync phone/name with props when modal opens or lead changes
+  useEffect(() => {
+    if (open) {
+      setPhone(leadPhone);
+      setName(leadName);
+    }
+  }, [open, leadPhone, leadName]);
 
   const handleSubmit = async () => {
     if (!date) {
