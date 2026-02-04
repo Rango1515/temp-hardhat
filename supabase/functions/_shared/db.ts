@@ -21,13 +21,22 @@ export async function getDBClient(): Promise<Client> {
   if (!password) throw new Error("MARIADB_PASSWORD is not configured");
   if (!database) throw new Error("MARIADB_DATABASE is not configured");
 
-  client = await new Client().connect({
-    hostname: host,
-    port: port ? parseInt(port) : 3306,
-    username,
-    password,
-    db: database,
-  });
+  console.log(`[DB] Connecting to MariaDB at ${host}:${port || 3306} database=${database}`);
+
+  try {
+    client = await new Client().connect({
+      hostname: host,
+      port: port ? parseInt(port) : 3306,
+      username,
+      password,
+      db: database,
+    });
+    console.log("[DB] Connected successfully");
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[DB] Connection failed: ${errMsg}`);
+    throw error;
+  }
 
   return client;
 }
@@ -57,5 +66,16 @@ export async function closeDB(): Promise<void> {
   if (client) {
     await client.close();
     client = null;
+  }
+}
+
+export async function testConnection(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const db = await getDBClient();
+    await db.query("SELECT 1");
+    return { ok: true };
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: errMsg };
   }
 }
