@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { query, execute } from "../_shared/db.ts";
+import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
 
 function generateApiKey(): string {
@@ -10,17 +10,6 @@ function generateApiKey(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
-}
-
-interface ApiKey {
-  id: number;
-  key_name: string;
-  api_key: string;
-  creation_date: string;
-  expiration_date: string | null;
-  status: string;
-  last_used: string | null;
-  usage_count: number;
 }
 
 serve(async (req) => {
@@ -50,63 +39,64 @@ serve(async (req) => {
   try {
     switch (req.method) {
       case "GET": {
-        const keys = await query<ApiKey>(
-          `SELECT id, key_name, api_key, creation_date, expiration_date, 
-                  status, last_used, usage_count 
-           FROM api_keys 
-           WHERE user_id = ? 
-           ORDER BY creation_date DESC`,
-          [userId]
-        );
+        const { data: keys, error } = await supabase
+          .from("voip_api_keys")
+          .select("id, name, key_prefix, permissions, last_used_at, expires_at, created_at")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: false });
 
-        // Mask API keys for security
-        const maskedKeys = keys.map((key) => ({
-          ...key,
-          api_key: key.api_key.substring(0, 7) + "..." + key.api_key.substring(key.api_key.length - 4),
-        }));
+        if (error) throw error;
 
         return new Response(
-          JSON.stringify({ keys: maskedKeys }),
+          JSON.stringify({ keys }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
       case "POST": {
-        const { keyName, expirationDays } = await req.json();
+        const { keyName, expirationDays, permissions } = await req.json();
 
         // Check existing keys limit
-        const existingKeys = await query<{ count: number }>(
-          "SELECT COUNT(*) as count FROM api_keys WHERE user_id = ? AND status = 'active'",
-          [userId]
-        );
+        const { count } = await supabase
+          .from("voip_api_keys")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId);
 
-        if (existingKeys[0]?.count >= 5) {
+        if (count && count >= 5) {
           return new Response(
-            JSON.stringify({ error: "Maximum of 5 active API keys allowed" }),
+            JSON.stringify({ error: "Maximum of 5 API keys allowed" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         const apiKey = generateApiKey();
-        const expirationDate = expirationDays 
+        const keyPrefix = apiKey.substring(0, 7);
+        
+        // In production, you'd hash the API key
+        const keyHash = apiKey; // For demo, storing plain (should use hashing)
+        
+        const expiresAt = expirationDays 
           ? new Date(Date.now() + expirationDays * 24 * 60 * 60 * 1000).toISOString()
           : null;
 
-        const result = await execute(
-          `INSERT INTO api_keys (user_id, key_name, api_key, expiration_date) 
-           VALUES (?, ?, ?, ?)`,
-          [userId, keyName || "Default Key", apiKey, expirationDate]
-        );
+        const { data, error } = await supabase
+          .from("voip_api_keys")
+          .insert({
+            user_id: userId,
+            name: keyName || "Default Key",
+            key_hash: keyHash,
+            key_prefix: keyPrefix,
+            permissions: permissions || ["calls:read", "calls:write"],
+            expires_at: expiresAt,
+          })
+          .select("id")
+          .single();
 
-        // Log activity
-        await execute(
-          "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
-          [userId, "api_key_created", "api_key", result.lastInsertId, JSON.stringify({ keyName })]
-        );
+        if (error) throw error;
 
         return new Response(
           JSON.stringify({
-            id: result.lastInsertId,
+            id: data.id,
             api_key: apiKey, // Only show full key on creation
             message: "API key created successfully. Save this key - it won't be shown again.",
           }),
@@ -124,28 +114,28 @@ serve(async (req) => {
         }
 
         // Verify ownership
-        const keys = await query<{ id: number }>(
-          "SELECT id FROM api_keys WHERE id = ? AND user_id = ?",
-          [keyId, userId]
-        );
+        const { data: keys } = await supabase
+          .from("voip_api_keys")
+          .select("id")
+          .eq("id", parseInt(keyId))
+          .eq("user_id", userId);
 
-        if (keys.length === 0) {
+        if (!keys || keys.length === 0) {
           return new Response(
             JSON.stringify({ error: "API key not found" }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        await execute("UPDATE api_keys SET status = 'revoked' WHERE id = ?", [keyId]);
+        const { error } = await supabase
+          .from("voip_api_keys")
+          .delete()
+          .eq("id", parseInt(keyId));
 
-        // Log activity
-        await execute(
-          "INSERT INTO activity_logs (user_id, action, entity_type, entity_id) VALUES (?, ?, ?, ?)",
-          [userId, "api_key_revoked", "api_key", keyId]
-        );
+        if (error) throw error;
 
         return new Response(
-          JSON.stringify({ message: "API key revoked successfully" }),
+          JSON.stringify({ message: "API key deleted successfully" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

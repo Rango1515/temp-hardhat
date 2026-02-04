@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { query, execute } from "../_shared/db.ts";
+import { supabase, query, insert, update } from "../_shared/db.ts";
 import { createJWT, createRefreshToken, verifyJWT, extractToken } from "../_shared/auth.ts";
 import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
@@ -56,7 +56,8 @@ serve(async (req) => {
     // Health check endpoint - test DB connectivity
     if (action === "health") {
       try {
-        const testResult = await query("SELECT 1 as test");
+        const { error } = await supabase.from("voip_users").select("id").limit(1);
+        if (error) throw error;
         console.log("[voip-auth] Health check passed");
         return new Response(
           JSON.stringify({ ok: true, db: "connected" }),
@@ -108,20 +109,27 @@ serve(async (req) => {
         }
 
         console.log(`[voip-auth] Looking up user: ${email.toLowerCase().trim()}`);
-        const users = await query<User>(
-          "SELECT id, name, email, password_hash, role, status FROM users WHERE email = ?",
-          [email.toLowerCase().trim()]
-        );
-        console.log(`[voip-auth] User query returned ${users.length} rows`);
+        
+        const { data: users, error: userError } = await supabase
+          .from("voip_users")
+          .select("id, name, email, password_hash, role, status")
+          .eq("email", email.toLowerCase().trim());
+        
+        if (userError) {
+          console.error("[voip-auth] User query error:", userError);
+          throw userError;
+        }
+        
+        console.log(`[voip-auth] User query returned ${users?.length || 0} rows`);
 
-        if (users.length === 0) {
+        if (!users || users.length === 0) {
           return new Response(
             JSON.stringify({ error: "Invalid email or password" }),
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const user = users[0];
+        const user = users[0] as User;
 
         if (user.status !== "active") {
           return new Response(
@@ -139,13 +147,10 @@ serve(async (req) => {
         }
 
         // Update last login
-        await execute("UPDATE users SET last_login = NOW() WHERE id = ?", [user.id]);
-
-        // Log activity
-        await execute(
-          "INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)",
-          [user.id, "login", JSON.stringify({ email: user.email }), ip]
-        );
+        await supabase
+          .from("voip_users")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", user.id);
 
         const token = await createJWT(user.id, user.email, user.role, user.name);
         const refreshToken = await createRefreshToken(user.id);
@@ -180,12 +185,14 @@ serve(async (req) => {
         }
 
         // Check if invite token exists and is valid
-        const invites = await query<{ id: number; email: string | null; expires_at: string | null; used: number }>(
-          "SELECT id, email, expires_at, used FROM signup_tokens WHERE token = ?",
-          [inviteToken.trim()]
-        );
+        const { data: invites, error: inviteError } = await supabase
+          .from("voip_signup_tokens")
+          .select("id, email, expires_at, used_by")
+          .eq("token", inviteToken.trim());
 
-        if (invites.length === 0) {
+        if (inviteError) throw inviteError;
+
+        if (!invites || invites.length === 0) {
           return new Response(
             JSON.stringify({ error: "Invalid invite token" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -194,7 +201,7 @@ serve(async (req) => {
 
         const invite = invites[0];
 
-        if (invite.used) {
+        if (invite.used_by) {
           return new Response(
             JSON.stringify({ error: "This invite token has already been used" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -253,12 +260,12 @@ serve(async (req) => {
         }
 
         // Check if email exists
-        const existingUsers = await query<{ id: number }>(
-          "SELECT id FROM users WHERE email = ?",
-          [email.toLowerCase().trim()]
-        );
+        const { data: existingUsers } = await supabase
+          .from("voip_users")
+          .select("id")
+          .eq("email", email.toLowerCase().trim());
 
-        if (existingUsers.length > 0) {
+        if (existingUsers && existingUsers.length > 0) {
           return new Response(
             JSON.stringify({ error: "An account with this email already exists" }),
             { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -270,39 +277,35 @@ serve(async (req) => {
         const passwordHash = await bcrypt.hash(password, salt);
 
         // Create user
-        const result = await execute(
-          "INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, 'client', 'active')",
-          [name.trim(), email.toLowerCase().trim(), passwordHash]
-        );
+        const { data: newUser, error: createError } = await supabase
+          .from("voip_users")
+          .insert({
+            name: name.trim(),
+            email: email.toLowerCase().trim(),
+            password_hash: passwordHash,
+            role: "client",
+            status: "active",
+          })
+          .select("id")
+          .single();
+
+        if (createError) throw createError;
 
         // Mark invite token as used
-        await execute(
-          "UPDATE signup_tokens SET used = 1, used_by = ?, used_at = NOW() WHERE id = ?",
-          [result.lastInsertId, invite.id]
-        );
+        await supabase
+          .from("voip_signup_tokens")
+          .update({ used_by: newUser.id, used_at: new Date().toISOString() })
+          .eq("id", invite.id);
 
-        // Create analytics entry
-        await execute(
-          "INSERT INTO user_analytics (user_id) VALUES (?)",
-          [result.lastInsertId]
-        );
-
-        // Log activity
-        const ip = req.headers.get("x-forwarded-for") || "unknown";
-        await execute(
-          "INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)",
-          [result.lastInsertId, "signup", JSON.stringify({ email, inviteTokenId: invite.id }), ip]
-        );
-
-        const token = await createJWT(result.lastInsertId, email, "client", name);
-        const refreshToken = await createRefreshToken(result.lastInsertId);
+        const token = await createJWT(newUser.id, email, "client", name);
+        const refreshToken = await createRefreshToken(newUser.id);
 
         return new Response(
           JSON.stringify({
             token,
             refreshToken,
             user: {
-              id: result.lastInsertId,
+              id: newUser.id,
               name: name.trim(),
               email: email.toLowerCase().trim(),
               role: "client",
@@ -330,12 +333,12 @@ serve(async (req) => {
           );
         }
 
-        const users = await query<User>(
-          "SELECT id, name, email, role, status FROM users WHERE id = ?",
-          [parseInt(payload.sub)]
-        );
+        const { data: users } = await supabase
+          .from("voip_users")
+          .select("id, name, email, role, status")
+          .eq("id", parseInt(payload.sub));
 
-        if (users.length === 0 || users[0].status !== "active") {
+        if (!users || users.length === 0 || users[0].status !== "active") {
           return new Response(
             JSON.stringify({ error: "User not found or inactive" }),
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -369,12 +372,12 @@ serve(async (req) => {
           );
         }
 
-        const users = await query<User>(
-          "SELECT id, name, email, role, status FROM users WHERE id = ?",
-          [parseInt(payload.sub)]
-        );
+        const { data: users } = await supabase
+          .from("voip_users")
+          .select("id, name, email, role, status")
+          .eq("id", parseInt(payload.sub));
 
-        if (users.length === 0) {
+        if (!users || users.length === 0) {
           return new Response(
             JSON.stringify({ error: "User not found" }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -403,15 +406,8 @@ serve(async (req) => {
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error("[voip-auth] Error:", errMsg);
-    const isDbError = errMsg.includes("lookup address") || 
-                     errMsg.includes("connection") ||
-                     errMsg.includes("MARIADB");
     return new Response(
-      JSON.stringify({ 
-        error: isDbError 
-          ? "Database connection failed. Please try again later." 
-          : "Internal server error"
-      }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

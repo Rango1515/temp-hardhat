@@ -1,78 +1,127 @@
-// MariaDB connection helper using mysql2 compatibility
-// Note: In Deno, we use the mysql driver
+// Supabase database helper using the service role for VoIP tables
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
-import { Client } from "https://deno.land/x/mysql@v2.12.1/mod.ts";
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-let client: Client | null = null;
+export const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-export async function getDBClient(): Promise<Client> {
-  if (client) {
-    return client;
+// Helper to run queries similar to the old MariaDB interface
+export async function query<T = Record<string, unknown>>(
+  table: string,
+  options?: {
+    select?: string;
+    filter?: Record<string, unknown>;
+    eq?: [string, unknown][];
+    order?: { column: string; ascending?: boolean };
+    limit?: number;
+    offset?: number;
+    single?: boolean;
+  }
+): Promise<T[]> {
+  let q = supabase.from(table).select(options?.select || "*");
+
+  if (options?.eq) {
+    for (const [col, val] of options.eq) {
+      q = q.eq(col, val);
+    }
   }
 
-  const host = Deno.env.get("MARIADB_HOST");
-  const port = Deno.env.get("MARIADB_PORT");
-  const username = Deno.env.get("MARIADB_USER");
-  const password = Deno.env.get("MARIADB_PASSWORD");
-  const database = Deno.env.get("MARIADB_DATABASE");
+  if (options?.filter) {
+    for (const [key, value] of Object.entries(options.filter)) {
+      q = q.eq(key, value);
+    }
+  }
 
-  if (!host) throw new Error("MARIADB_HOST is not configured");
-  if (!username) throw new Error("MARIADB_USER is not configured");
-  if (!password) throw new Error("MARIADB_PASSWORD is not configured");
-  if (!database) throw new Error("MARIADB_DATABASE is not configured");
+  if (options?.order) {
+    q = q.order(options.order.column, { ascending: options.order.ascending ?? false });
+  }
 
-  console.log(`[DB] Connecting to MariaDB at ${host}:${port || 3306} database=${database}`);
+  if (options?.limit) {
+    q = q.limit(options.limit);
+  }
 
-  try {
-    client = await new Client().connect({
-      hostname: host,
-      port: port ? parseInt(port) : 3306,
-      username,
-      password,
-      db: database,
-    });
-    console.log("[DB] Connected successfully");
-  } catch (error: unknown) {
-    const errMsg = error instanceof Error ? error.message : String(error);
-    console.error(`[DB] Connection failed: ${errMsg}`);
+  if (options?.offset) {
+    q = q.range(options.offset, options.offset + (options.limit || 20) - 1);
+  }
+
+  const { data, error } = options?.single ? await q.maybeSingle() : await q;
+
+  if (error) {
+    console.error(`[DB Query Error] ${table}:`, error);
     throw error;
   }
 
-  return client;
-}
-
-export async function query<T = unknown>(
-  sql: string,
-  params: unknown[] = []
-): Promise<T[]> {
-  const db = await getDBClient();
-  const result = await db.query(sql, params);
-  return result as T[];
-}
-
-export async function execute(
-  sql: string,
-  params: unknown[] = []
-): Promise<{ affectedRows: number; lastInsertId: number }> {
-  const db = await getDBClient();
-  const result = await db.execute(sql, params);
-  return {
-    affectedRows: result.affectedRows || 0,
-    lastInsertId: result.lastInsertId || 0,
-  };
-}
-
-export async function closeDB(): Promise<void> {
-  if (client) {
-    await client.close();
-    client = null;
+  if (options?.single) {
+    return data ? [data as T] : [];
   }
+
+  return (data || []) as T[];
+}
+
+export async function insert<T = Record<string, unknown>>(
+  table: string,
+  values: Record<string, unknown>
+): Promise<{ data: T | null; id?: number }> {
+  const { data, error } = await supabase
+    .from(table)
+    .insert(values)
+    .select()
+    .single();
+
+  if (error) {
+    console.error(`[DB Insert Error] ${table}:`, error);
+    throw error;
+  }
+
+  return { data: data as T, id: data?.id };
+}
+
+export async function update(
+  table: string,
+  values: Record<string, unknown>,
+  filter: Record<string, unknown>
+): Promise<{ count: number }> {
+  let q = supabase.from(table).update(values);
+
+  for (const [key, value] of Object.entries(filter)) {
+    q = q.eq(key, value);
+  }
+
+  const { error, count } = await q;
+
+  if (error) {
+    console.error(`[DB Update Error] ${table}:`, error);
+    throw error;
+  }
+
+  return { count: count || 0 };
+}
+
+export async function deleteRow(
+  table: string,
+  filter: Record<string, unknown>
+): Promise<{ count: number }> {
+  let q = supabase.from(table).delete();
+
+  for (const [key, value] of Object.entries(filter)) {
+    q = q.eq(key, value);
+  }
+
+  const { error, count } = await q;
+
+  if (error) {
+    console.error(`[DB Delete Error] ${table}:`, error);
+    throw error;
+  }
+
+  return { count: count || 0 };
 }
 
 export async function testConnection(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const db = await getDBClient();
-    await db.query("SELECT 1");
+    const { error } = await supabase.from("voip_users").select("id").limit(1);
+    if (error) throw error;
     return { ok: true };
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : String(error);

@@ -157,6 +157,308 @@ export type Database = {
         }
         Relationships: []
       }
+      voip_api_keys: {
+        Row: {
+          created_at: string | null
+          expires_at: string | null
+          id: number
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          permissions: string[] | null
+          user_id: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at?: string | null
+          id?: number
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          permissions?: string[] | null
+          user_id?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string | null
+          id?: number
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          permissions?: string[] | null
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_api_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_calls: {
+        Row: {
+          cost: number | null
+          direction: string
+          duration_seconds: number | null
+          end_time: string | null
+          from_number: string
+          id: number
+          recording_url: string | null
+          start_time: string | null
+          status: string
+          to_number: string
+          user_id: number | null
+        }
+        Insert: {
+          cost?: number | null
+          direction?: string
+          duration_seconds?: number | null
+          end_time?: string | null
+          from_number: string
+          id?: number
+          recording_url?: string | null
+          start_time?: string | null
+          status?: string
+          to_number: string
+          user_id?: number | null
+        }
+        Update: {
+          cost?: number | null
+          direction?: string
+          duration_seconds?: number | null
+          end_time?: string | null
+          from_number?: string
+          id?: number
+          recording_url?: string | null
+          start_time?: string | null
+          status?: string
+          to_number?: string
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_calls_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_number_requests: {
+        Row: {
+          admin_notes: string | null
+          area_code: string | null
+          assigned_number_id: number | null
+          country: string | null
+          created_at: string | null
+          id: number
+          number_type: string | null
+          status: string
+          updated_at: string | null
+          user_id: number | null
+        }
+        Insert: {
+          admin_notes?: string | null
+          area_code?: string | null
+          assigned_number_id?: number | null
+          country?: string | null
+          created_at?: string | null
+          id?: number
+          number_type?: string | null
+          status?: string
+          updated_at?: string | null
+          user_id?: number | null
+        }
+        Update: {
+          admin_notes?: string | null
+          area_code?: string | null
+          assigned_number_id?: number | null
+          country?: string | null
+          created_at?: string | null
+          id?: number
+          number_type?: string | null
+          status?: string
+          updated_at?: string | null
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_number_requests_assigned_number_id_fkey"
+            columns: ["assigned_number_id"]
+            isOneToOne: false
+            referencedRelation: "voip_phone_numbers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_number_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_phone_numbers: {
+        Row: {
+          assigned_at: string | null
+          created_at: string | null
+          friendly_name: string | null
+          id: number
+          monthly_cost: number | null
+          phone_number: string
+          status: string
+          user_id: number | null
+        }
+        Insert: {
+          assigned_at?: string | null
+          created_at?: string | null
+          friendly_name?: string | null
+          id?: number
+          monthly_cost?: number | null
+          phone_number: string
+          status?: string
+          user_id?: number | null
+        }
+        Update: {
+          assigned_at?: string | null
+          created_at?: string | null
+          friendly_name?: string | null
+          id?: number
+          monthly_cost?: number | null
+          phone_number?: string
+          status?: string
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_phone_numbers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_refresh_tokens: {
+        Row: {
+          created_at: string | null
+          expires_at: string
+          id: number
+          token_hash: string
+          user_id: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at: string
+          id?: number
+          token_hash: string
+          user_id?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string
+          id?: number
+          token_hash?: string
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_refresh_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_signup_tokens: {
+        Row: {
+          created_at: string | null
+          created_by: number | null
+          email: string | null
+          expires_at: string
+          id: number
+          token: string
+          used_at: string | null
+          used_by: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: number | null
+          email?: string | null
+          expires_at: string
+          id?: number
+          token: string
+          used_at?: string | null
+          used_by?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: number | null
+          email?: string | null
+          expires_at?: string
+          id?: number
+          token?: string
+          used_at?: string | null
+          used_by?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_signup_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_signup_tokens_used_by_fkey"
+            columns: ["used_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_users: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: number
+          name: string
+          password_hash: string
+          role: Database["public"]["Enums"]["voip_role"]
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: number
+          name: string
+          password_hash: string
+          role?: Database["public"]["Enums"]["voip_role"]
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: number
+          name?: string
+          password_hash?: string
+          role?: Database["public"]["Enums"]["voip_role"]
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       websites: {
         Row: {
           created_at: string
@@ -216,6 +518,7 @@ export type Database = {
       app_role: "admin" | "customer"
       ticket_priority: "low" | "medium" | "high"
       ticket_status: "open" | "in_progress" | "resolved"
+      voip_role: "admin" | "client"
       website_status: "active" | "pending" | "maintenance" | "suspended"
     }
     CompositeTypes: {
@@ -347,6 +650,7 @@ export const Constants = {
       app_role: ["admin", "customer"],
       ticket_priority: ["low", "medium", "high"],
       ticket_status: ["open", "in_progress", "resolved"],
+      voip_role: ["admin", "client"],
       website_status: ["active", "pending", "maintenance", "suspended"],
     },
   },
