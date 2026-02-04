@@ -47,8 +47,8 @@ export default function AdminDashboard() {
 
       if (result.data) {
         setStats(result.data.stats);
-        setRecentActivity(result.data.recentActivity);
-        setCallsByDay(result.data.callsByDay);
+        setRecentActivity(result.data.recentActivity || []);
+        setCallsByDay(result.data.callsByDay || []);
       }
 
       setIsLoading(false);
