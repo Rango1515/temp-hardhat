@@ -1,8 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { supabase, query, insert, update } from "../_shared/db.ts";
-import { createJWT, createRefreshToken, verifyJWT, extractToken } from "../_shared/auth.ts";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { supabase } from "../_shared/db.ts";
+import { createJWT, createRefreshToken, verifyJWT, extractToken, hashPassword, verifyPassword } from "../_shared/auth.ts";
 
 interface User {
   id: number;
@@ -138,7 +137,7 @@ serve(async (req) => {
           );
         }
 
-        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+        const passwordMatch = await verifyPassword(password, user.password_hash);
         if (!passwordMatch) {
           return new Response(
             JSON.stringify({ error: "Invalid email or password" }),
@@ -273,8 +272,7 @@ serve(async (req) => {
         }
 
         // Hash password
-        const salt = await bcrypt.genSalt(10);
-        const passwordHash = await bcrypt.hash(password, salt);
+        const passwordHash = await hashPassword(password);
 
         // Create user
         const { data: newUser, error: createError } = await supabase
