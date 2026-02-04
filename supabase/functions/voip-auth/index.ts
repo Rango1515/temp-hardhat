@@ -49,21 +49,58 @@ serve(async (req) => {
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
+  
+  console.log(`[voip-auth] ${req.method} action=${action}`);
 
   try {
+    // Health check endpoint - test DB connectivity
+    if (action === "health") {
+      try {
+        const testResult = await query("SELECT 1 as test");
+        console.log("[voip-auth] Health check passed");
+        return new Response(
+          JSON.stringify({ ok: true, db: "connected" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (error: unknown) {
+        const errMsg = error instanceof Error ? error.message : String(error);
+        console.error("[voip-auth] Health check failed:", errMsg);
+        return new Response(
+          JSON.stringify({ ok: false, error: "Database connection failed", details: errMsg }),
+          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Parse JSON body with error handling
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+      console.log(`[voip-auth] Body keys: ${Object.keys(body).join(', ')}`);
+    } catch (e) {
+      console.error("[voip-auth] Invalid JSON body");
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON body" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     switch (action) {
       case "login": {
         const ip = req.headers.get("x-forwarded-for") || "unknown";
         if (!checkRateLimit(ip)) {
+          console.log(`[voip-auth] Rate limit exceeded for IP: ${ip}`);
           return new Response(
             JSON.stringify({ error: "Too many login attempts. Please try again later." }),
             { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const { email, password } = await req.json();
+        const email = body.email as string;
+        const password = body.password as string;
 
         if (!email || !password) {
+          console.log(`[voip-auth] Missing fields - email: ${!!email}, password: ${!!password}`);
           return new Response(
             JSON.stringify({ error: "Email and password are required" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -127,7 +164,10 @@ serve(async (req) => {
       }
 
       case "signup": {
-        const { name, email, password, inviteToken } = await req.json();
+        const name = body.name as string;
+        const email = body.email as string;
+        const password = body.password as string;
+        const inviteToken = body.inviteToken as string;
 
         // Validate invite token first
         if (!inviteToken) {
@@ -271,7 +311,7 @@ serve(async (req) => {
       }
 
       case "refresh": {
-        const { refreshToken } = await req.json();
+        const refreshToken = body.refreshToken as string;
 
         if (!refreshToken) {
           return new Response(
@@ -358,10 +398,18 @@ serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
-  } catch (error) {
-    console.error("Auth error:", error);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    console.error("[voip-auth] Error:", errMsg);
+    const isDbError = errMsg.includes("lookup address") || 
+                     errMsg.includes("connection") ||
+                     errMsg.includes("MARIADB");
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ 
+        error: isDbError 
+          ? "Database connection failed. Please try again later." 
+          : "Internal server error"
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

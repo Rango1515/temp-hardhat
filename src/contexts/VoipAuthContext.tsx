@@ -50,23 +50,20 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke("voip-auth", {
-        body: { email, password },
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
+      const payload = { email, password };
+      console.log("[VoipAuth] Login request:", { email, password: "***" });
 
-      // Check URL params for action
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-auth?action=login`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify(payload),
         }
       );
 
       const result = await response.json();
+      console.log("[VoipAuth] Login response:", { status: response.status, result });
 
       if (!response.ok) {
         return { success: false, error: result.error || "Login failed" };
@@ -81,7 +78,7 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
 
       return { success: true };
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("[VoipAuth] Login error:", error);
       return { success: false, error: "Connection error. Please try again." };
     }
   }, []);
