@@ -26,19 +26,108 @@ serve(async (req) => {
 
   const userId = parseInt(payload.sub);
   const userRole = payload.role;
-
-  // Admin only
-  if (userRole !== "admin") {
-    return new Response(
-      JSON.stringify({ error: "Admin access required" }),
-      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
+  const userName = payload.name || "Unknown";
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
   try {
+    // Worker action: make-call (available to all authenticated users)
+    if (action === "make-call") {
+      const { toNumber, leadId } = await req.json();
+
+      if (!toNumber) {
+        return new Response(
+          JSON.stringify({ error: "Phone number is required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get Twilio config
+      const { data: config } = await supabase
+        .from("voip_twilio_config")
+        .select("*")
+        .limit(1)
+        .single();
+
+      if (!config || !config.is_active || !config.account_sid || !config.auth_token) {
+        return new Response(
+          JSON.stringify({ error: "Twilio is not configured or enabled. Contact admin." }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Make Twilio API call
+      try {
+        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${config.account_sid}/Calls.json`;
+        const auth = btoa(`${config.account_sid}:${config.auth_token}`);
+
+        const formData = new URLSearchParams();
+        formData.append("To", toNumber);
+        formData.append("From", config.outbound_number);
+        // Use a TwiML URL that plays a message and connects the call
+        formData.append("Url", "http://demo.twilio.com/docs/voice.xml");
+
+        console.log(`[make-call] User ${userId} (${userName}) calling ${toNumber}`);
+
+        const response = await fetch(twilioUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Basic ${auth}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: formData.toString(),
+        });
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+          console.error("[make-call] Twilio error:", responseData);
+          return new Response(
+            JSON.stringify({ error: responseData.message || "Twilio API error" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Log the call in the database
+        const callSid = responseData.sid;
+        await supabase.from("voip_calls").insert({
+          user_id: userId,
+          lead_id: leadId || null,
+          from_number: config.outbound_number,
+          to_number: toNumber,
+          status: "initiated",
+          direction: "outbound",
+          start_time: new Date().toISOString(),
+        });
+
+        console.log(`[make-call] Call initiated: ${callSid}`);
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: "Call initiated",
+            callSid: callSid,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } catch (e) {
+        console.error("[make-call] Error:", e);
+        return new Response(
+          JSON.stringify({ error: "Failed to initiate call" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Admin only actions below
+    if (userRole !== "admin") {
+      return new Response(
+        JSON.stringify({ error: "Admin access required" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     switch (action) {
       case "config": {
         if (req.method === "GET") {
