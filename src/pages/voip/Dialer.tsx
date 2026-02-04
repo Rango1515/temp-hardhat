@@ -52,6 +52,9 @@ export default function Dialer() {
   const [selectedOutcome, setSelectedOutcome] = useState("");
   const [notes, setNotes] = useState("");
   const [followupDate, setFollowupDate] = useState<Date | undefined>();
+  const [followupTime, setFollowupTime] = useState("09:00");
+  const [followupPriority, setFollowupPriority] = useState<string>("medium");
+  const [followupNotes, setFollowupNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [scratchPadNotes, setScratchPadNotes] = useState("");
   const [scratchPadOpen, setScratchPadOpen] = useState(true);
@@ -98,6 +101,9 @@ export default function Dialer() {
     setSelectedOutcome("");
     setNotes("");
     setFollowupDate(undefined);
+    setFollowupTime("09:00");
+    setFollowupPriority("medium");
+    setFollowupNotes("");
 
     const result = await apiCall<{ lead: Lead | null; message?: string }>("voip-leads", {
       method: "POST",
@@ -187,6 +193,15 @@ export default function Dialer() {
 
     setIsSubmitting(true);
 
+    // Combine date and time for follow-up
+    let followupDateTime: string | null = null;
+    if (selectedOutcome === "followup" && followupDate) {
+      const [hours, minutes] = followupTime.split(":").map(Number);
+      const combined = new Date(followupDate);
+      combined.setHours(hours, minutes, 0, 0);
+      followupDateTime = combined.toISOString();
+    }
+
     const result = await apiCall<{ success: boolean; newStatus: string }>("voip-leads", {
       method: "POST",
       params: { action: "complete" },
@@ -194,7 +209,9 @@ export default function Dialer() {
         leadId: currentLead.id,
         outcome: selectedOutcome,
         notes: notes || null,
-        followupAt: followupDate?.toISOString() || null,
+        followupAt: followupDateTime,
+        followupPriority: selectedOutcome === "followup" ? followupPriority : null,
+        followupNotes: selectedOutcome === "followup" ? followupNotes : null,
       },
     });
 
@@ -219,6 +236,9 @@ export default function Dialer() {
       setSelectedOutcome("");
       setNotes("");
       setFollowupDate(undefined);
+      setFollowupTime("09:00");
+      setFollowupPriority("medium");
+      setFollowupNotes("");
     }
 
     setIsSubmitting(false);
@@ -474,31 +494,79 @@ export default function Dialer() {
               </RadioGroup>
 
               {selectedOutcome === "followup" && (
-                <div className="space-y-2">
-                  <Label>Follow-up Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !followupDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {followupDate ? format(followupDate, "PPP") : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={followupDate}
-                        onSelect={setFollowupDate}
-                        initialFocus
-                        disabled={(date) => date < new Date()}
+                <div className="space-y-4 p-4 rounded-lg border border-primary/20 bg-primary/5">
+                  <h4 className="font-medium text-sm">Follow-up Details</h4>
+                  
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Date</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !followupDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {followupDate ? format(followupDate, "PPP") : "Pick a date"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={followupDate}
+                            onSelect={setFollowupDate}
+                            initialFocus
+                            disabled={(date) => date < new Date()}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Time</Label>
+                      <Input
+                        type="time"
+                        value={followupTime}
+                        onChange={(e) => setFollowupTime(e.target.value)}
                       />
-                    </PopoverContent>
-                  </Popover>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Priority</Label>
+                    <RadioGroup
+                      value={followupPriority}
+                      onValueChange={setFollowupPriority}
+                      className="flex gap-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="low" id="priority-low" />
+                        <Label htmlFor="priority-low" className="cursor-pointer text-muted-foreground">Low</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="medium" id="priority-medium" />
+                        <Label htmlFor="priority-medium" className="cursor-pointer text-orange-500">Medium</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="high" id="priority-high" />
+                        <Label htmlFor="priority-high" className="cursor-pointer text-destructive">High</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="followup-notes">Follow-up Notes</Label>
+                    <Textarea
+                      id="followup-notes"
+                      placeholder="Why should we call back? Any specific topics to discuss..."
+                      value={followupNotes}
+                      onChange={(e) => setFollowupNotes(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
                 </div>
               )}
 

@@ -27,6 +27,8 @@ const adminNavItems = [
   { href: "/voip/admin/users", label: "Users", icon: Users },
   { href: "/voip/admin/numbers", label: "Numbers", icon: PhoneCall },
   { href: "/voip/admin/leads", label: "Lead Upload", icon: Upload },
+  { href: "/voip/admin/lead-info", label: "Lead Info", icon: FileText },
+  { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
   { href: "/voip/admin/api-keys", label: "API Keys", icon: Key },

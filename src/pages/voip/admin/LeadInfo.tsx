@@ -1,0 +1,364 @@
+import { useState, useEffect } from "react";
+import { VoipLayout } from "@/components/voip/layout/VoipLayout";
+import { useVoipApi } from "@/hooks/useVoipApi";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Users, Loader2, Search, ChevronDown, Phone, Clock, Calendar, AlertTriangle } from "lucide-react";
+import { format } from "date-fns";
+
+interface Lead {
+  id: number;
+  name: string | null;
+  phone: string;
+  email: string | null;
+  website: string | null;
+  status: string;
+  attempt_count: number;
+  created_at: string;
+  assigned_to: number | null;
+  assigned_user_name?: string;
+}
+
+interface CallRecord {
+  id: number;
+  start_time: string;
+  duration_seconds: number;
+  outcome: string | null;
+  notes: string | null;
+  caller_name: string;
+  followup_at: string | null;
+  followup_priority: string | null;
+  followup_notes: string | null;
+}
+
+interface FollowUp {
+  id: number;
+  lead_id: number;
+  lead_name: string;
+  lead_phone: string;
+  caller_name: string;
+  followup_at: string;
+  followup_priority: string | null;
+  followup_notes: string | null;
+}
+
+export default function LeadInfo() {
+  const { apiCall } = useVoipApi();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [followups, setFollowups] = useState<FollowUp[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedLeadId, setExpandedLeadId] = useState<number | null>(null);
+  const [leadCalls, setLeadCalls] = useState<Record<number, CallRecord[]>>({});
+  const [loadingCalls, setLoadingCalls] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetchLeads();
+    fetchFollowups();
+  }, []);
+
+  const fetchLeads = async () => {
+    const result = await apiCall<{ leads: Lead[] }>("voip-leads", {
+      params: { action: "all-leads" },
+    });
+    if (result.data?.leads) {
+      setLeads(result.data.leads);
+    }
+    setIsLoading(false);
+  };
+
+  const fetchFollowups = async () => {
+    const result = await apiCall<{ followups: FollowUp[] }>("voip-leads", {
+      params: { action: "followups" },
+    });
+    if (result.data?.followups) {
+      setFollowups(result.data.followups);
+    }
+  };
+
+  const fetchLeadCalls = async (leadId: number) => {
+    if (leadCalls[leadId]) {
+      return; // Already fetched
+    }
+    setLoadingCalls(leadId);
+    const result = await apiCall<{ calls: CallRecord[] }>("voip-leads", {
+      params: { action: "lead-calls", leadId: leadId.toString() },
+    });
+    if (result.data?.calls) {
+      setLeadCalls((prev) => ({ ...prev, [leadId]: result.data!.calls }));
+    }
+    setLoadingCalls(null);
+  };
+
+  const toggleExpand = (leadId: number) => {
+    if (expandedLeadId === leadId) {
+      setExpandedLeadId(null);
+    } else {
+      setExpandedLeadId(leadId);
+      fetchLeadCalls(leadId);
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "NEW":
+        return <Badge variant="secondary">New</Badge>;
+      case "ASSIGNED":
+        return <Badge className="bg-blue-600">Assigned</Badge>;
+      case "COMPLETED":
+        return <Badge className="bg-green-600">Completed</Badge>;
+      case "DNC":
+        return <Badge variant="destructive">DNC</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getPriorityBadge = (priority: string | null) => {
+    switch (priority) {
+      case "high":
+        return <Badge variant="destructive">High</Badge>;
+      case "medium":
+        return <Badge className="bg-orange-500">Medium</Badge>;
+      case "low":
+        return <Badge variant="secondary">Low</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  const formatOutcome = (outcome: string | null) => {
+    if (!outcome) return "—";
+    return outcome.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  };
+
+  const filteredLeads = leads.filter(
+    (lead) =>
+      lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      lead.phone.includes(searchTerm) ||
+      lead.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (isLoading) {
+    return (
+      <VoipLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </VoipLayout>
+    );
+  }
+
+  return (
+    <VoipLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Lead Info</h1>
+          <p className="text-muted-foreground">View all leads and their call history</p>
+        </div>
+
+        {/* Scheduled Follow-ups */}
+        {followups.length > 0 && (
+          <Card className="border-orange-500/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-orange-600">
+                <Calendar className="w-5 h-5" />
+                Scheduled Follow-ups ({followups.length})
+              </CardTitle>
+              <CardDescription>Calls that need to be made</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {followups.slice(0, 5).map((fu) => (
+                  <div
+                    key={fu.id}
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Phone className="w-4 h-4 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">{fu.lead_name || fu.lead_phone}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Assigned by {fu.caller_name}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getPriorityBadge(fu.followup_priority)}
+                      <div className="text-right">
+                        <p className="text-sm font-medium">
+                          {format(new Date(fu.followup_at), "MMM d, yyyy")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(fu.followup_at), "h:mm a")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {followups.length > 5 && (
+                  <p className="text-sm text-muted-foreground text-center pt-2">
+                    +{followups.length - 5} more follow-ups
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Search */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5" />
+              All Leads ({leads.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, phone, or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[30px]"></TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Attempts</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredLeads.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        No leads found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredLeads.map((lead) => (
+                      <Collapsible key={lead.id} open={expandedLeadId === lead.id}>
+                        <TableRow
+                          className="cursor-pointer hover:bg-muted/50"
+                          onClick={() => toggleExpand(lead.id)}
+                        >
+                          <TableCell>
+                            <CollapsibleTrigger asChild>
+                              <ChevronDown
+                                className={`w-4 h-4 transition-transform ${
+                                  expandedLeadId === lead.id ? "rotate-180" : ""
+                                }`}
+                              />
+                            </CollapsibleTrigger>
+                          </TableCell>
+                          <TableCell className="font-medium">{lead.name || "—"}</TableCell>
+                          <TableCell className="font-mono">{lead.phone}</TableCell>
+                          <TableCell>{getStatusBadge(lead.status)}</TableCell>
+                          <TableCell>{lead.attempt_count}</TableCell>
+                          <TableCell>
+                            {format(new Date(lead.created_at), "MMM d, yyyy")}
+                          </TableCell>
+                        </TableRow>
+                        <CollapsibleContent asChild>
+                          <TableRow>
+                            <TableCell colSpan={6} className="bg-muted/30 p-0">
+                              <div className="p-4 space-y-3">
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                  <div>
+                                    <p className="text-muted-foreground">Email</p>
+                                    <p className="font-medium">{lead.email || "—"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Website</p>
+                                    <p className="font-medium">{lead.website || "—"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Assigned To</p>
+                                    <p className="font-medium">{lead.assigned_user_name || "—"}</p>
+                                  </div>
+                                </div>
+
+                                <div className="border-t pt-3">
+                                  <h4 className="font-medium mb-2">Call History</h4>
+                                  {loadingCalls === lead.id ? (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Loading calls...
+                                    </div>
+                                  ) : leadCalls[lead.id]?.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">No calls yet</p>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {leadCalls[lead.id]?.map((call) => (
+                                        <div
+                                          key={call.id}
+                                          className="flex items-center justify-between p-2 rounded bg-background"
+                                        >
+                                          <div className="flex items-center gap-3">
+                                            <Clock className="w-4 h-4 text-muted-foreground" />
+                                            <div>
+                                              <p className="text-sm">
+                                                {format(new Date(call.start_time), "MMM d, h:mm a")}
+                                                {" by "}
+                                                <span className="font-medium">{call.caller_name}</span>
+                                              </p>
+                                              {call.notes && (
+                                                <p className="text-xs text-muted-foreground">
+                                                  {call.notes}
+                                                </p>
+                                              )}
+                                              {call.followup_at && (
+                                                <div className="flex items-center gap-1 mt-1">
+                                                  <Calendar className="w-3 h-3 text-orange-500" />
+                                                  <span className="text-xs text-orange-500">
+                                                    Follow-up: {format(new Date(call.followup_at), "MMM d, h:mm a")}
+                                                  </span>
+                                                  {getPriorityBadge(call.followup_priority)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <Badge variant="outline">
+                                              {formatOutcome(call.outcome)}
+                                            </Badge>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                              {call.duration_seconds}s
+                                            </p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </VoipLayout>
+  );
+}
