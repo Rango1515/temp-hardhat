@@ -1,21 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { query, execute } from "../_shared/db.ts";
+import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
-
-interface Call {
-  id: number;
-  user_id: number;
-  from_number: string;
-  to_number: string;
-  direction: string;
-  duration_seconds: number;
-  start_time: string;
-  end_time: string | null;
-  status: string;
-  cost: number;
-  notes: string | null;
-}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -50,30 +36,20 @@ serve(async (req) => {
         const offset = (page - 1) * limit;
         const status = url.searchParams.get("status");
 
-        let whereClause = "WHERE user_id = ?";
-        const params: unknown[] = [userId];
+        let query = supabase
+          .from("voip_calls")
+          .select("*", { count: "exact" })
+          .eq("user_id", userId);
 
         if (status) {
-          whereClause += " AND status = ?";
-          params.push(status);
+          query = query.eq("status", status);
         }
 
-        // Get total count
-        const countResult = await query<{ count: number }>(
-          `SELECT COUNT(*) as count FROM calls ${whereClause}`,
-          params
-        );
-        const total = countResult[0]?.count || 0;
+        const { data: calls, count, error } = await query
+          .order("start_time", { ascending: false })
+          .range(offset, offset + limit - 1);
 
-        // Get calls
-        const calls = await query<Call>(
-          `SELECT id, user_id, from_number, to_number, direction, duration_seconds, 
-                  start_time, end_time, status, cost, notes 
-           FROM calls ${whereClause} 
-           ORDER BY start_time DESC 
-           LIMIT ? OFFSET ?`,
-          [...params, limit, offset]
-        );
+        if (error) throw error;
 
         return new Response(
           JSON.stringify({
@@ -81,8 +57,8 @@ serve(async (req) => {
             pagination: {
               page,
               limit,
-              total,
-              totalPages: Math.ceil(total / limit),
+              total: count || 0,
+              totalPages: Math.ceil((count || 0) / limit),
             },
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -111,31 +87,34 @@ serve(async (req) => {
         // Get user's assigned number if not provided
         let callerNumber = fromNumber;
         if (!callerNumber) {
-          const numbers = await query<{ phone_number: string }>(
-            "SELECT phone_number FROM phone_numbers WHERE owner_id = ? AND status = 'assigned' LIMIT 1",
-            [userId]
-          );
-          callerNumber = numbers.length > 0 ? numbers[0].phone_number : "+19096874971";
+          const { data: numbers } = await supabase
+            .from("voip_phone_numbers")
+            .select("phone_number")
+            .eq("user_id", userId)
+            .eq("status", "assigned")
+            .limit(1);
+
+          callerNumber = numbers && numbers.length > 0 ? numbers[0].phone_number : "+19096874971";
         }
 
         // Create call record
-        const result = await execute(
-          `INSERT INTO calls (user_id, from_number, to_number, direction, status) 
-           VALUES (?, ?, ?, 'outbound', 'initiated')`,
-          [userId, callerNumber, toNumber]
-        );
+        const { data: call, error } = await supabase
+          .from("voip_calls")
+          .insert({
+            user_id: userId,
+            from_number: callerNumber,
+            to_number: toNumber,
+            direction: "outbound",
+            status: "initiated",
+          })
+          .select("id")
+          .single();
 
-        const callId = result.lastInsertId;
-
-        // Log activity
-        await execute(
-          "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
-          [userId, "call_initiated", "call", callId, JSON.stringify({ to: toNumber })]
-        );
+        if (error) throw error;
 
         return new Response(
           JSON.stringify({
-            id: callId,
+            id: call.id,
             from_number: callerNumber,
             to_number: toNumber,
             status: "initiated",
@@ -154,70 +133,44 @@ serve(async (req) => {
           );
         }
 
-        const { status, duration_seconds, notes } = await req.json();
+        const { status, duration_seconds } = await req.json();
 
         // Verify call belongs to user
-        const calls = await query<Call>(
-          "SELECT id, user_id FROM calls WHERE id = ? AND user_id = ?",
-          [callId, userId]
-        );
+        const { data: calls } = await supabase
+          .from("voip_calls")
+          .select("id")
+          .eq("id", parseInt(callId))
+          .eq("user_id", userId);
 
-        if (calls.length === 0) {
+        if (!calls || calls.length === 0) {
           return new Response(
             JSON.stringify({ error: "Call not found" }),
             { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
-        const updates: string[] = [];
-        const params: unknown[] = [];
+        const updates: Record<string, unknown> = {};
 
         if (status) {
-          updates.push("status = ?");
-          params.push(status);
-
+          updates.status = status;
           if (status === "completed" || status === "failed" || status === "no_answer" || status === "busy") {
-            updates.push("end_time = NOW()");
+            updates.end_time = new Date().toISOString();
           }
         }
 
         if (duration_seconds !== undefined) {
-          updates.push("duration_seconds = ?");
-          params.push(duration_seconds);
-
+          updates.duration_seconds = duration_seconds;
           // Calculate cost (mock: $0.02 per minute)
-          const cost = (duration_seconds / 60) * 0.02;
-          updates.push("cost = ?");
-          params.push(cost.toFixed(4));
+          updates.cost = parseFloat(((duration_seconds / 60) * 0.02).toFixed(4));
         }
 
-        if (notes) {
-          updates.push("notes = ?");
-          params.push(notes);
-        }
+        if (Object.keys(updates).length > 0) {
+          const { error } = await supabase
+            .from("voip_calls")
+            .update(updates)
+            .eq("id", parseInt(callId));
 
-        if (updates.length > 0) {
-          params.push(callId);
-          await execute(
-            `UPDATE calls SET ${updates.join(", ")} WHERE id = ?`,
-            params
-          );
-
-          // Update analytics if call completed
-          if (status === "completed" || status === "failed") {
-            const successField = status === "completed" ? "successful_calls" : "failed_calls";
-            await execute(
-              `UPDATE user_analytics SET 
-                total_calls = total_calls + 1,
-                ${successField} = ${successField} + 1,
-                total_duration_seconds = total_duration_seconds + ?,
-                total_cost = total_cost + ?,
-                last_call_date = NOW(),
-                updated_at = NOW()
-               WHERE user_id = ?`,
-              [duration_seconds || 0, (duration_seconds || 0) / 60 * 0.02, userId]
-            );
-          }
+          if (error) throw error;
         }
 
         return new Response(

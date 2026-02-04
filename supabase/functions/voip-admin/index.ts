@@ -1,8 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
-import { query, execute } from "../_shared/db.ts";
+import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -39,26 +38,19 @@ serve(async (req) => {
           const offset = (page - 1) * limit;
           const search = url.searchParams.get("search");
 
-          let whereClause = "WHERE 1=1";
-          const params: unknown[] = [];
+          let query = supabase
+            .from("voip_users")
+            .select("id, name, email, role, status, created_at", { count: "exact" });
 
           if (search) {
-            whereClause += " AND (name LIKE ? OR email LIKE ?)";
-            params.push(`%${search}%`, `%${search}%`);
+            query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
           }
 
-          const countResult = await query<{ count: number }>(
-            `SELECT COUNT(*) as count FROM users ${whereClause}`,
-            params
-          );
+          const { data: users, count, error } = await query
+            .order("created_at", { ascending: false })
+            .range(offset, offset + limit - 1);
 
-          const users = await query(
-            `SELECT id, name, email, role, status, signup_date, last_login 
-             FROM users ${whereClause} 
-             ORDER BY signup_date DESC 
-             LIMIT ? OFFSET ?`,
-            [...params, limit, offset]
-          );
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({
@@ -66,7 +58,7 @@ serve(async (req) => {
               pagination: {
                 page,
                 limit,
-                total: countResult[0]?.count || 0,
+                total: count || 0,
               },
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -84,26 +76,17 @@ serve(async (req) => {
             );
           }
 
-          const updates: string[] = [];
-          const params: unknown[] = [];
+          const updates: Record<string, unknown> = {};
+          if (role) updates.role = role;
+          if (status) updates.status = status;
 
-          if (role) {
-            updates.push("role = ?");
-            params.push(role);
-          }
-          if (status) {
-            updates.push("status = ?");
-            params.push(status);
-          }
+          if (Object.keys(updates).length > 0) {
+            const { error } = await supabase
+              .from("voip_users")
+              .update(updates)
+              .eq("id", parseInt(userId));
 
-          if (updates.length > 0) {
-            params.push(userId);
-            await execute(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, params);
-
-            await execute(
-              "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
-              [adminId, "user_updated", "user", userId, JSON.stringify({ role, status })]
-            );
+            if (error) throw error;
           }
 
           return new Response(
@@ -119,23 +102,18 @@ serve(async (req) => {
       case "numbers": {
         if (req.method === "GET") {
           const status = url.searchParams.get("status");
-          
-          let whereClause = "WHERE 1=1";
-          const params: unknown[] = [];
+
+          let query = supabase
+            .from("voip_phone_numbers")
+            .select("*, voip_users(name, email)");
 
           if (status) {
-            whereClause += " AND pn.status = ?";
-            params.push(status);
+            query = query.eq("status", status);
           }
 
-          const numbers = await query(
-            `SELECT pn.*, u.name as owner_name, u.email as owner_email 
-             FROM phone_numbers pn 
-             LEFT JOIN users u ON pn.owner_id = u.id 
-             ${whereClause} 
-             ORDER BY pn.created_at DESC`,
-            params
-          );
+          const { data: numbers, error } = await query.order("created_at", { ascending: false });
+
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({ numbers }),
@@ -144,7 +122,7 @@ serve(async (req) => {
         }
 
         if (req.method === "POST") {
-          const { phoneNumber, friendlyName, city, state, country, numberType, monthlyCost } = await req.json();
+          const { phoneNumber, friendlyName, monthlyCost } = await req.json();
 
           if (!phoneNumber) {
             return new Response(
@@ -153,27 +131,28 @@ serve(async (req) => {
             );
           }
 
-          const result = await execute(
-            `INSERT INTO phone_numbers 
-             (phone_number, friendly_name, location_city, location_state, location_country, number_type, monthly_cost) 
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [phoneNumber, friendlyName || null, city || null, state || null, country || "US", numberType || "local", monthlyCost || 0]
-          );
+          const { data, error } = await supabase
+            .from("voip_phone_numbers")
+            .insert({
+              phone_number: phoneNumber,
+              friendly_name: friendlyName || null,
+              monthly_cost: monthlyCost || 1.00,
+              status: "available",
+            })
+            .select("id")
+            .single();
 
-          await execute(
-            "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
-            [adminId, "number_created", "phone_number", result.lastInsertId, JSON.stringify({ phoneNumber })]
-          );
+          if (error) throw error;
 
           return new Response(
-            JSON.stringify({ id: result.lastInsertId, message: "Number created successfully" }),
+            JSON.stringify({ id: data.id, message: "Number created successfully" }),
             { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
         if (req.method === "PATCH") {
           const numberId = url.searchParams.get("id");
-          const { ownerId, status } = await req.json();
+          const { userId, status } = await req.json();
 
           if (!numberId) {
             return new Response(
@@ -182,34 +161,30 @@ serve(async (req) => {
             );
           }
 
-          const updates: string[] = [];
-          const params: unknown[] = [];
-
-          if (ownerId !== undefined) {
-            updates.push("owner_id = ?");
-            params.push(ownerId || null);
-            if (ownerId) {
-              updates.push("status = 'assigned'");
-              updates.push("assigned_date = NOW()");
+          const updates: Record<string, unknown> = {};
+          
+          if (userId !== undefined) {
+            updates.user_id = userId || null;
+            if (userId) {
+              updates.status = "assigned";
+              updates.assigned_at = new Date().toISOString();
             } else {
-              updates.push("status = 'available'");
-              updates.push("assigned_date = NULL");
+              updates.status = "available";
+              updates.assigned_at = null;
             }
           }
 
           if (status) {
-            updates.push("status = ?");
-            params.push(status);
+            updates.status = status;
           }
 
-          if (updates.length > 0) {
-            params.push(numberId);
-            await execute(`UPDATE phone_numbers SET ${updates.join(", ")} WHERE id = ?`, params);
+          if (Object.keys(updates).length > 0) {
+            const { error } = await supabase
+              .from("voip_phone_numbers")
+              .update(updates)
+              .eq("id", parseInt(numberId));
 
-            await execute(
-              "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
-              [adminId, "number_updated", "phone_number", numberId, JSON.stringify({ ownerId, status })]
-            );
+            if (error) throw error;
           }
 
           return new Response(
@@ -226,14 +201,13 @@ serve(async (req) => {
         if (req.method === "GET") {
           const status = url.searchParams.get("status") || "pending";
 
-          const requests = await query(
-            `SELECT nr.*, u.name as user_name, u.email as user_email 
-             FROM number_requests nr 
-             JOIN users u ON nr.user_id = u.id 
-             WHERE nr.status = ? 
-             ORDER BY nr.created_at ASC`,
-            [status]
-          );
+          const { data: requests, error } = await supabase
+            .from("voip_number_requests")
+            .select("*, voip_users(name, email)")
+            .eq("status", status)
+            .order("created_at", { ascending: true });
+
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({ requests }),
@@ -252,34 +226,40 @@ serve(async (req) => {
             );
           }
 
-          const updates: string[] = ["status = ?", "processed_at = NOW()"];
-          const params: unknown[] = [status];
+          const updates: Record<string, unknown> = {
+            status,
+            updated_at: new Date().toISOString(),
+          };
 
-          if (adminNotes) {
-            updates.push("admin_notes = ?");
-            params.push(adminNotes);
-          }
-
+          if (adminNotes) updates.admin_notes = adminNotes;
           if (assignedNumberId) {
-            updates.push("assigned_number_id = ?");
-            params.push(assignedNumberId);
+            updates.assigned_number_id = assignedNumberId;
 
             // Get request user and assign number
-            const requests = await query<{ user_id: number }>(
-              "SELECT user_id FROM number_requests WHERE id = ?",
-              [requestId]
-            );
+            const { data: requests } = await supabase
+              .from("voip_number_requests")
+              .select("user_id")
+              .eq("id", parseInt(requestId))
+              .single();
 
-            if (requests.length > 0) {
-              await execute(
-                "UPDATE phone_numbers SET owner_id = ?, status = 'assigned', assigned_date = NOW() WHERE id = ?",
-                [requests[0].user_id, assignedNumberId]
-              );
+            if (requests) {
+              await supabase
+                .from("voip_phone_numbers")
+                .update({ 
+                  user_id: requests.user_id, 
+                  status: "assigned",
+                  assigned_at: new Date().toISOString(),
+                })
+                .eq("id", assignedNumberId);
             }
           }
 
-          params.push(requestId);
-          await execute(`UPDATE number_requests SET ${updates.join(", ")} WHERE id = ?`, params);
+          const { error } = await supabase
+            .from("voip_number_requests")
+            .update(updates)
+            .eq("id", parseInt(requestId));
+
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({ message: "Request updated successfully" }),
@@ -292,106 +272,57 @@ serve(async (req) => {
 
       // System analytics
       case "analytics": {
-        const totalUsers = await query<{ count: number }>("SELECT COUNT(*) as count FROM users");
-        const activeUsers = await query<{ count: number }>("SELECT COUNT(*) as count FROM users WHERE status = 'active'");
-        const totalCalls = await query<{ count: number }>("SELECT COUNT(*) as count FROM calls");
-        const totalNumbers = await query<{ count: number }>("SELECT COUNT(*) as count FROM phone_numbers");
-        const assignedNumbers = await query<{ count: number }>("SELECT COUNT(*) as count FROM phone_numbers WHERE status = 'assigned'");
-        const pendingRequests = await query<{ count: number }>("SELECT COUNT(*) as count FROM number_requests WHERE status = 'pending'");
+        const { count: totalUsers } = await supabase
+          .from("voip_users")
+          .select("*", { count: "exact", head: true });
 
-        const recentActivity = await query(
-          `SELECT al.*, u.name as user_name 
-           FROM activity_logs al 
-           LEFT JOIN users u ON al.user_id = u.id 
-           ORDER BY al.created_at DESC 
-           LIMIT 20`
-        );
+        const { count: activeUsers } = await supabase
+          .from("voip_users")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "active");
 
-        const callsByDay = await query(
-          `SELECT DATE(start_time) as date, COUNT(*) as count 
-           FROM calls 
-           WHERE start_time >= DATE_SUB(NOW(), INTERVAL 30 DAY) 
-           GROUP BY DATE(start_time) 
-           ORDER BY date`
-        );
+        const { count: totalCalls } = await supabase
+          .from("voip_calls")
+          .select("*", { count: "exact", head: true });
+
+        const { count: totalNumbers } = await supabase
+          .from("voip_phone_numbers")
+          .select("*", { count: "exact", head: true });
+
+        const { count: assignedNumbers } = await supabase
+          .from("voip_phone_numbers")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "assigned");
+
+        const { count: pendingRequests } = await supabase
+          .from("voip_number_requests")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending");
 
         return new Response(
           JSON.stringify({
             stats: {
-              totalUsers: totalUsers[0]?.count || 0,
-              activeUsers: activeUsers[0]?.count || 0,
-              totalCalls: totalCalls[0]?.count || 0,
-              totalNumbers: totalNumbers[0]?.count || 0,
-              assignedNumbers: assignedNumbers[0]?.count || 0,
-              pendingRequests: pendingRequests[0]?.count || 0,
+              totalUsers: totalUsers || 0,
+              activeUsers: activeUsers || 0,
+              totalCalls: totalCalls || 0,
+              totalNumbers: totalNumbers || 0,
+              assignedNumbers: assignedNumbers || 0,
+              pendingRequests: pendingRequests || 0,
             },
-            recentActivity,
-            callsByDay,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // API Keys management
-      case "api-keys": {
-        if (req.method === "GET") {
-          const userId = url.searchParams.get("user_id");
-
-          let whereClause = "WHERE 1=1";
-          const params: unknown[] = [];
-
-          if (userId) {
-            whereClause += " AND ak.user_id = ?";
-            params.push(userId);
-          }
-
-          const keys = await query(
-            `SELECT ak.*, u.name as user_name, u.email as user_email 
-             FROM api_keys ak 
-             JOIN users u ON ak.user_id = u.id 
-             ${whereClause} 
-             ORDER BY ak.creation_date DESC`,
-            params
-          );
-
-          return new Response(
-            JSON.stringify({ keys }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        if (req.method === "PATCH") {
-          const keyId = url.searchParams.get("id");
-          const { status } = await req.json();
-
-          if (!keyId || !status) {
-            return new Response(
-              JSON.stringify({ error: "Key ID and status are required" }),
-              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-
-          await execute("UPDATE api_keys SET status = ? WHERE id = ?", [status, keyId]);
-
-          return new Response(
-            JSON.stringify({ message: "API key updated successfully" }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        break;
-      }
-
       // Invite tokens management
       case "invite-tokens": {
         if (req.method === "GET") {
-          const tokens = await query(
-            `SELECT st.*, u.name as created_by_name, ub.name as used_by_name, ub.email as used_by_email 
-             FROM signup_tokens st 
-             LEFT JOIN users u ON st.created_by = u.id 
-             LEFT JOIN users ub ON st.used_by = ub.id 
-             ORDER BY st.created_at DESC`
-          );
+          const { data: tokens, error } = await supabase
+            .from("voip_signup_tokens")
+            .select("*, created_by_user:voip_users!voip_signup_tokens_created_by_fkey(name), used_by_user:voip_users!voip_signup_tokens_used_by_fkey(name, email)")
+            .order("created_at", { ascending: false });
+
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({ tokens }),
@@ -410,22 +341,25 @@ serve(async (req) => {
             .join("");
 
           const expiresAt = expiresInDays 
-            ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace("T", " ")
+            ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
             : null;
 
-          const result = await execute(
-            `INSERT INTO signup_tokens (token, email, expires_at, created_by) VALUES (?, ?, ?, ?)`,
-            [inviteToken, email?.toLowerCase().trim() || null, expiresAt, adminId]
-          );
+          const { data, error } = await supabase
+            .from("voip_signup_tokens")
+            .insert({
+              token: inviteToken,
+              email: email?.toLowerCase().trim() || null,
+              expires_at: expiresAt,
+              created_by: adminId,
+            })
+            .select("id")
+            .single();
 
-          await execute(
-            "INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)",
-            [adminId, "invite_created", "signup_token", result.lastInsertId, JSON.stringify({ email, expiresInDays })]
-          );
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({ 
-              id: result.lastInsertId, 
+              id: data.id, 
               token: inviteToken,
               email: email?.toLowerCase().trim() || null,
               expiresAt,
@@ -445,12 +379,13 @@ serve(async (req) => {
             );
           }
 
-          await execute("DELETE FROM signup_tokens WHERE id = ? AND used = 0", [tokenId]);
+          const { error } = await supabase
+            .from("voip_signup_tokens")
+            .delete()
+            .eq("id", parseInt(tokenId))
+            .is("used_by", null);
 
-          await execute(
-            "INSERT INTO activity_logs (user_id, action, entity_type, entity_id) VALUES (?, ?, ?, ?)",
-            [adminId, "invite_deleted", "signup_token", tokenId]
-          );
+          if (error) throw error;
 
           return new Response(
             JSON.stringify({ message: "Token deleted successfully" }),
