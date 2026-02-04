@@ -744,11 +744,11 @@ export type Database = {
       assign_next_lead: {
         Args: { p_worker_id: number }
         Returns: {
-          email: string
-          lead_id: number
-          name: string
-          phone: string
-          website: string
+          out_email: string
+          out_lead_id: number
+          out_name: string
+          out_phone: string
+          out_website: string
         }[]
       }
       has_role: {
