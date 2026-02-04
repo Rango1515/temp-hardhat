@@ -1,268 +1,383 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
-import { DialPad } from "@/components/voip/dialer/DialPad";
-import { CallControls } from "@/components/voip/dialer/CallControls";
 import { CallTimer } from "@/components/voip/dialer/CallTimer";
 import { useVoipApi } from "@/hooks/useVoipApi";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Delete, Phone, User } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
-type CallStatus = "idle" | "initiated" | "ringing" | "in_progress" | "completed" | "failed";
+interface Lead {
+  id: number;
+  name: string;
+  phone: string;
+  email: string | null;
+  website: string | null;
+  attempt_count?: number;
+}
+
+type CallStatus = "idle" | "calling" | "connected" | "ended";
+
+const OUTCOMES = [
+  { value: "no_answer", label: "No Answer" },
+  { value: "voicemail", label: "Voicemail" },
+  { value: "not_interested", label: "Not Interested" },
+  { value: "interested", label: "Interested" },
+  { value: "followup", label: "Follow-up Scheduled" },
+  { value: "wrong_number", label: "Wrong Number" },
+  { value: "dnc", label: "Do Not Call" },
+];
 
 export default function Dialer() {
   const { apiCall } = useVoipApi();
   const { toast } = useToast();
 
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [currentLead, setCurrentLead] = useState<Lead | null>(null);
+  const [isLoadingLead, setIsLoadingLead] = useState(false);
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
-  const [callId, setCallId] = useState<number | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isOnHold, setIsOnHold] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [selectedOutcome, setSelectedOutcome] = useState("");
+  const [notes, setNotes] = useState("");
+  const [followupDate, setFollowupDate] = useState<Date | undefined>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleDigitPress = (digit: string) => {
-    if (callStatus === "idle") {
-      setPhoneNumber((prev) => prev + digit);
-    }
-  };
-
-  const handleBackspace = () => {
-    setPhoneNumber((prev) => prev.slice(0, -1));
-  };
-
-  const handleClear = () => {
-    setPhoneNumber("");
-  };
-
-  const formatPhoneDisplay = (number: string) => {
-    const cleaned = number.replace(/\D/g, "");
-    if (cleaned.length <= 3) return cleaned;
-    if (cleaned.length <= 6) return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
-    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
-  };
-
-  // Mock call simulation
-  const simulateCall = useCallback(async (callId: number) => {
-    // Simulate ringing after 1s
-    await new Promise((r) => setTimeout(r, 1000));
-    setCallStatus("ringing");
-
-    // Simulate answer/fail after 2-5s
-    await new Promise((r) => setTimeout(r, 2000 + Math.random() * 3000));
-
-    const outcome = Math.random();
-    if (outcome > 0.2) {
-      // 80% success
-      setCallStatus("in_progress");
-
-      // Simulate call duration (10-60s for demo)
-      const duration = 10 + Math.floor(Math.random() * 50);
-      await new Promise((r) => setTimeout(r, duration * 1000));
-
-      // End call
-      setCallStatus("completed");
-      await apiCall("voip-calls", {
-        method: "PATCH",
-        params: { id: callId.toString() },
-        body: { status: "completed", duration_seconds: duration },
+  // Fetch current assigned lead on mount
+  useEffect(() => {
+    const fetchCurrentLead = async () => {
+      const result = await apiCall<{ lead: Lead | null }>("voip-leads", {
+        params: { action: "current" },
       });
+      if (result.data?.lead) {
+        setCurrentLead(result.data.lead);
+      }
+    };
+    fetchCurrentLead();
+  }, [apiCall]);
 
-      toast({
-        title: "Call Completed",
-        description: `Duration: ${Math.floor(duration / 60)}:${(duration % 60).toString().padStart(2, "0")}`,
-      });
-    } else if (outcome > 0.1) {
-      // 10% no answer
-      setCallStatus("failed");
-      await apiCall("voip-calls", {
-        method: "PATCH",
-        params: { id: callId.toString() },
-        body: { status: "no_answer" },
-      });
+  const requestNextLead = async () => {
+    setIsLoadingLead(true);
+    setCurrentLead(null);
+    setSelectedOutcome("");
+    setNotes("");
+    setFollowupDate(undefined);
 
-      toast({
-        title: "No Answer",
-        description: "The call was not answered",
-        variant: "destructive",
-      });
-    } else {
-      // 10% failed
-      setCallStatus("failed");
-      await apiCall("voip-calls", {
-        method: "PATCH",
-        params: { id: callId.toString() },
-        body: { status: "failed" },
-      });
-
-      toast({
-        title: "Call Failed",
-        description: "Unable to connect the call",
-        variant: "destructive",
-      });
-    }
-
-    // Reset after 2s
-    setTimeout(() => {
-      setCallStatus("idle");
-      setCallId(null);
-      setIsMuted(false);
-      setIsOnHold(false);
-      setCallDuration(0);
-    }, 2000);
-  }, [apiCall, toast]);
-
-  const handleCall = async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      toast({
-        title: "Invalid Number",
-        description: "Please enter a valid phone number",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setCallStatus("initiated");
-
-    const result = await apiCall<{ id: number }>("voip-calls", {
+    const result = await apiCall<{ lead: Lead | null; message?: string }>("voip-leads", {
       method: "POST",
-      body: { toNumber: phoneNumber },
+      params: { action: "request-next" },
     });
 
     if (result.error) {
       toast({
-        title: "Call Failed",
+        title: "Error",
         description: result.error,
         variant: "destructive",
       });
-      setCallStatus("idle");
-      return;
-    }
-
-    if (result.data) {
-      setCallId(result.data.id);
-      simulateCall(result.data.id);
-    }
-  };
-
-  const handleHangup = async () => {
-    if (callId) {
-      await apiCall("voip-calls", {
-        method: "PATCH",
-        params: { id: callId.toString() },
-        body: { status: "completed", duration_seconds: callDuration },
+    } else if (result.data?.lead) {
+      setCurrentLead(result.data.lead);
+      toast({
+        title: "Lead Assigned",
+        description: `${result.data.lead.name} - ${result.data.lead.phone}`,
+      });
+    } else {
+      toast({
+        title: "No Leads Available",
+        description: result.data?.message || "Check back later for more leads",
       });
     }
 
-    setCallStatus("idle");
-    setCallId(null);
-    setIsMuted(false);
-    setIsOnHold(false);
-    setCallDuration(0);
-
-    toast({
-      title: "Call Ended",
-      description: `Duration: ${Math.floor(callDuration / 60)}:${(callDuration % 60).toString().padStart(2, "0")}`,
-    });
+    setIsLoadingLead(false);
   };
 
-  const getStatusText = () => {
-    switch (callStatus) {
-      case "initiated":
-        return "Connecting...";
-      case "ringing":
-        return "Ringing...";
-      case "in_progress":
-        return isOnHold ? "On Hold" : "Connected";
-      case "completed":
-        return "Call Ended";
-      case "failed":
-        return "Call Failed";
-      default:
-        return "";
+  const handleCall = useCallback(() => {
+    if (!currentLead) return;
+    setCallStatus("calling");
+    
+    // Simulate call connection after 2s
+    setTimeout(() => {
+      setCallStatus("connected");
+    }, 2000);
+  }, [currentLead]);
+
+  const handleHangup = useCallback(() => {
+    setCallStatus("ended");
+  }, []);
+
+  const handleSubmitOutcome = async () => {
+    if (!currentLead || !selectedOutcome) {
+      toast({
+        title: "Select Outcome",
+        description: "Please select a call outcome",
+        variant: "destructive",
+      });
+      return;
     }
+
+    if (selectedOutcome === "followup" && !followupDate) {
+      toast({
+        title: "Select Follow-up Date",
+        description: "Please select a follow-up date",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    const result = await apiCall<{ success: boolean; newStatus: string }>("voip-leads", {
+      method: "POST",
+      params: { action: "complete" },
+      body: {
+        leadId: currentLead.id,
+        outcome: selectedOutcome,
+        notes: notes || null,
+        followupAt: followupDate?.toISOString() || null,
+      },
+    });
+
+    if (result.error) {
+      toast({
+        title: "Error",
+        description: result.error,
+        variant: "destructive",
+      });
+    } else {
+      const outcomeLabel = OUTCOMES.find((o) => o.value === selectedOutcome)?.label;
+      toast({
+        title: "Outcome Saved",
+        description: `${outcomeLabel} - Lead ${result.data?.newStatus === "COMPLETED" ? "completed" : "updated"}`,
+      });
+
+      // Reset and get next lead
+      setCurrentLead(null);
+      setCallStatus("idle");
+      setCallDuration(0);
+      setSelectedOutcome("");
+      setNotes("");
+      setFollowupDate(undefined);
+    }
+
+    setIsSubmitting(false);
   };
 
-  const isCallActive = ["initiated", "ringing", "in_progress"].includes(callStatus);
+  const formatPhoneDisplay = (phone: string) => {
+    const cleaned = phone.replace(/\D/g, "");
+    if (cleaned.length === 11 && cleaned.startsWith("1")) {
+      return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+    }
+    if (cleaned.length === 10) {
+      return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    }
+    return phone;
+  };
 
   return (
     <VoipLayout>
-      <div className="max-w-md mx-auto">
-        <Card className="bg-card/50 backdrop-blur">
-          <CardContent className="pt-6 pb-8 space-y-6">
-            {/* Number Display */}
-            <div className="text-center space-y-2">
-              {isCallActive && (
-                <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                  <User className="w-4 h-4" />
-                  <span className="text-sm">{getStatusText()}</span>
+      <div className="max-w-2xl mx-auto space-y-6">
+        {/* Request Lead Button */}
+        {!currentLead && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+                  <Phone className="w-8 h-8 text-primary" />
                 </div>
-              )}
-              <div className="relative">
-                <Input
-                  type="tel"
-                  value={formatPhoneDisplay(phoneNumber)}
-                  onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ""))}
-                  placeholder="Enter number"
-                  disabled={isCallActive}
-                  className="text-center text-2xl font-mono h-14 bg-muted/50 border-none"
-                />
-                {phoneNumber && !isCallActive && (
-                  <button
-                    onClick={handleBackspace}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Delete className="w-5 h-5" />
-                  </button>
-                )}
-              </div>
-              {isCallActive && (
-                <CallTimer
-                  isRunning={callStatus === "in_progress"}
-                  onDurationChange={setCallDuration}
-                />
-              )}
-            </div>
-
-            {/* Dial Pad */}
-            <DialPad onDigitPress={handleDigitPress} disabled={isCallActive} />
-
-            {/* Call Controls */}
-            <div className="flex justify-center">
-              <CallControls
-                isCallActive={isCallActive}
-                isMuted={isMuted}
-                isOnHold={isOnHold}
-                onCall={handleCall}
-                onHangup={handleHangup}
-                onMuteToggle={() => setIsMuted(!isMuted)}
-                onHoldToggle={() => setIsOnHold(!isOnHold)}
-                disabled={!phoneNumber && !isCallActive}
-              />
-            </div>
-
-            {/* Clear Button */}
-            {phoneNumber && !isCallActive && (
-              <div className="text-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleClear}
-                  className="text-muted-foreground"
-                >
-                  Clear
+                <div>
+                  <h2 className="text-xl font-semibold">Ready to Start Calling?</h2>
+                  <p className="text-muted-foreground mt-1">
+                    Request your next lead to begin
+                  </p>
+                </div>
+                <Button onClick={requestNextLead} disabled={isLoadingLead} size="lg">
+                  {isLoadingLead ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Getting Lead...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Request Next Lead
+                    </>
+                  )}
                 </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Current Lead Display */}
+        {currentLead && (
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="w-5 h-5" />
+                  Current Lead
+                </CardTitle>
+                <CardDescription>Lead assigned to you</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <User className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Name</p>
+                      <p className="font-medium">{currentLead.name}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <Phone className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Phone</p>
+                      <p className="font-medium font-mono">{formatPhoneDisplay(currentLead.phone)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <Mail className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Email</p>
+                      <p className="font-medium">{currentLead.email || "None"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                    <Globe className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">Website</p>
+                      {currentLead.website ? (
+                        <a
+                          href={currentLead.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-primary hover:underline truncate block max-w-48"
+                        >
+                          {currentLead.website.replace(/^https?:\/\//, "")}
+                        </a>
+                      ) : (
+                        <p className="font-medium">None</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Call Controls */}
+                <div className="flex flex-col items-center gap-4 pt-4 border-t">
+                  {callStatus === "connected" && (
+                    <CallTimer isRunning={true} onDurationChange={setCallDuration} />
+                  )}
+                  {callStatus === "calling" && (
+                    <p className="text-sm text-muted-foreground animate-pulse">Connecting...</p>
+                  )}
+                  
+                  <div className="flex gap-3">
+                    {callStatus === "idle" && (
+                      <Button onClick={handleCall} size="lg" className="bg-green-600 hover:bg-green-700">
+                        <PhoneCall className="w-5 h-5 mr-2" />
+                        Call {formatPhoneDisplay(currentLead.phone)}
+                      </Button>
+                    )}
+                    {(callStatus === "calling" || callStatus === "connected") && (
+                      <Button onClick={handleHangup} size="lg" variant="destructive">
+                        <PhoneOff className="w-5 h-5 mr-2" />
+                        End Call
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Outcome Selection */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Call Outcome</CardTitle>
+                <CardDescription>Record the result of this call</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <RadioGroup value={selectedOutcome} onValueChange={setSelectedOutcome}>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {OUTCOMES.map((outcome) => (
+                      <div key={outcome.value} className="flex items-center space-x-2">
+                        <RadioGroupItem value={outcome.value} id={outcome.value} />
+                        <Label htmlFor={outcome.value} className="cursor-pointer">
+                          {outcome.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </RadioGroup>
+
+                {selectedOutcome === "followup" && (
+                  <div className="space-y-2">
+                    <Label>Follow-up Date</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !followupDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {followupDate ? format(followupDate, "PPP") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={followupDate}
+                          onSelect={setFollowupDate}
+                          initialFocus
+                          disabled={(date) => date < new Date()}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes (optional)</Label>
+                  <Textarea
+                    id="notes"
+                    placeholder="Add any notes about the call..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleSubmitOutcome}
+                    disabled={!selectedOutcome || isSubmitting}
+                    className="flex-1"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Submit & Get Next Lead"
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
 
         {/* Help Text */}
-        <p className="text-center text-sm text-muted-foreground mt-4">
+        <p className="text-center text-sm text-muted-foreground">
           <Phone className="w-4 h-4 inline-block mr-1" />
-          Demo mode: Calls are simulated
+          Demo mode: Calls are simulated. Configure Twilio for real calls.
         </p>
       </div>
     </VoipLayout>

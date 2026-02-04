@@ -110,9 +110,9 @@ export default function VoipAuth() {
               <Phone className="w-6 h-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-foreground">VoIP Dialer Portal</h1>
+          <h1 className="text-2xl font-bold text-foreground">HardhatHosting Client Login</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your calls, numbers, and API access
+            Manage your calls and leads
           </p>
         </div>
 

@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.voip-numbers]
 verify_jwt = false
+
+[functions.voip-leads]
+verify_jwt = false
+
+[functions.voip-twilio]
+verify_jwt = false

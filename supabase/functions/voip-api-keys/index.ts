@@ -34,7 +34,16 @@ serve(async (req) => {
   }
 
   const userId = parseInt(payload.sub);
+  const userRole = payload.role;
   const url = new URL(req.url);
+
+  // Admin only check - block all non-admin access
+  if (userRole !== "admin") {
+    return new Response(
+      JSON.stringify({ error: "Admin access required" }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
   try {
     switch (req.method) {
@@ -42,13 +51,12 @@ serve(async (req) => {
         const { data: keys, error } = await supabase
           .from("voip_api_keys")
           .select("id, name, key_prefix, permissions, last_used_at, expires_at, created_at")
-          .eq("user_id", userId)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
 
         return new Response(
-          JSON.stringify({ keys }),
+          JSON.stringify({ keys: keys || [] }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -59,8 +67,7 @@ serve(async (req) => {
         // Check existing keys limit
         const { count } = await supabase
           .from("voip_api_keys")
-          .select("*", { count: "exact", head: true })
-          .eq("user_id", userId);
+          .select("*", { count: "exact", head: true });
 
         if (count && count >= 5) {
           return new Response(
@@ -94,6 +101,15 @@ serve(async (req) => {
 
         if (error) throw error;
 
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "api_key_create",
+          entity_type: "api_keys",
+          entity_id: data.id,
+          details: { name: keyName },
+        });
+
         return new Response(
           JSON.stringify({
             id: data.id,
@@ -113,12 +129,11 @@ serve(async (req) => {
           );
         }
 
-        // Verify ownership
+        // Verify key exists
         const { data: keys } = await supabase
           .from("voip_api_keys")
-          .select("id")
-          .eq("id", parseInt(keyId))
-          .eq("user_id", userId);
+          .select("id, name")
+          .eq("id", parseInt(keyId));
 
         if (!keys || keys.length === 0) {
           return new Response(
@@ -133,6 +148,15 @@ serve(async (req) => {
           .eq("id", parseInt(keyId));
 
         if (error) throw error;
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "api_key_delete",
+          entity_type: "api_keys",
+          entity_id: parseInt(keyId),
+          details: { name: keys[0]?.name },
+        });
 
         return new Response(
           JSON.stringify({ message: "API key deleted successfully" }),

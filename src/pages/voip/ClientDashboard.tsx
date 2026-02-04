@@ -5,7 +5,7 @@ import { useVoipAuth } from "@/contexts/VoipAuthContext";
 import { useVoipApi } from "@/hooks/useVoipApi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, PhoneOutgoing, Clock, DollarSign, TrendingUp, Hash, Loader2 } from "lucide-react";
+import { Phone, PhoneOutgoing, Clock, TrendingUp, Hash, Loader2, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 
 interface Analytics {
@@ -76,7 +76,7 @@ export default function ClientDashboard() {
             Welcome back, {user?.name?.split(" ")[0]}
           </h1>
           <p className="text-muted-foreground">
-            Here's an overview of your VoIP activity
+            Here's an overview of your calling activity
           </p>
         </div>
 
@@ -118,10 +118,10 @@ export default function ClientDashboard() {
             icon={Clock}
           />
           <StatCard
-            title="Total Cost"
-            value={`$${(analytics?.total_cost || 0).toFixed(2)}`}
-            subtitle="This month"
-            icon={DollarSign}
+            title="Avg Duration"
+            value={formatDuration(analytics?.avg_duration || 0)}
+            subtitle="Per call"
+            icon={Users}
           />
         </div>
 
