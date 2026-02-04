@@ -71,7 +71,7 @@ serve(async (req) => {
       }
 
       case "upload": {
-        // Admin only - handle lead file upload
+        // Admin only - handle lead file upload with duplicate detection
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -91,6 +91,7 @@ serve(async (req) => {
         let importedCount = 0;
         let duplicateCount = 0;
         let invalidCount = 0;
+        let reviewQueueCount = 0;
 
         // Create upload record
         const { data: upload, error: uploadError } = await supabase
@@ -105,6 +106,26 @@ serve(async (req) => {
 
         if (uploadError) throw uploadError;
 
+        // Get all existing phones and their call history
+        const { data: existingLeads } = await supabase
+          .from("voip_leads")
+          .select("id, phone, status");
+        
+        const existingPhoneMap = new Map<string, { id: number; status: string }>();
+        if (existingLeads) {
+          for (const l of existingLeads) {
+            existingPhoneMap.set(l.phone, { id: l.id, status: l.status });
+          }
+        }
+
+        // Get phones that have been called
+        const { data: calledLeads } = await supabase
+          .from("voip_calls")
+          .select("lead_id")
+          .not("lead_id", "is", null);
+        
+        const calledLeadIds = new Set((calledLeads || []).map(c => c.lead_id));
+
         // Process leads
         for (const lead of leads) {
           const phone = normalizePhone(lead.phone || "");
@@ -112,6 +133,34 @@ serve(async (req) => {
           if (!phone || phone.length < 10) {
             invalidCount++;
             continue;
+          }
+
+          // Check if phone exists
+          const existing = existingPhoneMap.get(phone);
+          
+          if (existing) {
+            // Check if this lead has been called
+            const hasCallHistory = calledLeadIds.has(existing.id);
+            
+            if (hasCallHistory) {
+              // Add to review queue
+              await supabase.from("voip_duplicate_leads").insert({
+                upload_id: upload.id,
+                phone: phone,
+                name: lead.name || null,
+                email: lead.email?.toLowerCase() || null,
+                website: lead.website || null,
+                existing_lead_id: existing.id,
+                reason: "has_call_history",
+              });
+              reviewQueueCount++;
+              duplicateCount++;
+              continue;
+            } else {
+              // Phone exists but no calls - just skip as regular duplicate
+              duplicateCount++;
+              continue;
+            }
           }
 
           try {
@@ -128,7 +177,6 @@ serve(async (req) => {
 
             if (insertError) {
               if (insertError.code === "23505") {
-                // Duplicate key violation
                 duplicateCount++;
               } else {
                 console.error("Lead insert error:", insertError);
@@ -159,7 +207,7 @@ serve(async (req) => {
           action: "lead_upload",
           entity_type: "leads",
           entity_id: upload.id,
-          details: { filename, importedCount, duplicateCount, invalidCount },
+          details: { filename, importedCount, duplicateCount, invalidCount, reviewQueueCount },
         });
 
         return new Response(
@@ -167,6 +215,7 @@ serve(async (req) => {
             imported_count: importedCount,
             duplicate_count: duplicateCount,
             invalid_count: invalidCount,
+            review_queue_count: reviewQueueCount,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -241,7 +290,7 @@ serve(async (req) => {
 
       case "complete": {
         // Complete a lead with outcome
-        const { leadId, outcome, notes, followupAt } = await req.json();
+        const { leadId, outcome, notes, followupAt, followupPriority, followupNotes } = await req.json();
 
         if (!leadId || !outcome) {
           return new Response(
@@ -304,7 +353,7 @@ serve(async (req) => {
           .update(updateData)
           .eq("id", leadId);
 
-        // Log the call
+        // Log the call with follow-up details
         await supabase.from("voip_calls").insert({
           user_id: userId,
           lead_id: leadId,
@@ -314,6 +363,8 @@ serve(async (req) => {
           outcome: outcome,
           notes: notes || null,
           followup_at: followupAt || null,
+          followup_priority: followupPriority || null,
+          followup_notes: followupNotes || null,
         });
 
         return new Response(
@@ -472,6 +523,350 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ calls: enrichedCalls }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "all-leads": {
+        // Admin only - get all leads with user info
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: leads, error } = await supabase
+          .from("voip_leads")
+          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to")
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        if (error) throw error;
+
+        // Get user names for assigned leads
+        const assignedUserIds = [...new Set((leads || []).map(l => l.assigned_to).filter(Boolean))];
+        let userMap = new Map<number, string>();
+        
+        if (assignedUserIds.length > 0) {
+          const { data: users } = await supabase
+            .from("voip_users")
+            .select("id, name, email")
+            .in("id", assignedUserIds);
+          
+          if (users) {
+            userMap = new Map(users.map(u => [u.id, u.name || u.email]));
+          }
+        }
+
+        const enrichedLeads = (leads || []).map(lead => ({
+          ...lead,
+          assigned_user_name: lead.assigned_to ? userMap.get(lead.assigned_to) : null,
+        }));
+
+        return new Response(
+          JSON.stringify({ leads: enrichedLeads }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "lead-calls": {
+        // Admin only - get call history for a specific lead
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const leadId = url.searchParams.get("leadId");
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "leadId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: calls, error } = await supabase
+          .from("voip_calls")
+          .select("id, start_time, duration_seconds, outcome, notes, user_id, followup_at, followup_priority, followup_notes")
+          .eq("lead_id", parseInt(leadId))
+          .order("start_time", { ascending: false });
+
+        if (error) throw error;
+
+        // Get caller names
+        const userIds = [...new Set((calls || []).map(c => c.user_id).filter(Boolean))];
+        let userMap = new Map<number, string>();
+        
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from("voip_users")
+            .select("id, name, email")
+            .in("id", userIds);
+          
+          if (users) {
+            userMap = new Map(users.map(u => [u.id, u.name || u.email]));
+          }
+        }
+
+        const enrichedCalls = (calls || []).map(call => ({
+          ...call,
+          caller_name: call.user_id ? userMap.get(call.user_id) || "Unknown" : "Unknown",
+        }));
+
+        return new Response(
+          JSON.stringify({ calls: enrichedCalls }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "followups": {
+        // Admin only - get all scheduled follow-ups
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: calls, error } = await supabase
+          .from("voip_calls")
+          .select("id, lead_id, user_id, followup_at, followup_priority, followup_notes")
+          .not("followup_at", "is", null)
+          .gte("followup_at", new Date().toISOString())
+          .order("followup_at", { ascending: true });
+
+        if (error) throw error;
+
+        if (!calls || calls.length === 0) {
+          return new Response(
+            JSON.stringify({ followups: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get lead info
+        const leadIds = [...new Set(calls.map(c => c.lead_id).filter(Boolean))];
+        const { data: leads } = await supabase
+          .from("voip_leads")
+          .select("id, name, phone")
+          .in("id", leadIds);
+        
+        const leadMap = new Map((leads || []).map(l => [l.id, { name: l.name, phone: l.phone }]));
+
+        // Get caller names
+        const userIds = [...new Set(calls.map(c => c.user_id).filter(Boolean))];
+        const { data: users } = await supabase
+          .from("voip_users")
+          .select("id, name, email")
+          .in("id", userIds);
+        
+        const userMap = new Map((users || []).map(u => [u.id, u.name || u.email]));
+
+        const followups = calls.map(call => ({
+          id: call.id,
+          lead_id: call.lead_id,
+          lead_name: leadMap.get(call.lead_id)?.name || "Unknown",
+          lead_phone: leadMap.get(call.lead_id)?.phone || "Unknown",
+          caller_name: userMap.get(call.user_id) || "Unknown",
+          followup_at: call.followup_at,
+          followup_priority: call.followup_priority,
+          followup_notes: call.followup_notes,
+        }));
+
+        return new Response(
+          JSON.stringify({ followups }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "duplicates": {
+        // Admin only - get pending duplicate leads for review
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: duplicates, error } = await supabase
+          .from("voip_duplicate_leads")
+          .select("id, upload_id, phone, name, email, website, existing_lead_id, reason, created_at")
+          .is("reviewed_at", null)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        if (!duplicates || duplicates.length === 0) {
+          return new Response(
+            JSON.stringify({ duplicates: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get upload filenames
+        const uploadIds = [...new Set(duplicates.map(d => d.upload_id))];
+        const { data: uploads } = await supabase
+          .from("voip_lead_uploads")
+          .select("id, filename")
+          .in("id", uploadIds);
+        
+        const uploadMap = new Map((uploads || []).map(u => [u.id, u.filename]));
+
+        // Get existing lead info
+        const existingLeadIds = duplicates.map(d => d.existing_lead_id).filter(Boolean) as number[];
+        const { data: existingLeads } = await supabase
+          .from("voip_leads")
+          .select("id, status")
+          .in("id", existingLeadIds);
+        
+        const existingLeadMap = new Map((existingLeads || []).map(l => [l.id, l.status]));
+
+        // Get call counts
+        const { data: callCounts } = await supabase
+          .from("voip_calls")
+          .select("lead_id")
+          .in("lead_id", existingLeadIds);
+        
+        const callCountMap = new Map<number, number>();
+        for (const c of callCounts || []) {
+          if (c.lead_id) {
+            callCountMap.set(c.lead_id, (callCountMap.get(c.lead_id) || 0) + 1);
+          }
+        }
+
+        const enrichedDuplicates = duplicates.map(dup => ({
+          ...dup,
+          upload_filename: uploadMap.get(dup.upload_id),
+          existing_lead_status: dup.existing_lead_id ? existingLeadMap.get(dup.existing_lead_id) : null,
+          existing_call_count: dup.existing_lead_id ? callCountMap.get(dup.existing_lead_id) || 0 : 0,
+        }));
+
+        return new Response(
+          JSON.stringify({ duplicates: enrichedDuplicates }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "review-duplicate": {
+        // Admin only - review a single duplicate
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { duplicateId, reviewAction } = await req.json();
+        
+        if (!duplicateId || !["add", "skip"].includes(reviewAction)) {
+          return new Response(
+            JSON.stringify({ error: "duplicateId and reviewAction (add/skip) are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get duplicate info
+        const { data: dup, error: dupError } = await supabase
+          .from("voip_duplicate_leads")
+          .select("*")
+          .eq("id", duplicateId)
+          .single();
+
+        if (dupError || !dup) {
+          return new Response(
+            JSON.stringify({ error: "Duplicate not found" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // If adding, create a new lead
+        if (reviewAction === "add") {
+          await supabase.from("voip_leads").insert({
+            phone: dup.phone,
+            name: dup.name,
+            email: dup.email,
+            website: dup.website,
+            status: "NEW",
+            upload_id: dup.upload_id,
+          });
+        }
+
+        // Mark as reviewed
+        await supabase
+          .from("voip_duplicate_leads")
+          .update({
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: userId,
+            review_action: reviewAction === "add" ? "added" : "skipped",
+          })
+          .eq("id", duplicateId);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "bulk-review-duplicates": {
+        // Admin only - bulk review duplicates
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { duplicateIds, reviewAction } = await req.json();
+        
+        if (!Array.isArray(duplicateIds) || duplicateIds.length === 0 || !["add", "skip"].includes(reviewAction)) {
+          return new Response(
+            JSON.stringify({ error: "duplicateIds array and reviewAction (add/skip) are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get all duplicates
+        const { data: dups } = await supabase
+          .from("voip_duplicate_leads")
+          .select("*")
+          .in("id", duplicateIds)
+          .is("reviewed_at", null);
+
+        let addedCount = 0;
+        if (reviewAction === "add" && dups) {
+          // Add all as new leads
+          const newLeads = dups.map(dup => ({
+            phone: dup.phone,
+            name: dup.name,
+            email: dup.email,
+            website: dup.website,
+            status: "NEW",
+            upload_id: dup.upload_id,
+          }));
+
+          if (newLeads.length > 0) {
+            const { data: inserted } = await supabase
+              .from("voip_leads")
+              .insert(newLeads)
+              .select("id");
+            addedCount = inserted?.length || 0;
+          }
+        }
+
+        // Mark all as reviewed
+        await supabase
+          .from("voip_duplicate_leads")
+          .update({
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: userId,
+            review_action: reviewAction === "add" ? "added" : "skipped",
+          })
+          .in("id", duplicateIds);
+
+        return new Response(
+          JSON.stringify({ success: true, count: reviewAction === "add" ? addedCount : duplicateIds.length }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

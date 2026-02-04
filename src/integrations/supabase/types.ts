@@ -246,6 +246,8 @@ export type Database = {
           duration_seconds: number | null
           end_time: string | null
           followup_at: string | null
+          followup_notes: string | null
+          followup_priority: string | null
           from_number: string
           id: number
           lead_id: number | null
@@ -263,6 +265,8 @@ export type Database = {
           duration_seconds?: number | null
           end_time?: string | null
           followup_at?: string | null
+          followup_notes?: string | null
+          followup_priority?: string | null
           from_number: string
           id?: number
           lead_id?: number | null
@@ -280,6 +284,8 @@ export type Database = {
           duration_seconds?: number | null
           end_time?: string | null
           followup_at?: string | null
+          followup_notes?: string | null
+          followup_priority?: string | null
           from_number?: string
           id?: number
           lead_id?: number | null
@@ -304,6 +310,73 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_duplicate_leads: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          existing_lead_id: number | null
+          id: number
+          name: string | null
+          phone: string
+          reason: string
+          review_action: string | null
+          reviewed_at: string | null
+          reviewed_by: number | null
+          upload_id: number | null
+          website: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          existing_lead_id?: number | null
+          id?: number
+          name?: string | null
+          phone: string
+          reason: string
+          review_action?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: number | null
+          upload_id?: number | null
+          website?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          existing_lead_id?: number | null
+          id?: number
+          name?: string | null
+          phone?: string
+          reason?: string
+          review_action?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: number | null
+          upload_id?: number | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_duplicate_leads_existing_lead_id_fkey"
+            columns: ["existing_lead_id"]
+            isOneToOne: false
+            referencedRelation: "voip_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_duplicate_leads_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_duplicate_leads_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "voip_lead_uploads"
             referencedColumns: ["id"]
           },
         ]
