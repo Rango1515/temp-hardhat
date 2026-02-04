@@ -6,9 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, FileText, Loader2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2, ChevronDown, Phone, Clock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface ParsedLead {
   name: string;
@@ -29,6 +41,16 @@ interface UploadHistory {
   created_at: string;
 }
 
+interface CallRecord {
+  id: number;
+  lead_name: string;
+  lead_phone: string;
+  caller: string;
+  start_time: string;
+  duration_seconds: number | null;
+  outcome: string | null;
+}
+
 export default function LeadUpload() {
   const { apiCall } = useVoipApi();
   const { toast } = useToast();
@@ -38,6 +60,12 @@ export default function LeadUpload() {
   const [isImporting, setIsImporting] = useState(false);
   const [uploadHistory, setUploadHistory] = useState<UploadHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [uploadToDelete, setUploadToDelete] = useState<UploadHistory | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [expandedUploads, setExpandedUploads] = useState<Set<number>>(new Set());
+  const [uploadCalls, setUploadCalls] = useState<Map<number, CallRecord[]>>(new Map());
+  const [loadingCalls, setLoadingCalls] = useState<Set<number>>(new Set());
 
   const fetchHistory = useCallback(async () => {
     const result = await apiCall<{ uploads: UploadHistory[] }>("voip-leads", {
@@ -50,6 +78,86 @@ export default function LeadUpload() {
   useEffect(() => {
     fetchHistory();
   }, [fetchHistory]);
+
+  const fetchUploadCalls = async (uploadId: number) => {
+    if (uploadCalls.has(uploadId)) return;
+    
+    setLoadingCalls(prev => new Set(prev).add(uploadId));
+    
+    const result = await apiCall<{ calls: CallRecord[] }>("voip-leads", {
+      params: { action: "upload-calls", uploadId: uploadId.toString() },
+    });
+    
+    if (result.data) {
+      setUploadCalls(prev => new Map(prev).set(uploadId, result.data!.calls));
+    }
+    
+    setLoadingCalls(prev => {
+      const next = new Set(prev);
+      next.delete(uploadId);
+      return next;
+    });
+  };
+
+  const toggleExpanded = (uploadId: number) => {
+    setExpandedUploads(prev => {
+      const next = new Set(prev);
+      if (next.has(uploadId)) {
+        next.delete(uploadId);
+      } else {
+        next.add(uploadId);
+        fetchUploadCalls(uploadId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteClick = (upload: UploadHistory) => {
+    setUploadToDelete(upload);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!uploadToDelete) return;
+    
+    setIsDeleting(true);
+    
+    const result = await apiCall<{ deleted: boolean; leadsRemoved: number }>("voip-leads", {
+      method: "POST",
+      params: { action: "delete-upload" },
+      body: { uploadId: uploadToDelete.id },
+    });
+
+    if (result.error) {
+      toast({
+        title: "Delete Failed",
+        description: result.error,
+        variant: "destructive",
+      });
+    } else if (result.data) {
+      toast({
+        title: "Upload Deleted",
+        description: `Removed upload and ${result.data.leadsRemoved} unused leads.`,
+      });
+      fetchHistory();
+    }
+    
+    setIsDeleting(false);
+    setDeleteDialogOpen(false);
+    setUploadToDelete(null);
+  };
+
+  const formatDuration = (seconds: number | null): string => {
+    if (seconds === null || seconds === undefined) return "—";
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const formatOutcome = (outcome: string | null): string => {
+    if (!outcome) return "—";
+    return outcome.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  };
 
   const parseCSVLine = (line: string): string[] => {
     const result: string[] = [];
@@ -81,13 +189,11 @@ export default function LeadUpload() {
       const ext = selectedFile.name.split(".").pop()?.toLowerCase();
       const isCSV = ext === "csv";
 
-      // Check if first line is a header
       const firstLine = lines[0]?.toLowerCase() || "";
       const hasHeader = firstLine.includes("name") || firstLine.includes("phone") || firstLine.includes("email");
       const dataLines = hasHeader ? lines.slice(1) : lines;
 
       const leads: ParsedLead[] = dataLines.map((line) => {
-        // Use comma for CSV, pipe for other formats
         const parts = isCSV ? parseCSVLine(line) : line.split("|").map((p) => p.trim());
         const [name, phone, email, website] = parts;
 
@@ -110,7 +216,6 @@ export default function LeadUpload() {
           valid: true,
         };
 
-        // Validate phone
         if (!cleanedPhone || cleanedPhone.length < 10) {
           lead.valid = false;
           lead.error = "Invalid phone number";
@@ -318,7 +423,7 @@ export default function LeadUpload() {
               <FileText className="w-5 h-5" />
               Upload History
             </CardTitle>
-            <CardDescription>Previous lead imports</CardDescription>
+            <CardDescription>Previous lead imports and call activity</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingHistory ? (
@@ -331,32 +436,137 @@ export default function LeadUpload() {
                 <p>No uploads yet</p>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>File</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Imported</TableHead>
-                    <TableHead className="text-right">Duplicates</TableHead>
-                    <TableHead className="text-right">Invalid</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {uploadHistory.map((upload) => (
-                    <TableRow key={upload.id}>
-                      <TableCell className="font-medium">{upload.filename}</TableCell>
-                      <TableCell>{format(new Date(upload.created_at), "MMM d, yyyy h:mm a")}</TableCell>
-                      <TableCell className="text-right text-green-600">{upload.imported_count}</TableCell>
-                      <TableCell className="text-right text-yellow-600">{upload.duplicate_count}</TableCell>
-                      <TableCell className="text-right text-destructive">{upload.invalid_count}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="space-y-2">
+                {uploadHistory.map((upload) => (
+                  <Collapsible
+                    key={upload.id}
+                    open={expandedUploads.has(upload.id)}
+                    onOpenChange={() => toggleExpanded(upload.id)}
+                  >
+                    <div className="border rounded-lg">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{upload.filename}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {format(new Date(upload.created_at), "MMM d, yyyy h:mm a")}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-3 text-sm">
+                              <span className="text-green-600">{upload.imported_count} imported</span>
+                              <span className="text-yellow-600">{upload.duplicate_count} dup</span>
+                              <span className="text-destructive">{upload.invalid_count} invalid</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteClick(upload);
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                            <ChevronDown className={cn("w-4 h-4 transition-transform", expandedUploads.has(upload.id) && "rotate-180")} />
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="border-t px-4 py-3 bg-muted/30">
+                          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                            <Phone className="w-4 h-4" />
+                            Call History
+                          </h4>
+                          {loadingCalls.has(upload.id) ? (
+                            <div className="flex items-center justify-center py-4">
+                              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : (uploadCalls.get(upload.id)?.length || 0) === 0 ? (
+                            <p className="text-sm text-muted-foreground py-2">No calls made to leads in this upload yet.</p>
+                          ) : (
+                            <div className="overflow-auto max-h-64">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Lead</TableHead>
+                                    <TableHead>Phone</TableHead>
+                                    <TableHead>Called By</TableHead>
+                                    <TableHead>Duration</TableHead>
+                                    <TableHead>Outcome</TableHead>
+                                    <TableHead>Date</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {uploadCalls.get(upload.id)?.map((call) => (
+                                    <TableRow key={call.id}>
+                                      <TableCell className="font-medium">{call.lead_name || "—"}</TableCell>
+                                      <TableCell className="font-mono text-sm">{call.lead_phone}</TableCell>
+                                      <TableCell>
+                                        <span className="flex items-center gap-1">
+                                          <User className="w-3 h-3" />
+                                          {call.caller}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell>
+                                        <span className="flex items-center gap-1">
+                                          <Clock className="w-3 h-3" />
+                                          {formatDuration(call.duration_seconds)}
+                                        </span>
+                                      </TableCell>
+                                      <TableCell>{formatOutcome(call.outcome)}</TableCell>
+                                      <TableCell className="text-muted-foreground">
+                                        {call.start_time ? format(new Date(call.start_time), "MMM d, h:mm a") : "—"}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </div>
+                  </Collapsible>
+                ))}
+              </div>
             )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Upload?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the upload record for "{uploadToDelete?.filename}" and remove any leads that haven't been called yet. Leads that have already been called will be preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </VoipLayout>
   );
 }

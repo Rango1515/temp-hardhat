@@ -11,10 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete, StickyNote, ChevronDown, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+
+const SCRATCH_PAD_KEY = "voip_dialer_scratchpad";
 
 interface Lead {
   id: number;
@@ -50,6 +53,29 @@ export default function Dialer() {
   const [notes, setNotes] = useState("");
   const [followupDate, setFollowupDate] = useState<Date | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [scratchPadNotes, setScratchPadNotes] = useState("");
+  const [scratchPadOpen, setScratchPadOpen] = useState(true);
+
+  // Load scratch pad notes from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(SCRATCH_PAD_KEY);
+    if (saved) {
+      setScratchPadNotes(saved);
+    }
+  }, []);
+
+  // Auto-save scratch pad notes to localStorage (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      localStorage.setItem(SCRATCH_PAD_KEY, scratchPadNotes);
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [scratchPadNotes]);
+
+  const clearScratchPad = () => {
+    setScratchPadNotes("");
+    localStorage.removeItem(SCRATCH_PAD_KEY);
+  };
 
   // Fetch current assigned lead on mount
   useEffect(() => {
@@ -489,6 +515,52 @@ export default function Dialer() {
             </CardContent>
           </Card>
         )}
+
+        {/* Scratch Pad */}
+        <Collapsible open={scratchPadOpen} onOpenChange={setScratchPadOpen}>
+          <Card>
+            <CardHeader className="py-3">
+              <CollapsibleTrigger asChild>
+                <div className="flex items-center justify-between cursor-pointer">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <StickyNote className="w-4 h-4" />
+                    Scratch Pad
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearScratchPad();
+                      }}
+                      disabled={!scratchPadNotes}
+                      className="h-7 px-2"
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" />
+                      Clear
+                    </Button>
+                    <ChevronDown className={cn("w-4 h-4 transition-transform", scratchPadOpen && "rotate-180")} />
+                  </div>
+                </div>
+              </CollapsibleTrigger>
+            </CardHeader>
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                <Textarea
+                  placeholder="Quick notes for your calls... (auto-saved locally)"
+                  value={scratchPadNotes}
+                  onChange={(e) => setScratchPadNotes(e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Notes are saved locally and won't be submitted with call outcomes.
+                </p>
+              </CardContent>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         {/* Help Text */}
         <p className="text-center text-sm text-muted-foreground">
