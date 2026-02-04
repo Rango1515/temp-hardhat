@@ -17,8 +17,7 @@ interface User {
   email: string;
   role: string;
   status: string;
-  signup_date: string;
-  last_login: string | null;
+  created_at: string;
 }
 
 interface Pagination {
@@ -180,7 +179,7 @@ export default function AdminUsers() {
                         <TableHead>Role</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Signup Date</TableHead>
-                        <TableHead>Last Login</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -192,12 +191,9 @@ export default function AdminUsers() {
                           <TableCell>{getRoleBadge(user.role)}</TableCell>
                           <TableCell>{getStatusBadge(user.status)}</TableCell>
                           <TableCell className="text-muted-foreground">
-                            {format(new Date(user.signup_date), "MMM d, yyyy")}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {user.last_login
-                              ? format(new Date(user.last_login), "MMM d, h:mm a")
-                              : "Never"}
+                            {user.created_at
+                              ? format(new Date(user.created_at), "MMM d, yyyy")
+                              : "N/A"}
                           </TableCell>
                           <TableCell className="text-right">
                             <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
