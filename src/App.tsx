@@ -19,7 +19,6 @@ import Dialer from "./pages/voip/Dialer";
 import CallHistory from "./pages/voip/CallHistory";
 import MyNumbers from "./pages/voip/MyNumbers";
 import RequestNumber from "./pages/voip/RequestNumber";
-import ApiKeys from "./pages/voip/ApiKeys";
 import Settings from "./pages/voip/Settings";
 import AdminDashboard from "./pages/voip/admin/AdminDashboard";
 import AdminUsers from "./pages/voip/admin/Users";
@@ -27,6 +26,9 @@ import AdminNumbers from "./pages/voip/admin/Numbers";
 import AdminAnalytics from "./pages/voip/admin/Analytics";
 import AdminRequests from "./pages/voip/admin/Requests";
 import AdminInviteTokens from "./pages/voip/admin/InviteTokens";
+import AdminApiKeys from "./pages/voip/admin/AdminApiKeys";
+import LeadUpload from "./pages/voip/admin/LeadUpload";
+import TwilioSettings from "./pages/voip/admin/TwilioSettings";
 
 const queryClient = new QueryClient();
 
@@ -51,16 +53,18 @@ const App = () => (
             <Route path="/voip/calls" element={<ProtectedRoute><CallHistory /></ProtectedRoute>} />
             <Route path="/voip/numbers" element={<ProtectedRoute><MyNumbers /></ProtectedRoute>} />
             <Route path="/voip/request-number" element={<ProtectedRoute><RequestNumber /></ProtectedRoute>} />
-            <Route path="/voip/api-keys" element={<ProtectedRoute><ApiKeys /></ProtectedRoute>} />
             <Route path="/voip/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
 
             {/* VoIP Admin Routes */}
             <Route path="/voip/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
             <Route path="/voip/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
             <Route path="/voip/admin/numbers" element={<AdminRoute><AdminNumbers /></AdminRoute>} />
+            <Route path="/voip/admin/leads" element={<AdminRoute><LeadUpload /></AdminRoute>} />
             <Route path="/voip/admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
             <Route path="/voip/admin/requests" element={<AdminRoute><AdminRequests /></AdminRoute>} />
             <Route path="/voip/admin/invite-tokens" element={<AdminRoute><AdminInviteTokens /></AdminRoute>} />
+            <Route path="/voip/admin/api-keys" element={<AdminRoute><AdminApiKeys /></AdminRoute>} />
+            <Route path="/voip/admin/twilio" element={<AdminRoute><TwilioSettings /></AdminRoute>} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />

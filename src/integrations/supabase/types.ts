@@ -157,6 +157,44 @@ export type Database = {
         }
         Relationships: []
       }
+      voip_admin_audit_log: {
+        Row: {
+          action: string
+          admin_id: number
+          created_at: string | null
+          details: Json | null
+          entity_id: number | null
+          entity_type: string | null
+          id: number
+        }
+        Insert: {
+          action: string
+          admin_id: number
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: number | null
+          entity_type?: string | null
+          id?: number
+        }
+        Update: {
+          action?: string
+          admin_id?: number
+          created_at?: string | null
+          details?: Json | null
+          entity_id?: number | null
+          entity_type?: string | null
+          id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_admin_audit_log_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_api_keys: {
         Row: {
           created_at: string | null
@@ -207,8 +245,12 @@ export type Database = {
           direction: string
           duration_seconds: number | null
           end_time: string | null
+          followup_at: string | null
           from_number: string
           id: number
+          lead_id: number | null
+          notes: string | null
+          outcome: string | null
           recording_url: string | null
           start_time: string | null
           status: string
@@ -220,8 +262,12 @@ export type Database = {
           direction?: string
           duration_seconds?: number | null
           end_time?: string | null
+          followup_at?: string | null
           from_number: string
           id?: number
+          lead_id?: number | null
+          notes?: string | null
+          outcome?: string | null
           recording_url?: string | null
           start_time?: string | null
           status?: string
@@ -233,8 +279,12 @@ export type Database = {
           direction?: string
           duration_seconds?: number | null
           end_time?: string | null
+          followup_at?: string | null
           from_number?: string
           id?: number
+          lead_id?: number | null
+          notes?: string | null
+          outcome?: string | null
           recording_url?: string | null
           start_time?: string | null
           status?: string
@@ -243,8 +293,119 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "voip_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "voip_leads"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "voip_calls_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_lead_uploads: {
+        Row: {
+          admin_id: number
+          created_at: string | null
+          duplicate_count: number | null
+          filename: string
+          id: number
+          imported_count: number | null
+          invalid_count: number | null
+          total_lines: number | null
+        }
+        Insert: {
+          admin_id: number
+          created_at?: string | null
+          duplicate_count?: number | null
+          filename: string
+          id?: number
+          imported_count?: number | null
+          invalid_count?: number | null
+          total_lines?: number | null
+        }
+        Update: {
+          admin_id?: number
+          created_at?: string | null
+          duplicate_count?: number | null
+          filename?: string
+          id?: number
+          imported_count?: number | null
+          invalid_count?: number | null
+          total_lines?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_lead_uploads_admin_id_fkey"
+            columns: ["admin_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_leads: {
+        Row: {
+          assigned_at: string | null
+          assigned_to: number | null
+          attempt_count: number | null
+          created_at: string | null
+          email: string | null
+          id: number
+          locked_until: string | null
+          name: string | null
+          phone: string
+          status: string
+          updated_at: string | null
+          upload_id: number | null
+          website: string | null
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_to?: number | null
+          attempt_count?: number | null
+          created_at?: string | null
+          email?: string | null
+          id?: number
+          locked_until?: string | null
+          name?: string | null
+          phone: string
+          status?: string
+          updated_at?: string | null
+          upload_id?: number | null
+          website?: string | null
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_to?: number | null
+          attempt_count?: number | null
+          created_at?: string | null
+          email?: string | null
+          id?: number
+          locked_until?: string | null
+          name?: string | null
+          phone?: string
+          status?: string
+          updated_at?: string | null
+          upload_id?: number | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_voip_leads_upload"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "voip_lead_uploads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_leads_assigned_to_fkey"
+            columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "voip_users"
             referencedColumns: ["id"]
@@ -426,6 +587,44 @@ export type Database = {
           },
         ]
       }
+      voip_twilio_config: {
+        Row: {
+          account_sid: string | null
+          auth_token: string | null
+          id: number
+          is_active: boolean | null
+          outbound_number: string | null
+          updated_at: string | null
+          updated_by: number | null
+        }
+        Insert: {
+          account_sid?: string | null
+          auth_token?: string | null
+          id?: number
+          is_active?: boolean | null
+          outbound_number?: string | null
+          updated_at?: string | null
+          updated_by?: number | null
+        }
+        Update: {
+          account_sid?: string | null
+          auth_token?: string | null
+          id?: number
+          is_active?: boolean | null
+          outbound_number?: string | null
+          updated_at?: string | null
+          updated_by?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_twilio_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_users: {
         Row: {
           created_at: string | null
@@ -458,6 +657,42 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      voip_worker_lead_history: {
+        Row: {
+          created_at: string | null
+          id: number
+          lead_id: number
+          worker_id: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          lead_id: number
+          worker_id: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          lead_id?: number
+          worker_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_worker_lead_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "voip_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_worker_lead_history_worker_id_fkey"
+            columns: ["worker_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       websites: {
         Row: {
@@ -506,6 +741,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_next_lead: {
+        Args: { p_worker_id: number }
+        Returns: {
+          email: string
+          lead_id: number
+          name: string
+          phone: string
+          website: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

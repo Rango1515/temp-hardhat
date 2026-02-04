@@ -13,6 +13,7 @@ import {
   FileText,
   PhoneCall,
   Ticket,
+  Upload,
 } from "lucide-react";
 
 const clientNavItems = [
@@ -20,7 +21,6 @@ const clientNavItems = [
   { href: "/voip/dialer", label: "Dialer", icon: Phone },
   { href: "/voip/calls", label: "Call History", icon: History },
   { href: "/voip/numbers", label: "My Numbers", icon: Hash },
-  { href: "/voip/api-keys", label: "API Keys", icon: Key },
   { href: "/voip/settings", label: "Settings", icon: Settings },
 ];
 
@@ -28,9 +28,12 @@ const adminNavItems = [
   { href: "/voip/admin", label: "Admin Dashboard", icon: LayoutDashboard },
   { href: "/voip/admin/users", label: "Users", icon: Users },
   { href: "/voip/admin/numbers", label: "Numbers", icon: PhoneCall },
+  { href: "/voip/admin/leads", label: "Lead Upload", icon: Upload },
   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/voip/admin/requests", label: "Requests", icon: FileText },
   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
+  { href: "/voip/admin/api-keys", label: "API Keys", icon: Key },
+  { href: "/voip/admin/twilio", label: "Twilio Settings", icon: Phone },
 ];
 
 export function VoipSidebar() {
@@ -46,7 +49,7 @@ export function VoipSidebar() {
           <div className="bg-primary p-2 rounded-lg">
             <Phone className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-display text-lg text-foreground">Client Portal</span>
+          <span className="font-display text-lg text-foreground">HardhatHosting</span>
         </Link>
       </div>
 

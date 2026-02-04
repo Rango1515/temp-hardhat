@@ -13,16 +13,15 @@ import { format } from "date-fns";
 
 interface ApiKey {
   id: number;
-  key_name: string;
-  api_key: string;
-  creation_date: string;
-  expiration_date: string | null;
-  status: string;
-  last_used: string | null;
-  usage_count: number;
+  name: string;
+  key_prefix: string;
+  permissions: string[];
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
 }
 
-export default function ApiKeys() {
+export default function AdminApiKeys() {
   const { apiCall } = useVoipApi();
   const { toast } = useToast();
   const [keys, setKeys] = useState<ApiKey[]>([]);
@@ -56,7 +55,6 @@ export default function ApiKeys() {
     }
 
     setIsCreating(true);
-
     const expirationDays = newKeyExpiry === "never" ? null : parseInt(newKeyExpiry);
 
     const result = await apiCall<{ id: number; api_key: string }>("voip-api-keys", {
@@ -114,20 +112,6 @@ export default function ApiKeys() {
     setCreateDialogOpen(false);
   };
 
-  const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      active: "bg-primary/10 text-primary",
-      revoked: "bg-destructive/10 text-destructive",
-      expired: "bg-muted text-muted-foreground",
-    };
-
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${styles[status] || "bg-muted text-muted-foreground"}`}>
-        {status}
-      </span>
-    );
-  };
-
   if (isLoading) {
     return (
       <VoipLayout>
@@ -144,7 +128,7 @@ export default function ApiKeys() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">API Keys</h1>
-            <p className="text-muted-foreground">Manage your API access keys</p>
+            <p className="text-muted-foreground">Manage API access keys (Admin Only)</p>
           </div>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -246,9 +230,9 @@ export default function ApiKeys() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Your API Keys</CardTitle>
+            <CardTitle>API Keys</CardTitle>
             <CardDescription>
-              Use these keys to authenticate API requests. Maximum 5 active keys.
+              System API keys for programmatic access. Maximum 5 active keys.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -272,29 +256,24 @@ export default function ApiKeys() {
                         <Key className="w-5 h-5 text-primary" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{key.key_name}</p>
-                          {getStatusBadge(key.status)}
-                        </div>
-                        <p className="font-mono text-sm text-muted-foreground">{key.api_key}</p>
+                        <p className="font-medium">{key.name}</p>
+                        <p className="font-mono text-sm text-muted-foreground">{key.key_prefix}...</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Created {format(new Date(key.creation_date), "MMM d, yyyy")}
-                          {key.expiration_date && ` · Expires ${format(new Date(key.expiration_date), "MMM d, yyyy")}`}
-                          {key.last_used && ` · Last used ${format(new Date(key.last_used), "MMM d")}`}
+                          Created {format(new Date(key.created_at), "MMM d, yyyy")}
+                          {key.expires_at && ` · Expires ${format(new Date(key.expires_at), "MMM d, yyyy")}`}
+                          {key.last_used_at && ` · Last used ${format(new Date(key.last_used_at), "MMM d")}`}
                         </p>
                       </div>
                     </div>
-                    {key.status === "active" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleRevoke(key.id)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Revoke
-                      </Button>
-                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleRevoke(key.id)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Revoke
+                    </Button>
                   </div>
                 ))}
               </div>
