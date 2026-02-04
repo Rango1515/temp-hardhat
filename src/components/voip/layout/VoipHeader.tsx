@@ -51,7 +51,7 @@ export function VoipHeader({ onMenuToggle, isMenuOpen }: VoipHeaderProps) {
         <div className="bg-primary p-1.5 rounded-lg">
           <Phone className="w-4 h-4 text-primary-foreground" />
         </div>
-        <span className="font-display text-base text-foreground">VoIP</span>
+        <span className="font-display text-base text-foreground">Client Portal</span>
       </Link>
 
       <div className="flex-1" />
