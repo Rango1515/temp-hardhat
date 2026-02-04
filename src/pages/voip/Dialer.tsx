@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete, StickyNote, ChevronDown, Trash2 } from "lucide-react";
+import { Phone, User, Mail, Globe, Loader2, PhoneCall, PhoneOff, CalendarIcon, RefreshCw, Delete, StickyNote, ChevronDown, Trash2, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -282,17 +282,32 @@ export default function Dialer() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                       <User className="w-5 h-5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-xs text-muted-foreground">Name</p>
-                        <p className="font-medium truncate">{currentLead.name}</p>
+                        <p className="font-medium truncate">{currentLead.name || "None"}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                       <Phone className="w-5 h-5 text-muted-foreground shrink-0" />
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="text-xs text-muted-foreground">Phone</p>
                         <p className="font-medium font-mono truncate">{formatPhoneDisplay(currentLead.phone)}</p>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setPhoneNumber(currentLead.phone);
+                          toast({
+                            title: "Copied to Dialer",
+                            description: "Phone number loaded into dialer",
+                          });
+                        }}
+                        className="shrink-0"
+                      >
+                        <Copy className="w-4 h-4 mr-1" />
+                        Use
+                      </Button>
                     </div>
                     <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
                       <Mail className="w-5 h-5 text-muted-foreground shrink-0" />

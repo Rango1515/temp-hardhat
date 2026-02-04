@@ -28,7 +28,6 @@ const adminNavItems = [
   { href: "/voip/admin/numbers", label: "Numbers", icon: PhoneCall },
   { href: "/voip/admin/leads", label: "Lead Upload", icon: Upload },
   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/voip/admin/requests", label: "Requests", icon: FileText },
   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
   { href: "/voip/admin/api-keys", label: "API Keys", icon: Key },
   { href: "/voip/admin/twilio", label: "Twilio Settings", icon: Phone },
