@@ -52,7 +52,7 @@
  
    const fetchLogs = async (page: number) => {
      setLoading(true);
-     const result = await apiCall<{ logs: AuditLogEntry[]; pagination: Pagination }>("voip-admin", {
+     const result = await apiCall<{ logs: AuditLogEntry[]; pagination: Pagination }>("voip-admin-ext", {
        params: { action: "audit-log", page: page.toString() },
      });
      if (result.data) {

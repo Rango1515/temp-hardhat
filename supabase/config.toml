@@ -3,8 +3,11 @@
  [functions.voip-auth]
  verify_jwt = false
  
- [functions.voip-admin]
- verify_jwt = false
+[functions.voip-admin]
+verify_jwt = false
+
+[functions.voip-admin-ext]
+verify_jwt = false
  
  [functions.voip-analytics]
  verify_jwt = false

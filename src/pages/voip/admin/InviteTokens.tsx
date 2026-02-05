@@ -57,7 +57,7 @@ export default function InviteTokens() {
 
   const fetchTokens = async () => {
     setIsLoading(true);
-    const { data, error } = await apiCall<{ tokens: InviteToken[] }>("voip-admin", {
+    const { data, error } = await apiCall<{ tokens: InviteToken[] }>("voip-admin-ext", {
       params: { action: "invite-tokens" },
     });
 
@@ -76,7 +76,7 @@ export default function InviteTokens() {
   const handleCreate = async () => {
     setIsCreating(true);
 
-    const { data, error } = await apiCall<{ id: number; token: string }>("voip-admin", {
+    const { data, error } = await apiCall<{ id: number; token: string }>("voip-admin-ext", {
       method: "POST",
       params: { action: "invite-tokens" },
       body: {
@@ -113,7 +113,7 @@ export default function InviteTokens() {
     // Show loading state
     toast.loading("Deleting token...", { id: `delete-${id}` });
     
-    const { error } = await apiCall("voip-admin", {
+    const { error } = await apiCall("voip-admin-ext", {
       method: "DELETE",
       params: { action: "invite-tokens", id: id.toString() },
     });
