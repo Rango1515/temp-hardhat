@@ -533,7 +533,14 @@ export default function Dialer() {
               <CardDescription>Record the result of this call</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <RadioGroup value={selectedOutcome} onValueChange={setSelectedOutcome}>
+              <RadioGroup value={selectedOutcome} onValueChange={(value) => {
+                setSelectedOutcome(value);
+                // Open appointment modal immediately when "Interested" is selected
+                if (value === "interested" && currentLead) {
+                  setAppointmentOutcome("interested");
+                  setShowAppointmentModal(true);
+                }
+              }}>
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {OUTCOMES.map((outcome) => (
                     <div key={outcome.value} className="flex items-center space-x-2">
@@ -654,7 +661,7 @@ export default function Dialer() {
 
         {/* Scratch Pad */}
         <Collapsible open={scratchPadOpen} onOpenChange={setScratchPadOpen}>
-          <Card>
+          <Card className="mt-6">
             <CardHeader className="py-3">
               <CollapsibleTrigger asChild>
                 <div className="flex items-center justify-between cursor-pointer">
@@ -697,12 +704,6 @@ export default function Dialer() {
             </CollapsibleContent>
           </Card>
         </Collapsible>
-
-        {/* Help Text */}
-        <p className="text-center text-sm text-muted-foreground">
-          <Phone className="w-4 h-4 inline-block mr-1" />
-          Demo mode: Calls are simulated. Configure Twilio for real calls.
-        </p>
       </div>
 
       {/* Appointment Modal */}
