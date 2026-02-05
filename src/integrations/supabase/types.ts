@@ -157,6 +157,48 @@ export type Database = {
         }
         Relationships: []
       }
+      voip_activity_events: {
+        Row: {
+          created_at: string | null
+          event_type: string
+          id: number
+          lead_id: number | null
+          metadata: Json | null
+          user_id: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          event_type: string
+          id?: number
+          lead_id?: number | null
+          metadata?: Json | null
+          user_id?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          event_type?: string
+          id?: number
+          lead_id?: number | null
+          metadata?: Json | null
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_activity_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "voip_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_activity_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_admin_audit_log: {
         Row: {
           action: string
@@ -301,6 +343,7 @@ export type Database = {
       }
       voip_calls: {
         Row: {
+          appointment_created: boolean | null
           cost: number | null
           direction: string
           duration_seconds: number | null
@@ -314,12 +357,14 @@ export type Database = {
           notes: string | null
           outcome: string | null
           recording_url: string | null
+          session_duration_seconds: number | null
           start_time: string | null
           status: string
           to_number: string
           user_id: number | null
         }
         Insert: {
+          appointment_created?: boolean | null
           cost?: number | null
           direction?: string
           duration_seconds?: number | null
@@ -333,12 +378,14 @@ export type Database = {
           notes?: string | null
           outcome?: string | null
           recording_url?: string | null
+          session_duration_seconds?: number | null
           start_time?: string | null
           status?: string
           to_number: string
           user_id?: number | null
         }
         Update: {
+          appointment_created?: boolean | null
           cost?: number | null
           direction?: string
           duration_seconds?: number | null
@@ -352,6 +399,7 @@ export type Database = {
           notes?: string | null
           outcome?: string | null
           recording_url?: string | null
+          session_duration_seconds?: number | null
           start_time?: string | null
           status?: string
           to_number?: string
@@ -758,35 +806,88 @@ export type Database = {
           },
         ]
       }
+      voip_user_sessions: {
+        Row: {
+          id: number
+          is_idle: boolean | null
+          last_heartbeat: string | null
+          session_end: string | null
+          session_start: string
+          total_active_seconds: number | null
+          user_id: number | null
+        }
+        Insert: {
+          id?: number
+          is_idle?: boolean | null
+          last_heartbeat?: string | null
+          session_end?: string | null
+          session_start?: string
+          total_active_seconds?: number | null
+          user_id?: number | null
+        }
+        Update: {
+          id?: number
+          is_idle?: boolean | null
+          last_heartbeat?: string | null
+          session_end?: string | null
+          session_start?: string
+          total_active_seconds?: number | null
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_user_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_users: {
         Row: {
+          consent_accepted_at: string | null
           created_at: string | null
           email: string
+          force_password_change: boolean | null
           id: number
           name: string
           password_hash: string
+          privacy_accepted: boolean | null
           role: Database["public"]["Enums"]["voip_role"]
           status: string
+          suspension_reason: string | null
+          tos_accepted: boolean | null
           updated_at: string | null
         }
         Insert: {
+          consent_accepted_at?: string | null
           created_at?: string | null
           email: string
+          force_password_change?: boolean | null
           id?: number
           name: string
           password_hash: string
+          privacy_accepted?: boolean | null
           role?: Database["public"]["Enums"]["voip_role"]
           status?: string
+          suspension_reason?: string | null
+          tos_accepted?: boolean | null
           updated_at?: string | null
         }
         Update: {
+          consent_accepted_at?: string | null
           created_at?: string | null
           email?: string
+          force_password_change?: boolean | null
           id?: number
           name?: string
           password_hash?: string
+          privacy_accepted?: boolean | null
           role?: Database["public"]["Enums"]["voip_role"]
           status?: string
+          suspension_reason?: string | null
+          tos_accepted?: boolean | null
           updated_at?: string | null
         }
         Relationships: []
