@@ -42,6 +42,32 @@
  
      // GET actions
      if (req.method === "GET") {
+       // Get ticket count for badges
+       if (action === "ticket-count") {
+         if (user.role === "admin") {
+           // Admin sees total open tickets
+           const { count } = await supabase
+             .from("voip_support_tickets")
+             .select("*", { count: "exact", head: true })
+             .in("status", ["open", "in_progress"]);
+ 
+           return new Response(JSON.stringify({ count: count || 0 }), {
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         } else {
+           // User sees their open tickets with new replies
+           const { count } = await supabase
+             .from("voip_support_tickets")
+             .select("*", { count: "exact", head: true })
+             .eq("user_id", user.id)
+             .eq("has_new_reply", true);
+ 
+           return new Response(JSON.stringify({ count: count || 0 }), {
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+       }
+ 
        // Get user's tickets
        if (action === "my-tickets") {
          const { data: tickets } = await supabase
@@ -51,7 +77,7 @@
              assigned_user:voip_users!voip_support_tickets_assigned_to_fkey(name, email)
            `)
            .eq("user_id", user.id)
-           .order("created_at", { ascending: false });
+           .order("updated_at", { ascending: false });
  
          return new Response(JSON.stringify({ tickets: tickets || [] }), {
            headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -74,7 +100,7 @@
              user:voip_users!voip_support_tickets_user_id_fkey(name, email),
              assigned_user:voip_users!voip_support_tickets_assigned_to_fkey(name, email)
            `)
-           .order("created_at", { ascending: false });
+           .order("updated_at", { ascending: false });
  
          return new Response(JSON.stringify({ tickets: tickets || [] }), {
            headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -112,6 +138,14 @@
            });
          }
  
+         // Clear "new reply" flag when user views their ticket
+         if (ticket.user_id === user.id && ticket.has_new_reply) {
+           await supabase
+             .from("voip_support_tickets")
+             .update({ has_new_reply: false })
+             .eq("id", ticketId);
+         }
+ 
          const { data: messages } = await supabase
            .from("voip_support_ticket_messages")
            .select(`
@@ -121,7 +155,7 @@
            .eq("ticket_id", ticketId)
            .order("created_at", { ascending: true });
  
-         return new Response(JSON.stringify({ ticket, messages: messages || [] }), {
+         return new Response(JSON.stringify({ ticket: { ...ticket, has_new_reply: false }, messages: messages || [] }), {
            headers: { ...corsHeaders, "Content-Type": "application/json" },
          });
        }
@@ -133,7 +167,7 @@
  
        // Create ticket
        if (action === "create-ticket") {
-         const { subject, content, priority, attachmentUrl } = body;
+         const { subject, content, category, priority, attachmentUrl } = body;
  
          if (!subject?.trim() || !content?.trim()) {
            return new Response(JSON.stringify({ error: "Subject and message required" }), {
@@ -147,6 +181,7 @@
            .insert({
              user_id: user.id,
              subject: subject.trim(),
+             category: category || "other",
              priority: priority || "medium",
            })
            .select()
@@ -161,6 +196,15 @@
            content: content.trim(),
            attachment_url: attachmentUrl || null,
            is_admin_reply: false,
+         });
+ 
+         // Log to audit
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: user.id,
+           action: "create_ticket",
+           entity_type: "ticket",
+           entity_id: ticket.id,
+           details: { subject: ticket.subject, category: ticket.category },
          });
  
          return new Response(JSON.stringify({ ticket }), {
@@ -200,18 +244,27 @@
            });
          }
  
+         const isAdminReply = user.role === "admin";
+ 
          await supabase.from("voip_support_ticket_messages").insert({
            ticket_id: ticketId,
            user_id: user.id,
            content: content.trim(),
            attachment_url: attachmentUrl || null,
-           is_admin_reply: user.role === "admin",
+           is_admin_reply: isAdminReply,
          });
  
-         // Update ticket timestamp
+         // Update ticket timestamp and set has_new_reply if admin replied
+         const ticketUpdates: Record<string, unknown> = {
+           updated_at: new Date().toISOString(),
+         };
+         if (isAdminReply) {
+           ticketUpdates.has_new_reply = true;
+         }
+ 
          await supabase
            .from("voip_support_tickets")
-           .update({ updated_at: new Date().toISOString() })
+           .update(ticketUpdates)
            .eq("id", ticketId);
  
          return new Response(JSON.stringify({ success: true }), {
@@ -219,13 +272,21 @@
          });
        }
  
-       // Update ticket status (admin only or own ticket)
+       // Update ticket status (admin only)
        if (action === "update-ticket") {
          const { ticketId, status, priority, assignedTo } = body;
  
          if (!ticketId) {
            return new Response(JSON.stringify({ error: "Ticket ID required" }), {
              status: 400,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         // Only admins can update ticket status
+         if (user.role !== "admin") {
+           return new Response(JSON.stringify({ error: "Admin only" }), {
+             status: 403,
              headers: { ...corsHeaders, "Content-Type": "application/json" },
            });
          }
@@ -243,26 +304,27 @@
            });
          }
  
-         // Only admins can change status/priority/assignment
-         if (user.role !== "admin" && ticket.user_id !== user.id) {
-           return new Response(JSON.stringify({ error: "Unauthorized" }), {
-             status: 403,
-             headers: { ...corsHeaders, "Content-Type": "application/json" },
-           });
-         }
- 
          const updates: Record<string, unknown> = {
            updated_at: new Date().toISOString(),
          };
  
          if (status) updates.status = status;
-         if (priority && user.role === "admin") updates.priority = priority;
-         if (assignedTo !== undefined && user.role === "admin") updates.assigned_to = assignedTo;
+         if (priority) updates.priority = priority;
+         if (assignedTo !== undefined) updates.assigned_to = assignedTo;
          if (status === "closed" || status === "resolved") {
            updates.closed_at = new Date().toISOString();
          }
  
          await supabase.from("voip_support_tickets").update(updates).eq("id", ticketId);
+ 
+         // Log to audit
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: user.id,
+           action: "update_ticket",
+           entity_type: "ticket",
+           entity_id: ticketId,
+           details: { status, priority, previous_status: ticket.status },
+         });
  
          return new Response(JSON.stringify({ success: true }), {
            headers: { ...corsHeaders, "Content-Type": "application/json" },
