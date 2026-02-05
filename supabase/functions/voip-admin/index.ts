@@ -3,6 +3,12 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
 
+// Sanitize search input to prevent SQL wildcard injection
+function sanitizeSearchPattern(input: string): string {
+  // Escape SQL wildcards % and _
+  return input.replace(/[%_\\]/g, '\\$&');
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -43,7 +49,8 @@ serve(async (req) => {
             .select("id, name, email, role, status, created_at", { count: "exact" });
 
           if (search) {
-            query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+            const sanitized = sanitizeSearchPattern(search);
+            query = query.or(`name.ilike.%${sanitized}%,email.ilike.%${sanitized}%`);
           }
 
           const { data: users, count, error } = await query
