@@ -1,4 +1,5 @@
- import { AlertTriangle } from "lucide-react";
+ import { useState, useEffect } from "react";
+ import { AlertTriangle, Clock } from "lucide-react";
  import { useVoipAuth } from "@/contexts/VoipAuthContext";
  import { Button } from "@/components/ui/button";
  
@@ -7,8 +8,27 @@
    status: "suspended" | "pending" | "disabled";
  }
  
+ const AUTO_LOGOUT_SECONDS = 30;
+ 
  export function SuspendedModal({ reason, status }: SuspendedModalProps) {
    const { logout } = useVoipAuth();
+   const [countdown, setCountdown] = useState(AUTO_LOGOUT_SECONDS);
+ 
+   // Auto-logout countdown
+   useEffect(() => {
+     const timer = setInterval(() => {
+       setCountdown((prev) => {
+         if (prev <= 1) {
+           clearInterval(timer);
+           logout();
+           return 0;
+         }
+         return prev - 1;
+       });
+     }, 1000);
+ 
+     return () => clearInterval(timer);
+   }, [logout]);
  
    const getTitle = () => {
      switch (status) {
@@ -51,6 +71,11 @@
          <div className="text-muted-foreground mb-6">{getMessage()}</div>
          
          <div className="space-y-4">
+           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground bg-muted/30 rounded-lg p-3">
+             <Clock className="w-4 h-4" />
+             <span>Auto-logout in <strong className="text-foreground">{countdown}</strong> seconds</span>
+           </div>
+ 
            <div className="text-sm text-muted-foreground/70">
              <p>Contact support:</p>
              <a 
