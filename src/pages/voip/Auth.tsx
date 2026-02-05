@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Phone, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -28,6 +29,7 @@ export default function VoipAuth() {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [inviteToken, setInviteToken] = useState("");
+  const [tosAccepted, setTosAccepted] = useState(false);
 
   if (authLoading) {
     return (
@@ -85,6 +87,11 @@ export default function VoipAuth() {
 
     if (!/[0-9]/.test(signupPassword)) {
       setError("Password must contain at least one number");
+      return;
+    }
+
+    if (!tosAccepted) {
+      setError("You must agree to the Terms of Service and Privacy Policy");
       return;
     }
 
@@ -266,6 +273,24 @@ export default function VoipAuth() {
                       required
                       disabled={isLoading}
                     />
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <Checkbox
+                      id="tos-accept"
+                      checked={tosAccepted}
+                      onCheckedChange={(checked) => setTosAccepted(checked === true)}
+                      disabled={isLoading}
+                    />
+                    <label htmlFor="tos-accept" className="text-sm text-muted-foreground leading-tight">
+                      I agree to the{" "}
+                      <Link to="/terms" target="_blank" className="text-primary hover:underline">
+                        Terms of Service
+                      </Link>{" "}
+                      and{" "}
+                      <Link to="/privacy" target="_blank" className="text-primary hover:underline">
+                        Privacy Policy
+                      </Link>
+                    </label>
                   </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? (

@@ -496,6 +496,216 @@ serve(async (req) => {
         break;
       }
 
+      // User suspension with reason
+      case "suspend-user": {
+        const { userId: targetUserId, reason } = await req.json();
+        
+        if (!targetUserId || !reason) {
+          return new Response(
+            JSON.stringify({ error: "userId and reason are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Don't allow suspending yourself
+        if (parseInt(targetUserId) === adminId) {
+          return new Response(
+            JSON.stringify({ error: "You cannot suspend your own account" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error } = await supabase
+          .from("voip_users")
+          .update({
+            status: "suspended",
+            suspension_reason: reason,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", parseInt(targetUserId));
+
+        if (error) throw error;
+
+        // End user's active sessions
+        await supabase
+          .from("voip_user_sessions")
+          .update({ session_end: new Date().toISOString() })
+          .eq("user_id", parseInt(targetUserId))
+          .is("session_end", null);
+
+        // Invalidate refresh tokens
+        await supabase
+          .from("voip_refresh_tokens")
+          .delete()
+          .eq("user_id", parseInt(targetUserId));
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: adminId,
+          action: "user_suspended",
+          entity_type: "users",
+          entity_id: parseInt(targetUserId),
+          details: { reason },
+        });
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Reactivate user
+      case "reactivate-user": {
+        const { userId: targetUserId } = await req.json();
+        
+        if (!targetUserId) {
+          return new Response(
+            JSON.stringify({ error: "userId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error } = await supabase
+          .from("voip_users")
+          .update({
+            status: "active",
+            suspension_reason: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", parseInt(targetUserId));
+
+        if (error) throw error;
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: adminId,
+          action: "user_reactivated",
+          entity_type: "users",
+          entity_id: parseInt(targetUserId),
+        });
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Admin password reset
+      case "reset-password": {
+        const { userId: targetUserId, newPassword, forceChange } = await req.json();
+        
+        if (!targetUserId || !newPassword) {
+          return new Response(
+            JSON.stringify({ error: "userId and newPassword are required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (newPassword.length < 8) {
+          return new Response(
+            JSON.stringify({ error: "Password must be at least 8 characters" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Import hash function from auth module
+        const encoder = new TextEncoder();
+        const data = encoder.encode(newPassword);
+        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const passwordHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+
+        const { error } = await supabase
+          .from("voip_users")
+          .update({
+            password_hash: passwordHash,
+            force_password_change: forceChange || false,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", parseInt(targetUserId));
+
+        if (error) throw error;
+
+        // Invalidate all refresh tokens to force re-login
+        await supabase
+          .from("voip_refresh_tokens")
+          .delete()
+          .eq("user_id", parseInt(targetUserId));
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: adminId,
+          action: "password_reset",
+          entity_type: "users",
+          entity_id: parseInt(targetUserId),
+          details: { forceChange: forceChange || false },
+        });
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get audit log
+      case "audit-log": {
+        const page = parseInt(url.searchParams.get("page") || "1");
+        const limit = parseInt(url.searchParams.get("limit") || "50");
+        const offset = (page - 1) * limit;
+
+        const { data: logs, count, error } = await supabase
+          .from("voip_admin_audit_log")
+          .select("*", { count: "exact" })
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (error) throw error;
+
+        // Get admin names
+        const adminIds = [...new Set((logs || []).map(l => l.admin_id))];
+        let adminMap = new Map<number, string>();
+        
+        if (adminIds.length > 0) {
+          const { data: admins } = await supabase
+            .from("voip_users")
+            .select("id, name, email")
+            .in("id", adminIds);
+          
+          if (admins) {
+            adminMap = new Map(admins.map(a => [a.id, a.name || a.email]));
+          }
+        }
+
+        const enrichedLogs = (logs || []).map(log => ({
+          ...log,
+          admin_name: adminMap.get(log.admin_id) || "Unknown",
+        }));
+
+        return new Response(
+          JSON.stringify({
+            logs: enrichedLogs,
+            pagination: { page, limit, total: count || 0 },
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Get user status (for live kick)
+      case "check-status": {
+        const { data: user, error } = await supabase
+          .from("voip_users")
+          .select("status, suspension_reason")
+          .eq("id", adminId)
+          .single();
+
+        if (error) throw error;
+
+        return new Response(
+          JSON.stringify(user),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),

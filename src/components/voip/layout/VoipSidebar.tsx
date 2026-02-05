@@ -12,11 +12,15 @@ import {
   Ticket,
   Upload,
   CalendarDays,
+  TrendingUp,
+  Activity,
+  ScrollText,
 } from "lucide-react";
 
 const clientNavItems = [
   { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/voip/dialer", label: "Dialer", icon: Phone },
+  { href: "/voip/my-analytics", label: "My Analytics", icon: TrendingUp },
   { href: "/voip/calls", label: "Call History", icon: History },
   { href: "/voip/settings", label: "Settings", icon: Settings },
 ];
@@ -29,6 +33,8 @@ const adminNavItems = [
   { href: "/voip/admin/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/voip/admin/client-analytics", label: "Client Analytics", icon: Activity },
+  { href: "/voip/admin/audit-log", label: "Audit Log", icon: ScrollText },
   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
 ];
 

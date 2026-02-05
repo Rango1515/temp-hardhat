@@ -101,12 +101,12 @@ const Footer = () => {
               © {new Date().getFullYear()} Hardhat Hosting. All rights reserved.
             </p>
             <div className="flex gap-6">
-              <a href="#" className="text-muted-foreground/70 hover:text-primary text-sm transition-colors">
+                <Link to="/privacy" className="text-muted-foreground/70 hover:text-primary text-sm transition-colors">
                 Privacy Policy
-              </a>
-              <a href="#" className="text-muted-foreground/70 hover:text-primary text-sm transition-colors">
+                </Link>
+                <Link to="/terms" className="text-muted-foreground/70 hover:text-primary text-sm transition-colors">
                 Terms of Service
-              </a>
+                </Link>
             </div>
           </div>
         </AnimatedSection>

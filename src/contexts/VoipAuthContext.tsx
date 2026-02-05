@@ -6,6 +6,8 @@ interface VoipUser {
   name: string;
   email: string;
   role: "admin" | "client";
+  status?: string;
+  suspension_reason?: string;
 }
 
 interface VoipAuthContextType {
@@ -14,10 +16,13 @@ interface VoipAuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  userStatus: string | null;
+  suspensionReason: string | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signup: (name: string, email: string, password: string, inviteToken: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   refreshToken: () => Promise<boolean>;
+  checkUserStatus: () => Promise<void>;
 }
 
 const VoipAuthContext = createContext<VoipAuthContextType | undefined>(undefined);
@@ -41,6 +46,8 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<VoipUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [userStatus, setUserStatus] = useState<string | null>(null);
+  const [suspensionReason, setSuspensionReason] = useState<string | null>(null);
 
   // Load stored auth on mount
   useEffect(() => {
@@ -165,11 +172,25 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // End session on logout
+    const currentToken = localStorage.getItem(TOKEN_KEY);
+    if (currentToken) {
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-analytics?action=end-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentToken}`,
+        },
+      }).catch(() => {});
+    }
+
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     setToken(null);
     setUser(null);
+    setUserStatus(null);
+    setSuspensionReason(null);
   }, []);
 
   const refreshToken = useCallback(async () => {
@@ -203,6 +224,111 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [logout]);
 
+  // Check user status for live kick
+  const checkUserStatus = useCallback(async () => {
+    const currentToken = localStorage.getItem(TOKEN_KEY);
+    if (!currentToken) return;
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-auth?action=me`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
+          body: JSON.stringify({}),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setUserStatus(data.status);
+        setSuspensionReason(data.suspension_reason || null);
+
+        if (data.status !== "active") {
+          // User is suspended/disabled, update local state
+          const storedUser = localStorage.getItem(USER_KEY);
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            parsedUser.status = data.status;
+            parsedUser.suspension_reason = data.suspension_reason;
+            setUser(parsedUser);
+          }
+        }
+      }
+    } catch {
+      // Silently fail status checks
+    }
+  }, []);
+
+  // Heartbeat and status check
+  useEffect(() => {
+    if (!token || !user) return;
+
+    // Send initial heartbeat
+    const sendHeartbeat = async () => {
+      try {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-analytics?action=heartbeat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        });
+      } catch {
+        // Silently fail heartbeats
+      }
+    };
+
+    sendHeartbeat();
+    checkUserStatus();
+
+    // Heartbeat every 30 seconds
+    const heartbeatInterval = setInterval(sendHeartbeat, 30000);
+
+    // Status check every 30 seconds
+    const statusInterval = setInterval(checkUserStatus, 30000);
+
+    // Idle detection (5 minutes)
+    let idleTimer: NodeJS.Timeout;
+    const markIdle = async () => {
+      try {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-analytics?action=idle`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        });
+      } catch {
+        // Silently fail
+      }
+    };
+
+    const resetIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(markIdle, 5 * 60 * 1000);
+    };
+
+    window.addEventListener("mousemove", resetIdle);
+    window.addEventListener("keypress", resetIdle);
+    window.addEventListener("click", resetIdle);
+    resetIdle();
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      clearInterval(statusInterval);
+      clearTimeout(idleTimer);
+      window.removeEventListener("mousemove", resetIdle);
+      window.removeEventListener("keypress", resetIdle);
+      window.removeEventListener("click", resetIdle);
+    };
+  }, [token, user, checkUserStatus]);
+
   return (
     <VoipAuthContext.Provider
       value={{
@@ -211,10 +337,13 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!token && !!user,
         isAdmin: user?.role === "admin",
+        userStatus,
+        suspensionReason,
         login,
         signup,
         logout,
         refreshToken,
+        checkUserStatus,
       }}
     >
       {children}
