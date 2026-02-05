@@ -7,10 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+ import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarDays, List, Loader2, Phone, User, Clock, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, isToday } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+ import { TrashManager } from "@/components/voip/admin/TrashManager";
 
 interface Appointment {
   id: number;
@@ -23,6 +25,7 @@ interface Appointment {
   outcome: string | null;
   status: string;
   created_at: string;
+   deleted_at: string | null;
 }
 
 export default function Appointments() {
@@ -33,21 +36,116 @@ export default function Appointments() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
   const [processingId, setProcessingId] = useState<number | null>(null);
+   const [showTrashed, setShowTrashed] = useState(false);
+   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+   const [trashedCount, setTrashedCount] = useState(0);
 
   useEffect(() => {
     fetchAppointments();
   }, []);
+ 
+   useEffect(() => {
+     fetchTrashedCount();
+   }, []);
+ 
+   const fetchTrashedCount = async () => {
+     const result = await apiCall<{ count: number }>("voip-leads", {
+       params: { action: "trashed-count", entityType: "appointments" },
+     });
+     if (result.data) {
+       setTrashedCount(result.data.count);
+     }
+   };
 
   const fetchAppointments = async () => {
     setIsLoading(true);
     const result = await apiCall<{ appointments: Appointment[] }>("voip-leads", {
-      params: { action: "appointments" },
+       params: { action: "appointments", showTrashed: showTrashed.toString() },
     });
     if (result.data?.appointments) {
-      setAppointments(result.data.appointments);
+       setAppointments(
+         showTrashed
+           ? result.data.appointments.filter((a) => a.deleted_at)
+           : result.data.appointments.filter((a) => !a.deleted_at)
+       );
     }
     setIsLoading(false);
+     setSelectedIds([]);
   };
+ 
+   useEffect(() => {
+     fetchAppointments();
+   }, [showTrashed]);
+ 
+   const handleTrash = async (ids: number[]): Promise<boolean> => {
+     const result = await apiCall("voip-leads", {
+       method: "POST",
+       params: { action: "trash-items" },
+       body: { entityType: "appointments", ids },
+     });
+     if (!result.error) {
+       fetchAppointments();
+       fetchTrashedCount();
+       return true;
+     }
+     return false;
+   };
+ 
+   const handleRestore = async (ids: number[]): Promise<boolean> => {
+     const result = await apiCall("voip-leads", {
+       method: "POST",
+       params: { action: "restore-items" },
+       body: { entityType: "appointments", ids },
+     });
+     if (!result.error) {
+       fetchAppointments();
+       fetchTrashedCount();
+       return true;
+     }
+     return false;
+   };
+ 
+   const handlePermanentDelete = async (ids: number[]): Promise<boolean> => {
+     const result = await apiCall("voip-leads", {
+       method: "POST",
+       params: { action: "permanent-delete" },
+       body: { entityType: "appointments", ids, confirmation: "DELETE" },
+     });
+     if (!result.error) {
+       fetchAppointments();
+       fetchTrashedCount();
+       return true;
+     }
+     return false;
+   };
+ 
+   const handleBulkAction = async (action: "older-7" | "older-30" | "older-90" | "all"): Promise<boolean> => {
+     const result = await apiCall("voip-leads", {
+       method: "POST",
+       params: { action: "bulk-delete" },
+       body: { entityType: "appointments", bulkAction: action, confirmation: "DELETE" },
+     });
+     if (!result.error) {
+       fetchAppointments();
+       fetchTrashedCount();
+       return true;
+     }
+     return false;
+   };
+ 
+   const toggleSelectAll = () => {
+     if (selectedIds.length === appointments.length) {
+       setSelectedIds([]);
+     } else {
+       setSelectedIds(appointments.map((a) => a.id));
+     }
+   };
+ 
+   const toggleSelect = (id: number) => {
+     setSelectedIds((prev) =>
+       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+     );
+   };
 
   const updateStatus = async (id: number, status: "completed" | "cancelled") => {
     setProcessingId(id);
@@ -158,6 +256,19 @@ export default function Appointments() {
           </Button>
         </div>
 
+         {/* Trash Manager */}
+         <TrashManager
+           entityType="appointments"
+           selectedIds={selectedIds}
+           showTrashed={showTrashed}
+           onToggleTrashed={() => setShowTrashed(!showTrashed)}
+           onTrash={handleTrash}
+           onRestore={handleRestore}
+           onPermanentDelete={handlePermanentDelete}
+           onBulkAction={handleBulkAction}
+           trashedCount={trashedCount}
+         />
+ 
         {/* Quick Stats */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
