@@ -4,6 +4,7 @@ import { useVoipApi } from "@/hooks/useVoipApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -52,6 +53,7 @@ export default function InviteTokens() {
   // New token form
   const [newEmail, setNewEmail] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("");
+  const [neverExpires, setNeverExpires] = useState(false);
 
   const fetchTokens = async () => {
     setIsLoading(true);
@@ -79,7 +81,7 @@ export default function InviteTokens() {
       params: { action: "invite-tokens" },
       body: {
         email: newEmail.trim() || null,
-        expiresInDays: expiresInDays ? parseInt(expiresInDays) : null,
+        expiresInDays: neverExpires ? 3650 : (expiresInDays ? parseInt(expiresInDays) : null),
       },
     });
 
@@ -91,6 +93,7 @@ export default function InviteTokens() {
       setDialogOpen(false);
       setNewEmail("");
       setExpiresInDays("");
+      setNeverExpires(false);
       fetchTokens();
     } else {
       toast.error(error || "Failed to create token");
@@ -185,10 +188,21 @@ export default function InviteTokens() {
                     max="365"
                     value={expiresInDays}
                     onChange={(e) => setExpiresInDays(e.target.value)}
+                    disabled={neverExpires}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty for no expiration
-                  </p>
+                  <div className="flex items-center space-x-2 pt-2">
+                    <Checkbox
+                      id="never-expires"
+                      checked={neverExpires}
+                      onCheckedChange={(checked) => {
+                        setNeverExpires(checked === true);
+                        if (checked) setExpiresInDays("");
+                      }}
+                    />
+                    <Label htmlFor="never-expires" className="text-sm font-normal cursor-pointer">
+                      Never expires (10 years)
+                    </Label>
+                  </div>
                 </div>
               </div>
 
