@@ -49,8 +49,8 @@ export default function Appointments() {
    }, []);
  
    const fetchTrashedCount = async () => {
-     const result = await apiCall<{ count: number }>("voip-leads", {
-       params: { action: "trashed-count", entityType: "appointments" },
+      const result = await apiCall<{ count: number }>("voip-leads-ext", {
+        params: { action: "trashed-count", entityType: "appointments" },
      });
      if (result.data) {
        setTrashedCount(result.data.count);
@@ -59,8 +59,8 @@ export default function Appointments() {
 
   const fetchAppointments = async () => {
     setIsLoading(true);
-    const result = await apiCall<{ appointments: Appointment[] }>("voip-leads", {
-       params: { action: "appointments", showTrashed: showTrashed.toString() },
+     const result = await apiCall<{ appointments: Appointment[] }>("voip-leads-ext", {
+        params: { action: "appointments", showTrashed: showTrashed.toString() },
     });
     if (result.data?.appointments) {
        setAppointments(
@@ -78,9 +78,9 @@ export default function Appointments() {
    }, [showTrashed]);
  
    const handleTrash = async (ids: number[]): Promise<boolean> => {
-     const result = await apiCall("voip-leads", {
-       method: "POST",
-       params: { action: "trash-items" },
+      const result = await apiCall("voip-leads-ext", {
+        method: "POST",
+        params: { action: "trash-items" },
        body: { entityType: "appointments", ids },
      });
      if (!result.error) {
@@ -92,9 +92,9 @@ export default function Appointments() {
    };
  
    const handleRestore = async (ids: number[]): Promise<boolean> => {
-     const result = await apiCall("voip-leads", {
-       method: "POST",
-       params: { action: "restore-items" },
+      const result = await apiCall("voip-leads-ext", {
+        method: "POST",
+        params: { action: "restore-items" },
        body: { entityType: "appointments", ids },
      });
      if (!result.error) {
@@ -106,9 +106,9 @@ export default function Appointments() {
    };
  
    const handlePermanentDelete = async (ids: number[]): Promise<boolean> => {
-     const result = await apiCall("voip-leads", {
-       method: "POST",
-       params: { action: "permanent-delete" },
+      const result = await apiCall("voip-leads-ext", {
+        method: "POST",
+        params: { action: "permanent-delete" },
        body: { entityType: "appointments", ids, confirmation: "DELETE" },
      });
      if (!result.error) {
@@ -120,9 +120,9 @@ export default function Appointments() {
    };
  
    const handleBulkAction = async (action: "older-7" | "older-30" | "older-90" | "all"): Promise<boolean> => {
-     const result = await apiCall("voip-leads", {
-       method: "POST",
-       params: { action: "bulk-delete" },
+      const result = await apiCall("voip-leads-ext", {
+        method: "POST",
+        params: { action: "bulk-delete" },
        body: { entityType: "appointments", bulkAction: action, confirmation: "DELETE" },
      });
      if (!result.error) {
@@ -149,9 +149,9 @@ export default function Appointments() {
 
   const updateStatus = async (id: number, status: "completed" | "cancelled") => {
     setProcessingId(id);
-    const result = await apiCall<{ success: boolean }>("voip-leads", {
-      method: "POST",
-      params: { action: "update-appointment" },
+     const result = await apiCall<{ success: boolean }>("voip-leads-ext", {
+       method: "POST",
+       params: { action: "update-appointment" },
       body: { appointmentId: id, status },
     });
 

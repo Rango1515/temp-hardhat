@@ -75,7 +75,7 @@ export function AppointmentModal({
     const scheduledAt = new Date(date);
     scheduledAt.setHours(hours, minutes, 0, 0);
 
-    const result = await apiCall<{ success: boolean }>("voip-leads", {
+    const result = await apiCall<{ success: boolean }>("voip-leads-ext", {
       method: "POST",
       params: { action: "create-appointment" },
       body: {

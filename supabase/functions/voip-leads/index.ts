@@ -8,7 +8,6 @@ const rateLimitStore = new Map<number, number>();
 
 function normalizePhone(phone: string): string {
   let cleaned = phone.replace(/[^\d+]/g, "");
-  // Add +1 for US numbers if no country code
   if (cleaned.length === 10) {
     cleaned = "+1" + cleaned;
   } else if (cleaned.length === 11 && cleaned.startsWith("1")) {
@@ -48,7 +47,6 @@ serve(async (req) => {
   try {
     switch (action) {
       case "uploads": {
-        // Admin only
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -71,7 +69,6 @@ serve(async (req) => {
       }
 
       case "upload": {
-        // Admin only - handle lead file upload with duplicate detection
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -93,7 +90,6 @@ serve(async (req) => {
         let invalidCount = 0;
         let reviewQueueCount = 0;
 
-        // Create upload record
         const { data: upload, error: uploadError } = await supabase
           .from("voip_lead_uploads")
           .insert({
@@ -106,11 +102,10 @@ serve(async (req) => {
 
         if (uploadError) throw uploadError;
 
-        // Get all existing phones and their call history
         const { data: existingLeads } = await supabase
           .from("voip_leads")
           .select("id, phone, status");
-        
+
         const existingPhoneMap = new Map<string, { id: number; status: string }>();
         if (existingLeads) {
           for (const l of existingLeads) {
@@ -118,32 +113,27 @@ serve(async (req) => {
           }
         }
 
-        // Get phones that have been called
         const { data: calledLeads } = await supabase
           .from("voip_calls")
           .select("lead_id")
           .not("lead_id", "is", null);
-        
+
         const calledLeadIds = new Set((calledLeads || []).map(c => c.lead_id));
 
-        // Process leads
         for (const lead of leads) {
           const phone = normalizePhone(lead.phone || "");
-          
+
           if (!phone || phone.length < 10) {
             invalidCount++;
             continue;
           }
 
-          // Check if phone exists
           const existing = existingPhoneMap.get(phone);
-          
+
           if (existing) {
-            // Check if this lead has been called
             const hasCallHistory = calledLeadIds.has(existing.id);
-            
+
             if (hasCallHistory) {
-              // Add to review queue
               await supabase.from("voip_duplicate_leads").insert({
                 upload_id: upload.id,
                 phone: phone,
@@ -157,7 +147,6 @@ serve(async (req) => {
               duplicateCount++;
               continue;
             } else {
-              // Phone exists but no calls - just skip as regular duplicate
               duplicateCount++;
               continue;
             }
@@ -192,7 +181,6 @@ serve(async (req) => {
           }
         }
 
-        // Update upload record with counts
         await supabase
           .from("voip_lead_uploads")
           .update({
@@ -202,7 +190,6 @@ serve(async (req) => {
           })
           .eq("id", upload.id);
 
-        // Audit log
         await supabase.from("voip_admin_audit_log").insert({
           admin_id: userId,
           action: "lead_upload",
@@ -223,8 +210,6 @@ serve(async (req) => {
       }
 
       case "request-next": {
-        // Workers can request next lead
-        // Rate limit check (5 seconds)
         const lastRequest = rateLimitStore.get(userId);
         const now = Date.now();
         if (lastRequest && now - lastRequest < 5000) {
@@ -235,7 +220,6 @@ serve(async (req) => {
         }
         rateLimitStore.set(userId, now);
 
-        // Use the database function for atomic lead assignment
         const { data: leads, error } = await supabase
           .rpc("assign_next_lead", { p_worker_id: userId });
 
@@ -265,7 +249,6 @@ serve(async (req) => {
       }
 
       case "current": {
-        // Get current assigned lead for worker
         const { data: lead, error } = await supabase
           .from("voip_leads")
           .select("id, name, phone, email, website, status, attempt_count, contact_name")
@@ -292,7 +275,6 @@ serve(async (req) => {
       }
 
       case "complete": {
-        // Complete a lead with outcome
         const { leadId, outcome, notes, followupAt, followupPriority, followupNotes } = await req.json();
 
         if (!leadId || !outcome) {
@@ -302,7 +284,6 @@ serve(async (req) => {
           );
         }
 
-        // Verify ownership
         const { data: lead } = await supabase
           .from("voip_leads")
           .select("id, assigned_to, attempt_count, phone")
@@ -319,7 +300,6 @@ serve(async (req) => {
         const attemptCount = (lead.attempt_count || 0) + 1;
         let newStatus = "ASSIGNED";
 
-        // Determine new status based on outcome
         switch (outcome) {
           case "interested":
           case "not_interested":
@@ -338,7 +318,6 @@ serve(async (req) => {
             break;
         }
 
-        // Update lead
         const updateData: Record<string, unknown> = {
           status: newStatus,
           attempt_count: attemptCount,
@@ -356,7 +335,6 @@ serve(async (req) => {
           .update(updateData)
           .eq("id", leadId);
 
-        // Log the call with follow-up details
         await supabase.from("voip_calls").insert({
           user_id: userId,
           lead_id: leadId,
@@ -377,7 +355,6 @@ serve(async (req) => {
       }
 
       case "stats": {
-        // Get lead statistics (admin only)
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -404,7 +381,6 @@ serve(async (req) => {
       }
 
       case "delete-upload": {
-        // Admin only - delete an upload and its NEW leads
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -420,7 +396,6 @@ serve(async (req) => {
           );
         }
 
-        // Delete only NEW leads (preserve called leads)
         const { data: deletedLeads, error: deleteLeadsError } = await supabase
           .from("voip_leads")
           .delete()
@@ -430,7 +405,6 @@ serve(async (req) => {
 
         if (deleteLeadsError) throw deleteLeadsError;
 
-        // Delete the upload record
         const { error: deleteUploadError } = await supabase
           .from("voip_lead_uploads")
           .delete()
@@ -438,7 +412,6 @@ serve(async (req) => {
 
         if (deleteUploadError) throw deleteUploadError;
 
-        // Audit log
         await supabase.from("voip_admin_audit_log").insert({
           admin_id: userId,
           action: "lead_upload_deleted",
@@ -454,7 +427,6 @@ serve(async (req) => {
       }
 
       case "upload-calls": {
-        // Admin only - get call history for an upload
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -470,7 +442,6 @@ serve(async (req) => {
           );
         }
 
-        // Get leads for this upload
         const { data: leads, error: leadsError } = await supabase
           .from("voip_leads")
           .select("id, name, phone")
@@ -488,7 +459,6 @@ serve(async (req) => {
         const leadIds = leads.map(l => l.id);
         const leadMap = new Map(leads.map(l => [l.id, { name: l.name, phone: l.phone }]));
 
-        // Get calls for these leads
         const { data: calls, error: callsError } = await supabase
           .from("voip_calls")
           .select("id, lead_id, user_id, start_time, duration_seconds, outcome, notes")
@@ -497,22 +467,20 @@ serve(async (req) => {
 
         if (callsError) throw callsError;
 
-        // Get user info for callers
         const userIds = [...new Set((calls || []).map(c => c.user_id).filter(Boolean))];
         let userMap = new Map<number, string>();
-        
+
         if (userIds.length > 0) {
           const { data: users } = await supabase
             .from("voip_users")
             .select("id, email, name")
             .in("id", userIds);
-          
+
           if (users) {
             userMap = new Map(users.map(u => [u.id, u.name || u.email]));
           }
         }
 
-        // Combine data
         const enrichedCalls = (calls || []).map(call => ({
           id: call.id,
           lead_name: leadMap.get(call.lead_id)?.name || "Unknown",
@@ -531,7 +499,6 @@ serve(async (req) => {
       }
 
       case "all-leads": {
-        // Admin only - get all leads with user info
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -547,16 +514,15 @@ serve(async (req) => {
 
         if (error) throw error;
 
-        // Get user names for assigned leads
         const assignedUserIds = [...new Set((leads || []).map(l => l.assigned_to).filter(Boolean))];
         let userMap = new Map<number, string>();
-        
+
         if (assignedUserIds.length > 0) {
           const { data: users } = await supabase
             .from("voip_users")
             .select("id, name, email")
             .in("id", assignedUserIds);
-          
+
           if (users) {
             userMap = new Map(users.map(u => [u.id, u.name || u.email]));
           }
@@ -574,7 +540,6 @@ serve(async (req) => {
       }
 
       case "lead-calls": {
-        // Admin only - get call history for a specific lead
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -598,16 +563,15 @@ serve(async (req) => {
 
         if (error) throw error;
 
-        // Get caller names
         const userIds = [...new Set((calls || []).map(c => c.user_id).filter(Boolean))];
         let userMap = new Map<number, string>();
-        
+
         if (userIds.length > 0) {
           const { data: users } = await supabase
             .from("voip_users")
             .select("id, name, email")
             .in("id", userIds);
-          
+
           if (users) {
             userMap = new Map(users.map(u => [u.id, u.name || u.email]));
           }
@@ -625,7 +589,6 @@ serve(async (req) => {
       }
 
       case "followups": {
-        // Admin only - get all scheduled follow-ups
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -649,22 +612,20 @@ serve(async (req) => {
           );
         }
 
-        // Get lead info
         const leadIds = [...new Set(calls.map(c => c.lead_id).filter(Boolean))];
         const { data: leads } = await supabase
           .from("voip_leads")
           .select("id, name, phone")
           .in("id", leadIds);
-        
+
         const leadMap = new Map((leads || []).map(l => [l.id, { name: l.name, phone: l.phone }]));
 
-        // Get caller names
         const userIds = [...new Set(calls.map(c => c.user_id).filter(Boolean))];
         const { data: users } = await supabase
           .from("voip_users")
           .select("id, name, email")
           .in("id", userIds);
-        
+
         const userMap = new Map((users || []).map(u => [u.id, u.name || u.email]));
 
         const followups = calls.map(call => ({
@@ -683,141 +644,88 @@ serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
- 
-       case "delete-lead": {
-         // Admin only - delete a single lead
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const { leadId } = await req.json();
-         if (!leadId) {
-           return new Response(
-             JSON.stringify({ error: "leadId is required" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         // Clear references first (voip_calls uses lead_id as nullable FK)
-         await supabase
-           .from("voip_calls")
-           .update({ lead_id: null })
-           .eq("lead_id", leadId);
- 
-         // Delete from worker history
-         await supabase
-           .from("voip_worker_lead_history")
-           .delete()
-           .eq("lead_id", leadId);
- 
-         // Delete from activity events
-         await supabase
-           .from("voip_activity_events")
-           .update({ lead_id: null })
-           .eq("lead_id", leadId);
- 
-         // Delete the lead
-         const { error } = await supabase
-           .from("voip_leads")
-           .delete()
-           .eq("id", leadId);
- 
-         if (error) throw error;
- 
-         // Audit log
-         await supabase.from("voip_admin_audit_log").insert({
-           admin_id: userId,
-           action: "lead_deleted",
-           entity_type: "leads",
-           entity_id: leadId,
-         });
- 
-         return new Response(
-           JSON.stringify({ success: true }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
-       case "master-clear-leads": {
-         // Admin only - delete ALL leads and reset history
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const { confirmation, clearHistory } = await req.json();
-         
-         if (confirmation !== "DELETE ALL LEADS") {
-           return new Response(
-             JSON.stringify({ error: "Invalid confirmation. Type exactly: DELETE ALL LEADS" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         // Count leads before deletion
-         const { count: leadCount } = await supabase
-           .from("voip_leads")
-           .select("*", { count: "exact", head: true });
- 
-         // Clear references in voip_calls
-         await supabase
-           .from("voip_calls")
-           .update({ lead_id: null })
-           .neq("id", 0);
- 
-         // Clear activity events lead references
-         await supabase
-           .from("voip_activity_events")
-           .update({ lead_id: null })
-           .neq("id", 0);
- 
-         // Delete all worker lead history
-         await supabase
-           .from("voip_worker_lead_history")
-           .delete()
-           .neq("id", 0);
- 
-         // Delete all duplicate leads
-         await supabase
-           .from("voip_duplicate_leads")
-           .delete()
-           .neq("id", 0);
- 
-         // Delete all leads
-         await supabase
-           .from("voip_leads")
-           .delete()
-           .neq("id", 0);
- 
-         // Optionally clear lead upload history
-         if (clearHistory) {
-           await supabase
-             .from("voip_lead_uploads")
-             .delete()
-             .neq("id", 0);
-         }
- 
-         // Audit log
-         await supabase.from("voip_admin_audit_log").insert({
-           admin_id: userId,
-           action: "master_clear_leads",
-           entity_type: "leads",
-           details: { leadsDeleted: leadCount || 0, historyCleared: clearHistory || false },
-         });
- 
-         return new Response(
-           JSON.stringify({ success: true, leadsDeleted: leadCount || 0 }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
+
+      case "delete-lead": {
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { leadId } = await req.json();
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "leadId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        await supabase.from("voip_calls").update({ lead_id: null }).eq("lead_id", leadId);
+        await supabase.from("voip_worker_lead_history").delete().eq("lead_id", leadId);
+        await supabase.from("voip_activity_events").update({ lead_id: null }).eq("lead_id", leadId);
+
+        const { error } = await supabase.from("voip_leads").delete().eq("id", leadId);
+        if (error) throw error;
+
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "lead_deleted",
+          entity_type: "leads",
+          entity_id: leadId,
+        });
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "master-clear-leads": {
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { confirmation, clearHistory } = await req.json();
+
+        if (confirmation !== "DELETE ALL LEADS") {
+          return new Response(
+            JSON.stringify({ error: "Invalid confirmation. Type exactly: DELETE ALL LEADS" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { count: leadCount } = await supabase
+          .from("voip_leads")
+          .select("*", { count: "exact", head: true });
+
+        await supabase.from("voip_calls").update({ lead_id: null }).neq("id", 0);
+        await supabase.from("voip_activity_events").update({ lead_id: null }).neq("id", 0);
+        await supabase.from("voip_worker_lead_history").delete().neq("id", 0);
+        await supabase.from("voip_duplicate_leads").delete().neq("id", 0);
+        await supabase.from("voip_leads").delete().neq("id", 0);
+
+        if (clearHistory) {
+          await supabase.from("voip_lead_uploads").delete().neq("id", 0);
+        }
+
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "master_clear_leads",
+          entity_type: "leads",
+          details: { leadsDeleted: leadCount || 0, historyCleared: clearHistory || false },
+        });
+
+        return new Response(
+          JSON.stringify({ success: true, leadsDeleted: leadCount || 0 }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       case "delete-followup": {
-        // Admin only - delete a scheduled follow-up by clearing followup fields on the call
         if (userRole !== "admin") {
           return new Response(
             JSON.stringify({ error: "Admin access required" }),
@@ -844,7 +752,6 @@ serve(async (req) => {
 
         if (updateError) throw updateError;
 
-        // Audit log
         await supabase.from("voip_admin_audit_log").insert({
           admin_id: userId,
           action: "followup_deleted",
@@ -858,537 +765,6 @@ serve(async (req) => {
         );
       }
 
-      case "duplicates": {
-        // Admin only - get pending duplicate leads for review
-        if (userRole !== "admin") {
-          return new Response(
-            JSON.stringify({ error: "Admin access required" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { data: duplicates, error } = await supabase
-          .from("voip_duplicate_leads")
-          .select("id, upload_id, phone, name, email, website, existing_lead_id, reason, created_at")
-          .is("reviewed_at", null)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-
-        if (!duplicates || duplicates.length === 0) {
-          return new Response(
-            JSON.stringify({ duplicates: [] }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Get upload filenames
-        const uploadIds = [...new Set(duplicates.map(d => d.upload_id))];
-        const { data: uploads } = await supabase
-          .from("voip_lead_uploads")
-          .select("id, filename")
-          .in("id", uploadIds);
-        
-        const uploadMap = new Map((uploads || []).map(u => [u.id, u.filename]));
-
-        // Get existing lead info
-        const existingLeadIds = duplicates.map(d => d.existing_lead_id).filter(Boolean) as number[];
-        const { data: existingLeads } = await supabase
-          .from("voip_leads")
-          .select("id, status")
-          .in("id", existingLeadIds);
-        
-        const existingLeadMap = new Map((existingLeads || []).map(l => [l.id, l.status]));
-
-        // Get call counts
-        const { data: callCounts } = await supabase
-          .from("voip_calls")
-          .select("lead_id")
-          .in("lead_id", existingLeadIds);
-        
-        const callCountMap = new Map<number, number>();
-        for (const c of callCounts || []) {
-          if (c.lead_id) {
-            callCountMap.set(c.lead_id, (callCountMap.get(c.lead_id) || 0) + 1);
-          }
-        }
-
-        const enrichedDuplicates = duplicates.map(dup => ({
-          ...dup,
-          upload_filename: uploadMap.get(dup.upload_id),
-          existing_lead_status: dup.existing_lead_id ? existingLeadMap.get(dup.existing_lead_id) : null,
-          existing_call_count: dup.existing_lead_id ? callCountMap.get(dup.existing_lead_id) || 0 : 0,
-        }));
-
-        return new Response(
-          JSON.stringify({ duplicates: enrichedDuplicates }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      case "review-duplicate": {
-        // Admin only - review a single duplicate
-        if (userRole !== "admin") {
-          return new Response(
-            JSON.stringify({ error: "Admin access required" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { duplicateId, reviewAction } = await req.json();
-        
-        if (!duplicateId || !["add", "skip"].includes(reviewAction)) {
-          return new Response(
-            JSON.stringify({ error: "duplicateId and reviewAction (add/skip) are required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Get duplicate info
-        const { data: dup, error: dupError } = await supabase
-          .from("voip_duplicate_leads")
-          .select("*")
-          .eq("id", duplicateId)
-          .single();
-
-        if (dupError || !dup) {
-          return new Response(
-            JSON.stringify({ error: "Duplicate not found" }),
-            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // If adding, create a new lead
-        if (reviewAction === "add") {
-          await supabase.from("voip_leads").insert({
-            phone: dup.phone,
-            name: dup.name,
-            email: dup.email,
-            website: dup.website,
-            status: "NEW",
-            upload_id: dup.upload_id,
-          });
-        }
-
-        // Mark as reviewed
-        await supabase
-          .from("voip_duplicate_leads")
-          .update({
-            reviewed_at: new Date().toISOString(),
-            reviewed_by: userId,
-            review_action: reviewAction === "add" ? "added" : "skipped",
-          })
-          .eq("id", duplicateId);
-
-        return new Response(
-          JSON.stringify({ success: true }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      case "bulk-review-duplicates": {
-        // Admin only - bulk review duplicates
-        if (userRole !== "admin") {
-          return new Response(
-            JSON.stringify({ error: "Admin access required" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { duplicateIds, reviewAction } = await req.json();
-        
-        if (!Array.isArray(duplicateIds) || duplicateIds.length === 0 || !["add", "skip"].includes(reviewAction)) {
-          return new Response(
-            JSON.stringify({ error: "duplicateIds array and reviewAction (add/skip) are required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Get all duplicates
-        const { data: dups } = await supabase
-          .from("voip_duplicate_leads")
-          .select("*")
-          .in("id", duplicateIds)
-          .is("reviewed_at", null);
-
-        let addedCount = 0;
-        if (reviewAction === "add" && dups) {
-          // Add all as new leads
-          const newLeads = dups.map(dup => ({
-            phone: dup.phone,
-            name: dup.name,
-            email: dup.email,
-            website: dup.website,
-            status: "NEW",
-            upload_id: dup.upload_id,
-          }));
-
-          if (newLeads.length > 0) {
-            const { data: inserted } = await supabase
-              .from("voip_leads")
-              .insert(newLeads)
-              .select("id");
-            addedCount = inserted?.length || 0;
-          }
-        }
-
-        // Mark all as reviewed
-        await supabase
-          .from("voip_duplicate_leads")
-          .update({
-            reviewed_at: new Date().toISOString(),
-            reviewed_by: userId,
-            review_action: reviewAction === "add" ? "added" : "skipped",
-          })
-          .in("id", duplicateIds);
-
-        return new Response(
-          JSON.stringify({ success: true, count: reviewAction === "add" ? addedCount : duplicateIds.length }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      case "create-appointment": {
-        // Any authenticated user can create appointments
-        const { leadId, leadName, leadPhone, scheduledAt, notes, outcome } = await req.json();
-
-        if (!leadPhone || !scheduledAt) {
-          return new Response(
-            JSON.stringify({ error: "leadPhone and scheduledAt are required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Get creator's name
-        const { data: creator } = await supabase
-          .from("voip_users")
-          .select("name, email")
-          .eq("id", userId)
-          .single();
-
-        const creatorName = creator?.name || creator?.email || "Unknown";
-
-        const { error } = await supabase.from("voip_appointments").insert({
-          lead_id: leadId || null,
-          lead_name: leadName || null,
-          lead_phone: leadPhone,
-          scheduled_at: scheduledAt,
-          notes: notes || null,
-          created_by: userId,
-          created_by_name: creatorName,
-          outcome: outcome || "manual",
-          status: "scheduled",
-        });
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({ success: true }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      case "appointments": {
-        // Admin only - get all appointments
-        if (userRole !== "admin") {
-          return new Response(
-            JSON.stringify({ error: "Admin access required" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { data: appointments, error } = await supabase
-          .from("voip_appointments")
-          .select("*")
-          .order("scheduled_at", { ascending: false });
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({ appointments: appointments || [] }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      case "update-appointment": {
-        // Admin only - update appointment status
-        if (userRole !== "admin") {
-          return new Response(
-            JSON.stringify({ error: "Admin access required" }),
-            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { appointmentId, status } = await req.json();
-
-        if (!appointmentId || !["completed", "cancelled", "scheduled"].includes(status)) {
-          return new Response(
-            JSON.stringify({ error: "appointmentId and valid status are required" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const { error } = await supabase
-          .from("voip_appointments")
-          .update({
-            status,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", appointmentId);
-
-        if (error) throw error;
-
-        return new Response(
-          JSON.stringify({ success: true }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-       // ==================== TRASH MANAGEMENT ====================
- 
-       case "trash-items": {
-         // Admin only - soft delete items
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const { entityType, ids } = await req.json();
-         const validEntities = ["leads", "appointments", "calls"];
-         
-         if (!validEntities.includes(entityType) || !Array.isArray(ids) || ids.length === 0) {
-           return new Response(
-             JSON.stringify({ error: "Invalid entityType or ids" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const tableMap: Record<string, string> = {
-           leads: "voip_leads",
-           appointments: "voip_appointments",
-           calls: "voip_calls",
-         };
- 
-         const { error } = await supabase
-           .from(tableMap[entityType])
-           .update({ deleted_at: new Date().toISOString() })
-           .in("id", ids);
- 
-         if (error) throw error;
- 
-         // Log action
-         await supabase.from("voip_admin_audit_log").insert({
-           admin_id: userId,
-           action: "trash_items",
-           entity_type: entityType,
-           details: { ids, count: ids.length },
-         });
- 
-         return new Response(
-           JSON.stringify({ success: true, count: ids.length }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
-       case "restore-items": {
-         // Admin only - restore soft deleted items
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const { entityType: restoreType, ids: restoreIds } = await req.json();
-         const validRestoreEntities = ["leads", "appointments", "calls"];
-         
-         if (!validRestoreEntities.includes(restoreType) || !Array.isArray(restoreIds)) {
-           return new Response(
-             JSON.stringify({ error: "Invalid entityType or ids" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const restoreTableMap: Record<string, string> = {
-           leads: "voip_leads",
-           appointments: "voip_appointments",
-           calls: "voip_calls",
-         };
- 
-         const { error } = await supabase
-           .from(restoreTableMap[restoreType])
-           .update({ deleted_at: null })
-           .in("id", restoreIds);
- 
-         if (error) throw error;
- 
-         await supabase.from("voip_admin_audit_log").insert({
-           admin_id: userId,
-           action: "restore_items",
-           entity_type: restoreType,
-           details: { ids: restoreIds, count: restoreIds.length },
-         });
- 
-         return new Response(
-           JSON.stringify({ success: true, count: restoreIds.length }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
-       case "permanent-delete": {
-         // Admin only - permanently delete items
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const { entityType: deleteType, ids: deleteIds, confirmation } = await req.json();
-         
-         if (confirmation !== "DELETE") {
-           return new Response(
-             JSON.stringify({ error: "Confirmation required" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const validDeleteEntities = ["leads", "appointments", "calls"];
-         if (!validDeleteEntities.includes(deleteType) || !Array.isArray(deleteIds)) {
-           return new Response(
-             JSON.stringify({ error: "Invalid entityType or ids" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const deleteTableMap: Record<string, string> = {
-           leads: "voip_leads",
-           appointments: "voip_appointments",
-           calls: "voip_calls",
-         };
- 
-         const { error } = await supabase
-           .from(deleteTableMap[deleteType])
-           .delete()
-           .in("id", deleteIds);
- 
-         if (error) throw error;
- 
-         await supabase.from("voip_admin_audit_log").insert({
-           admin_id: userId,
-           action: "permanent_delete",
-           entity_type: deleteType,
-           details: { ids: deleteIds, count: deleteIds.length },
-         });
- 
-         return new Response(
-           JSON.stringify({ success: true, count: deleteIds.length }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
-       case "bulk-delete": {
-         // Admin only - bulk delete based on age
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const { entityType: bulkType, bulkAction, confirmation: bulkConfirm } = await req.json();
-         
-         if (bulkConfirm !== "DELETE") {
-           return new Response(
-             JSON.stringify({ error: "Confirmation required" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const validBulkEntities = ["leads", "appointments", "calls"];
-         const validBulkActions = ["older-7", "older-30", "older-90", "all"];
-         
-         if (!validBulkEntities.includes(bulkType) || !validBulkActions.includes(bulkAction)) {
-           return new Response(
-             JSON.stringify({ error: "Invalid parameters" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const bulkTableMap: Record<string, string> = {
-           leads: "voip_leads",
-           appointments: "voip_appointments",
-           calls: "voip_calls",
-         };
- 
-         let query = supabase.from(bulkTableMap[bulkType]).delete();
-         
-         if (bulkAction === "all") {
-           // Delete all trashed items
-           query = query.not("deleted_at", "is", null);
-         } else {
-           const days = parseInt(bulkAction.split("-")[1]);
-           const cutoffDate = new Date();
-           cutoffDate.setDate(cutoffDate.getDate() - days);
-           query = query.lt("deleted_at", cutoffDate.toISOString());
-         }
- 
-         const { error, count } = await query;
-         if (error) throw error;
- 
-         await supabase.from("voip_admin_audit_log").insert({
-           admin_id: userId,
-           action: "bulk_delete",
-           entity_type: bulkType,
-           details: { bulkAction, deletedCount: count },
-         });
- 
-         return new Response(
-           JSON.stringify({ success: true, count: count || 0 }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
-       case "trashed-count": {
-         // Admin only - get count of trashed items
-         if (userRole !== "admin") {
-           return new Response(
-             JSON.stringify({ error: "Admin access required" }),
-             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const entityType = url.searchParams.get("entityType");
-         const validCountEntities = ["leads", "appointments", "calls"];
-         
-         if (!entityType || !validCountEntities.includes(entityType)) {
-           return new Response(
-             JSON.stringify({ error: "Invalid entityType" }),
-             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-           );
-         }
- 
-         const countTableMap: Record<string, string> = {
-           leads: "voip_leads",
-           appointments: "voip_appointments",
-           calls: "voip_calls",
-         };
- 
-         const { count, error } = await supabase
-           .from(countTableMap[entityType])
-           .select("*", { count: "exact", head: true })
-           .not("deleted_at", "is", null);
- 
-         if (error) throw error;
- 
-         return new Response(
-           JSON.stringify({ count: count || 0 }),
-           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-         );
-       }
- 
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
