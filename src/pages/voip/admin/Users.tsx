@@ -132,12 +132,16 @@ export default function AdminUsers() {
     if (!editingUser) return;
 
     setIsSaving(true);
+    
+    console.log("[Users] Updating user:", editingUser.id, { role: editRole, status: editStatus });
 
     const result = await apiCall("voip-admin", {
       method: "PATCH",
       params: { action: "users", id: editingUser.id.toString() },
       body: { role: editRole, status: editStatus },
     });
+
+    console.log("[Users] Update result:", result);
 
     if (result.error) {
       toast({
@@ -150,8 +154,13 @@ export default function AdminUsers() {
         title: "User Updated",
         description: "User settings have been saved",
       });
+      // Update local state immediately for instant UI feedback
+      setUsers(prev => prev.map(u => 
+        u.id === editingUser.id 
+          ? { ...u, role: editRole, status: editStatus }
+          : u
+      ));
       setEditingUser(null);
-      fetchUsers();
     }
 
     setIsSaving(false);
@@ -161,11 +170,15 @@ export default function AdminUsers() {
     if (!deletingUser) return;
 
     setIsDeleting(true);
+    
+    console.log("[Users] Deleting user:", deletingUser.id);
 
     const result = await apiCall("voip-admin", {
       method: "DELETE",
       params: { action: "users", id: deletingUser.id.toString() },
     });
+
+    console.log("[Users] Delete result:", result);
 
     if (result.error) {
       toast({
@@ -178,8 +191,9 @@ export default function AdminUsers() {
         title: "User Deleted",
         description: `${deletingUser.name}'s account has been permanently deleted`,
       });
+      // Update local state immediately for instant UI feedback
+      setUsers(prev => prev.filter(u => u.id !== deletingUser.id));
       setDeletingUser(null);
-      fetchUsers();
     }
 
     setIsDeleting(false);

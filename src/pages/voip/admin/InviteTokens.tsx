@@ -110,16 +110,20 @@ export default function InviteTokens() {
   };
 
   const handleDelete = async (id: number) => {
+    // Show loading state
+    toast.loading("Deleting token...", { id: `delete-${id}` });
+    
     const { error } = await apiCall("voip-admin", {
       method: "DELETE",
       params: { action: "invite-tokens", id: id.toString() },
     });
 
     if (!error) {
-      toast.success("Token deleted");
-      fetchTokens();
+      toast.success("Token deleted successfully", { id: `delete-${id}` });
+      // Immediately remove from local state for instant UI feedback
+      setTokens(prev => prev.filter(t => t.id !== id));
     } else {
-      toast.error(error || "Failed to delete token");
+      toast.error(error || "Failed to delete token", { id: `delete-${id}` });
     }
   };
 
