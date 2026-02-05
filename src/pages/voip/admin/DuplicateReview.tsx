@@ -37,7 +37,7 @@ export default function DuplicateReview() {
 
   const fetchDuplicates = async () => {
     setIsLoading(true);
-    const result = await apiCall<{ duplicates: DuplicateLead[] }>("voip-leads", {
+    const result = await apiCall<{ duplicates: DuplicateLead[] }>("voip-leads-ext", {
       params: { action: "duplicates" },
     });
     if (result.data?.duplicates) {
@@ -48,7 +48,7 @@ export default function DuplicateReview() {
 
   const handleReview = async (duplicateId: number, action: "add" | "skip") => {
     setProcessingId(duplicateId);
-    const result = await apiCall<{ success: boolean }>("voip-leads", {
+    const result = await apiCall<{ success: boolean }>("voip-leads-ext", {
       method: "POST",
       params: { action: "review-duplicate" },
       body: { duplicateId, reviewAction: action },
@@ -77,7 +77,7 @@ export default function DuplicateReview() {
     if (ids.length === 0) return;
 
     setProcessingId(-1); // Indicate bulk processing
-    const result = await apiCall<{ success: boolean; count: number }>("voip-leads", {
+    const result = await apiCall<{ success: boolean; count: number }>("voip-leads-ext", {
       method: "POST",
       params: { action: "bulk-review-duplicates" },
       body: { duplicateIds: ids, reviewAction: action },

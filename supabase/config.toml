@@ -1,31 +1,34 @@
- project_id = "sqtbqtpudoossunaaofx"
- 
- [functions.voip-auth]
- verify_jwt = false
- 
+project_id = "sqtbqtpudoossunaaofx"
+
+[functions.voip-auth]
+verify_jwt = false
+
 [functions.voip-admin]
 verify_jwt = false
 
 [functions.voip-admin-ext]
 verify_jwt = false
- 
- [functions.voip-analytics]
- verify_jwt = false
- 
- [functions.voip-api-keys]
- verify_jwt = false
- 
- [functions.voip-calls]
- verify_jwt = false
- 
- [functions.voip-numbers]
- verify_jwt = false
- 
- [functions.voip-leads]
- verify_jwt = false
- 
- [functions.voip-support]
- verify_jwt = false
- 
- [functions.voip-preferences]
- verify_jwt = false
+
+[functions.voip-analytics]
+verify_jwt = false
+
+[functions.voip-api-keys]
+verify_jwt = false
+
+[functions.voip-calls]
+verify_jwt = false
+
+[functions.voip-numbers]
+verify_jwt = false
+
+[functions.voip-leads]
+verify_jwt = false
+
+[functions.voip-leads-ext]
+verify_jwt = false
+
+[functions.voip-support]
+verify_jwt = false
+
+[functions.voip-preferences]
+verify_jwt = false
