@@ -680,6 +680,138 @@ serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+ 
+       case "delete-lead": {
+         // Admin only - delete a single lead
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { leadId } = await req.json();
+         if (!leadId) {
+           return new Response(
+             JSON.stringify({ error: "leadId is required" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         // Clear references first (voip_calls uses lead_id as nullable FK)
+         await supabase
+           .from("voip_calls")
+           .update({ lead_id: null })
+           .eq("lead_id", leadId);
+ 
+         // Delete from worker history
+         await supabase
+           .from("voip_worker_lead_history")
+           .delete()
+           .eq("lead_id", leadId);
+ 
+         // Delete from activity events
+         await supabase
+           .from("voip_activity_events")
+           .update({ lead_id: null })
+           .eq("lead_id", leadId);
+ 
+         // Delete the lead
+         const { error } = await supabase
+           .from("voip_leads")
+           .delete()
+           .eq("id", leadId);
+ 
+         if (error) throw error;
+ 
+         // Audit log
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: userId,
+           action: "lead_deleted",
+           entity_type: "leads",
+           entity_id: leadId,
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       case "master-clear-leads": {
+         // Admin only - delete ALL leads and reset history
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { confirmation, clearHistory } = await req.json();
+         
+         if (confirmation !== "DELETE ALL LEADS") {
+           return new Response(
+             JSON.stringify({ error: "Invalid confirmation. Type exactly: DELETE ALL LEADS" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         // Count leads before deletion
+         const { count: leadCount } = await supabase
+           .from("voip_leads")
+           .select("*", { count: "exact", head: true });
+ 
+         // Clear references in voip_calls
+         await supabase
+           .from("voip_calls")
+           .update({ lead_id: null })
+           .neq("id", 0);
+ 
+         // Clear activity events lead references
+         await supabase
+           .from("voip_activity_events")
+           .update({ lead_id: null })
+           .neq("id", 0);
+ 
+         // Delete all worker lead history
+         await supabase
+           .from("voip_worker_lead_history")
+           .delete()
+           .neq("id", 0);
+ 
+         // Delete all duplicate leads
+         await supabase
+           .from("voip_duplicate_leads")
+           .delete()
+           .neq("id", 0);
+ 
+         // Delete all leads
+         await supabase
+           .from("voip_leads")
+           .delete()
+           .neq("id", 0);
+ 
+         // Optionally clear lead upload history
+         if (clearHistory) {
+           await supabase
+             .from("voip_lead_uploads")
+             .delete()
+             .neq("id", 0);
+         }
+ 
+         // Audit log
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: userId,
+           action: "master_clear_leads",
+           entity_type: "leads",
+           details: { leadsDeleted: leadCount || 0, historyCleared: clearHistory || false },
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true, leadsDeleted: leadCount || 0 }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
 
       case "duplicates": {
         // Admin only - get pending duplicate leads for review

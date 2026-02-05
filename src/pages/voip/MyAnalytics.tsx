@@ -1,9 +1,14 @@
  import { VoipLayout } from "@/components/voip/layout/VoipLayout";
  import { StatCard } from "@/components/voip/dashboard/StatCard";
  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
- import { BarChart3, Phone, Target, TrendingUp, Clock, CalendarCheck } from "lucide-react";
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+ import { Badge } from "@/components/ui/badge";
+ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+ import { BarChart3, Phone, Target, TrendingUp, Clock, CalendarCheck, History, ChevronDown, ExternalLink } from "lucide-react";
  import { useEffect, useState } from "react";
  import { useVoipApi } from "@/hooks/useVoipApi";
+ import { format } from "date-fns";
+ import { cn } from "@/lib/utils";
  
  interface MyStats {
    totalCalls: number;
@@ -11,10 +16,23 @@
    leadsRequested: number;
    leadsCompleted: number;
    completionRate: number;
+   conversionRate: number;
    avgTimePerLead: number;
    totalActiveTime: number;
    appointmentsCreated: number;
    dailyActivity: { date: string; count: number }[];
+ }
+ 
+ interface CallSession {
+   id: number;
+   start_time: string;
+   duration_seconds: number;
+   outcome: string | null;
+   notes: string | null;
+   lead_name: string | null;
+   lead_phone: string;
+   appointment_created: boolean;
+   appointment_id?: number;
  }
  
  function formatDuration(seconds: number): string {
@@ -24,20 +42,29 @@
    return `${mins}m`;
  }
  
+ function formatOutcome(outcome: string | null): string {
+   if (!outcome) return "—";
+   return outcome.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+ }
+ 
  export default function MyAnalytics() {
    const { apiCall } = useVoipApi();
    const [stats, setStats] = useState<MyStats | null>(null);
+   const [sessions, setSessions] = useState<CallSession[]>([]);
    const [loading, setLoading] = useState(true);
+   const [expandedNotes, setExpandedNotes] = useState<Set<number>>(new Set());
  
    useEffect(() => {
-     const fetchStats = async () => {
-       const result = await apiCall<MyStats>("voip-analytics", {
-         params: { action: "my-stats" },
-       });
-       if (result.data) setStats(result.data);
+     const fetchData = async () => {
+       const [statsResult, sessionsResult] = await Promise.all([
+         apiCall<MyStats>("voip-analytics", { params: { action: "my-stats" } }),
+         apiCall<{ sessions: CallSession[] }>("voip-analytics", { params: { action: "my-sessions" } }),
+       ]);
+       if (statsResult.data) setStats(statsResult.data);
+       if (sessionsResult.data?.sessions) setSessions(sessionsResult.data.sessions);
        setLoading(false);
      };
-     fetchStats();
+     fetchData();
    }, [apiCall]);
  
    const outcomeLabels: Record<string, string> = {
@@ -48,6 +75,40 @@
      wrong_number: "Wrong Number",
      dnc: "Do Not Call",
      followup: "Follow-up",
+   };
+ 
+   const getOutcomeBadge = (outcome: string | null) => {
+     if (!outcome) return <Badge variant="outline">—</Badge>;
+     switch (outcome) {
+       case "interested":
+         return <Badge className="bg-green-600">Interested</Badge>;
+       case "not_interested":
+         return <Badge variant="secondary">Not Interested</Badge>;
+       case "followup":
+         return <Badge className="bg-orange-500">Follow-up</Badge>;
+       case "no_answer":
+         return <Badge variant="outline">No Answer</Badge>;
+       case "voicemail":
+         return <Badge variant="outline">Voicemail</Badge>;
+       case "wrong_number":
+         return <Badge variant="destructive">Wrong Number</Badge>;
+       case "dnc":
+         return <Badge variant="destructive">DNC</Badge>;
+       default:
+         return <Badge variant="outline">{formatOutcome(outcome)}</Badge>;
+     }
+   };
+ 
+   const toggleNotes = (id: number) => {
+     setExpandedNotes((prev) => {
+       const next = new Set(prev);
+       if (next.has(id)) {
+         next.delete(id);
+       } else {
+         next.add(id);
+       }
+       return next;
+     });
    };
  
    return (
@@ -65,25 +126,25 @@
          ) : (
            <>
              {/* Overview Stats */}
-             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                <StatCard
-                 title="Total Calls"
-                 value={stats?.totalCalls || 0}
+                 title="Leads Requested"
+                 value={stats?.leadsRequested || 0}
                  subtitle="All time"
                  icon={Phone}
                />
                <StatCard
-                 title="Completion Rate"
-                 value={`${stats?.completionRate || 0}%`}
-                 subtitle="Leads completed"
+                 title="Leads Completed"
+                 value={stats?.leadsCompleted || 0}
+                 subtitle="All time"
                  icon={Target}
                  variant="success"
                />
                <StatCard
-                 title="Avg Time/Lead"
-                 value={formatDuration(stats?.avgTimePerLead || 0)}
-                 subtitle="Session time"
-                 icon={Clock}
+                 title="Completion Rate"
+                 value={`${stats?.completionRate || 0}%`}
+                 subtitle="Completed / Requested"
+                 icon={TrendingUp}
                />
                <StatCard
                  title="Appointments"
@@ -91,6 +152,19 @@
                  subtitle="Created"
                  icon={CalendarCheck}
                  variant="success"
+               />
+               <StatCard
+                 title="Conversion Rate"
+                 value={`${stats?.conversionRate || 0}%`}
+                 subtitle="Interested → Appt"
+                 icon={TrendingUp}
+                 variant="success"
+               />
+               <StatCard
+                 title="Avg Time/Lead"
+                 value={formatDuration(stats?.avgTimePerLead || 0)}
+                 subtitle="Session duration"
+                 icon={Clock}
                />
              </div>
  
@@ -138,9 +212,9 @@
                  <CardHeader>
                    <CardTitle className="flex items-center gap-2">
                      <TrendingUp className="w-5 h-5" />
-                     Call Outcomes
+                     Outcomes Breakdown
                    </CardTitle>
-                   <CardDescription>Breakdown of your call results</CardDescription>
+                   <CardDescription>Distribution of call results</CardDescription>
                  </CardHeader>
                  <CardContent>
                    {stats?.outcomes && Object.keys(stats.outcomes).length > 0 ? (
@@ -174,30 +248,90 @@
                </Card>
              </div>
  
-             {/* Session Stats */}
+             {/* Session History Table */}
              <Card>
                <CardHeader>
                  <CardTitle className="flex items-center gap-2">
-                   <Clock className="w-5 h-5" />
-                   Session Summary
+                   <History className="w-5 h-5" />
+                   Session History
                  </CardTitle>
-                 <CardDescription>Your activity and time on platform</CardDescription>
+                 <CardDescription>Your completed call sessions</CardDescription>
                </CardHeader>
                <CardContent>
-                 <div className="grid gap-4 md:grid-cols-3">
-                   <div className="p-4 rounded-lg bg-muted/50 text-center">
-                     <p className="text-3xl font-bold text-primary">{stats?.leadsRequested || 0}</p>
-                     <p className="text-sm text-muted-foreground">Leads Requested</p>
+                 {sessions.length > 0 ? (
+                   <div className="rounded-md border">
+                     <Table>
+                       <TableHeader>
+                         <TableRow>
+                           <TableHead>Timestamp</TableHead>
+                           <TableHead>Lead</TableHead>
+                           <TableHead>Outcome</TableHead>
+                           <TableHead>Notes</TableHead>
+                           <TableHead>Duration</TableHead>
+                           <TableHead>Appointment</TableHead>
+                         </TableRow>
+                       </TableHeader>
+                       <TableBody>
+                         {sessions.map((session) => (
+                           <TableRow key={session.id}>
+                             <TableCell className="text-sm">
+                               {format(new Date(session.start_time), "MMM d, h:mm a")}
+                             </TableCell>
+                             <TableCell>
+                               <div>
+                                 <p className="font-medium">{session.lead_name || "—"}</p>
+                                 <p className="text-sm text-muted-foreground font-mono">{session.lead_phone}</p>
+                               </div>
+                             </TableCell>
+                             <TableCell>{getOutcomeBadge(session.outcome)}</TableCell>
+                             <TableCell>
+                               {session.notes ? (
+                                 <Collapsible open={expandedNotes.has(session.id)}>
+                                   <CollapsibleTrigger
+                                     onClick={() => toggleNotes(session.id)}
+                                     className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground cursor-pointer"
+                                   >
+                                     <span className="truncate max-w-[150px]">{session.notes.slice(0, 30)}...</span>
+                                     <ChevronDown className={cn("w-4 h-4 transition-transform", expandedNotes.has(session.id) && "rotate-180")} />
+                                   </CollapsibleTrigger>
+                                   <CollapsibleContent>
+                                     <p className="text-sm mt-1 p-2 bg-muted rounded">{session.notes}</p>
+                                   </CollapsibleContent>
+                                 </Collapsible>
+                               ) : (
+                                 <span className="text-muted-foreground">—</span>
+                               )}
+                             </TableCell>
+                             <TableCell>
+                               <span className="flex items-center gap-1">
+                                 <Clock className="w-3 h-3" />
+                                 {formatDuration(session.duration_seconds || 0)}
+                               </span>
+                             </TableCell>
+                             <TableCell>
+                               {session.appointment_created ? (
+                                 <Badge className="bg-green-600 gap-1">
+                                   <CalendarCheck className="w-3 h-3" />
+                                   Created
+                                 </Badge>
+                               ) : (
+                                 <span className="text-muted-foreground">—</span>
+                               )}
+                             </TableCell>
+                           </TableRow>
+                         ))}
+                       </TableBody>
+                     </Table>
                    </div>
-                   <div className="p-4 rounded-lg bg-muted/50 text-center">
-                     <p className="text-3xl font-bold text-green-600">{stats?.leadsCompleted || 0}</p>
-                     <p className="text-sm text-muted-foreground">Leads Completed</p>
+                 ) : (
+                   <div className="h-48 flex items-center justify-center text-muted-foreground">
+                     <div className="text-center">
+                       <History className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                       <p>No sessions recorded yet</p>
+                       <p className="text-sm">Complete a lead to see your history</p>
+                     </div>
                    </div>
-                   <div className="p-4 rounded-lg bg-muted/50 text-center">
-                     <p className="text-3xl font-bold text-blue-600">{formatDuration(stats?.totalActiveTime || 0)}</p>
-                     <p className="text-sm text-muted-foreground">Total Active Time</p>
-                   </div>
-                 </div>
+                 )}
                </CardContent>
              </Card>
            </>

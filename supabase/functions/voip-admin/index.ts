@@ -498,11 +498,11 @@ serve(async (req) => {
 
       // User suspension with reason
       case "suspend-user": {
-        const { userId: targetUserId, reason } = await req.json();
-        
-        if (!targetUserId || !reason) {
+         const { userId: targetUserId, reason } = await req.json();
+ 
+         if (!targetUserId) {
           return new Response(
-            JSON.stringify({ error: "userId and reason are required" }),
+             JSON.stringify({ error: "userId is required" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -519,7 +519,7 @@ serve(async (req) => {
           .from("voip_users")
           .update({
             status: "suspended",
-            suspension_reason: reason,
+             suspension_reason: reason || null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", parseInt(targetUserId));
@@ -545,7 +545,7 @@ serve(async (req) => {
           action: "user_suspended",
           entity_type: "users",
           entity_id: parseInt(targetUserId),
-          details: { reason },
+           details: { reason: reason || "No reason provided" },
         });
 
         return new Response(
@@ -554,6 +554,126 @@ serve(async (req) => {
         );
       }
 
+       // Set user status (pending/suspended with optional reason)
+       case "set-status": {
+         const { userId: targetUserId, status, reason } = await req.json();
+         
+         if (!targetUserId || !status) {
+           return new Response(
+             JSON.stringify({ error: "userId and status are required" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         if (!["active", "pending", "suspended"].includes(status)) {
+           return new Response(
+             JSON.stringify({ error: "Invalid status. Must be active, pending, or suspended" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         // Don't allow changing your own status
+         if (parseInt(targetUserId) === adminId) {
+           return new Response(
+             JSON.stringify({ error: "You cannot change your own status" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const updates: Record<string, unknown> = {
+           status,
+           updated_at: new Date().toISOString(),
+         };
+ 
+         // Only set suspension_reason for non-active statuses
+         if (status !== "active") {
+           updates.suspension_reason = reason || null;
+         } else {
+           updates.suspension_reason = null;
+         }
+ 
+         const { error } = await supabase
+           .from("voip_users")
+           .update(updates)
+           .eq("id", parseInt(targetUserId));
+ 
+         if (error) throw error;
+ 
+         // If suspended or pending, end sessions and invalidate tokens
+         if (status !== "active") {
+           await supabase
+             .from("voip_user_sessions")
+             .update({ session_end: new Date().toISOString() })
+             .eq("user_id", parseInt(targetUserId))
+             .is("session_end", null);
+ 
+           await supabase
+             .from("voip_refresh_tokens")
+             .delete()
+             .eq("user_id", parseInt(targetUserId));
+         }
+ 
+         // Audit log
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: adminId,
+           action: `user_status_changed_to_${status}`,
+           entity_type: "users",
+           entity_id: parseInt(targetUserId),
+           details: { status, reason: reason || null },
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       // Get user activity/prompt history
+       case "user-activity": {
+         const targetUserId = url.searchParams.get("userId");
+         if (!targetUserId) {
+           return new Response(
+             JSON.stringify({ error: "userId is required" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { data: events, error } = await supabase
+           .from("voip_activity_events")
+           .select("id, event_type, lead_id, metadata, created_at")
+           .eq("user_id", parseInt(targetUserId))
+           .order("created_at", { ascending: false })
+           .limit(50);
+ 
+         if (error) throw error;
+ 
+         // Get lead info for events with lead_id
+         const leadIds = [...new Set((events || []).map(e => e.lead_id).filter(Boolean))];
+         let leadMap = new Map<number, { name: string | null; phone: string }>();
+         
+         if (leadIds.length > 0) {
+           const { data: leads } = await supabase
+             .from("voip_leads")
+             .select("id, name, phone")
+             .in("id", leadIds);
+           
+           if (leads) {
+             leadMap = new Map(leads.map(l => [l.id, { name: l.name, phone: l.phone }]));
+           }
+         }
+ 
+         const enrichedEvents = (events || []).map(event => ({
+           ...event,
+           lead_name: event.lead_id ? leadMap.get(event.lead_id)?.name : null,
+           lead_phone: event.lead_id ? leadMap.get(event.lead_id)?.phone : null,
+         }));
+ 
+         return new Response(
+           JSON.stringify({ events: enrichedEvents }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
       // Reactivate user
       case "reactivate-user": {
         const { userId: targetUserId } = await req.json();
