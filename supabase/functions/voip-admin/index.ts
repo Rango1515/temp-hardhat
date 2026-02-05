@@ -347,9 +347,9 @@ serve(async (req) => {
             .map(b => b.toString(16).padStart(2, "0"))
             .join("");
 
-          const expiresAt = expiresInDays 
-            ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
-            : null;
+          // Default to 30 days if not specified (expires_at is required)
+          const daysToExpire = expiresInDays || 30;
+          const expiresAt = new Date(Date.now() + daysToExpire * 24 * 60 * 60 * 1000).toISOString();
 
           const { data, error } = await supabase
             .from("voip_signup_tokens")
