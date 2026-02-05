@@ -34,7 +34,6 @@
  import { cn } from "@/lib/utils";
  import {
    AlertDialog,
-   AlertDialogAction,
    AlertDialogCancel,
    AlertDialogContent,
    AlertDialogDescription,
@@ -545,14 +544,17 @@
            </AlertDialogHeader>
            <AlertDialogFooter>
              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-             <AlertDialogAction
-               onClick={handleDeleteTicket}
+             <Button
+               variant="destructive"
+               onClick={(e) => {
+                 e.preventDefault();
+                 handleDeleteTicket();
+               }}
                disabled={isDeleting}
-               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
              >
                {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                Delete
-             </AlertDialogAction>
+             </Button>
            </AlertDialogFooter>
          </AlertDialogContent>
        </AlertDialog>
