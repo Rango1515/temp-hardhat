@@ -92,22 +92,81 @@ export function extractToken(authHeader: string | null): string | null {
 }
 
 // Password hashing using Web Crypto API (more reliable in Deno Deploy)
+// Using PBKDF2 with high iteration count for security (bcrypt doesn't work reliably in Deno Deploy)
 export async function hashPassword(password: string): Promise<string> {
-  // Use a simple SHA-256 based hash with salt for compatibility
+  // Use PBKDF2 with 100,000 iterations for strong password hashing
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
   
-  const passwordWithSalt = encoder.encode(password + saltHex);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', passwordWithSalt);
+  // Import password as key material
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveBits"]
+  );
+  
+  // Derive 256 bits using PBKDF2 with 100,000 iterations
+  const hashBuffer = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    256
+  );
+  
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   
-  // Format: $sha256$salt$hash
-  return `$sha256$${saltHex}$${hashHex}`;
+  // Format: $pbkdf2$iterations$salt$hash
+  return `$pbkdf2$100000$${saltHex}$${hashHex}`;
 }
 
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  // Check if it's our SHA-256 format
+  // Check if it's our PBKDF2 format
+  if (storedHash.startsWith('$pbkdf2$')) {
+    const parts = storedHash.split('$');
+    if (parts.length !== 5) return false;
+    
+    const iterations = parseInt(parts[2]);
+    const saltHex = parts[3];
+    const expectedHash = parts[4];
+    
+    // Convert hex salt back to Uint8Array
+    const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
+    
+    // Import password as key material
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"]
+    );
+    
+    // Derive bits with same parameters
+    const hashBuffer = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: salt,
+        iterations: iterations,
+        hash: "SHA-256",
+      },
+      keyMaterial,
+      256
+    );
+    
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const actualHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return actualHash === expectedHash;
+  }
+  
+  // Check if it's our legacy SHA-256 format (for backwards compatibility)
   if (storedHash.startsWith('$sha256$')) {
     const parts = storedHash.split('$');
     if (parts.length !== 4) return false;

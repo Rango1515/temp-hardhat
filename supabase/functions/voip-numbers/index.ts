@@ -3,6 +3,12 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
 
+// Sanitize search input to prevent SQL wildcard injection
+function sanitizeSearchPattern(input: string): string {
+  // Escape SQL wildcards % and _
+  return input.replace(/[%_\\]/g, '\\$&');
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -54,7 +60,8 @@ serve(async (req) => {
           .eq("status", "available");
 
         if (areaCode) {
-          query = query.ilike("phone_number", `%${areaCode}%`);
+          const sanitized = sanitizeSearchPattern(areaCode);
+          query = query.ilike("phone_number", `%${sanitized}%`);
         }
 
         const { data: numbers, error } = await query.limit(20);
