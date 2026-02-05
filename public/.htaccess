@@ -1,9 +1,11 @@
  <IfModule mod_rewrite.c>
    RewriteEngine On
-   RewriteBase /
-   RewriteRule ^index\.html$ - [L]
-   RewriteCond %{REQUEST_FILENAME} !-f
-   RewriteCond %{REQUEST_FILENAME} !-d
-   RewriteCond %{REQUEST_FILENAME} !-l
-   RewriteRule . /index.html [L]
+ 
+   # Allow real files and folders to load normally
+   RewriteCond %{REQUEST_FILENAME} -f [OR]
+   RewriteCond %{REQUEST_FILENAME} -d
+   RewriteRule ^ - [L]
+ 
+   # Everything else goes to React SPA entry
+   RewriteRule ^ index.html [L]
  </IfModule>
