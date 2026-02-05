@@ -33,6 +33,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
  import TeamChat from "./pages/voip/TeamChat";
  import Leaderboard from "./pages/voip/Leaderboard";
+ import Support from "./pages/voip/Support";
 
 const queryClient = new QueryClient();
 
@@ -60,6 +61,7 @@ const App = () => (
             <Route path="/voip/calls" element={<ProtectedRoute><CallHistory /></ProtectedRoute>} />
             <Route path="/voip/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
              <Route path="/voip/team-chat" element={<ProtectedRoute><TeamChat /></ProtectedRoute>} />
+             <Route path="/voip/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
              <Route path="/voip/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
 
             {/* VoIP Admin Routes */}

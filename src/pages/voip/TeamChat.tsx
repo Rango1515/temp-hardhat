@@ -10,7 +10,7 @@
  import { Textarea } from "@/components/ui/textarea";
  import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
  import { Badge } from "@/components/ui/badge";
- import { ScrollArea } from "@/components/ui/scroll-area";
+ import { Switch } from "@/components/ui/switch";
  import {
    Dialog,
    DialogContent,
@@ -37,9 +37,10 @@
    Lock,
    Plus,
    Settings,
-   Image as ImageIcon,
    AlertCircle,
    UserCircle,
+   ArrowDown,
+   Megaphone,
  } from "lucide-react";
  import { useToast } from "@/hooks/use-toast";
  import { format } from "date-fns";
@@ -51,6 +52,7 @@
    description: string | null;
    is_locked: boolean;
    admin_only: boolean;
+   unread_count?: number;
  }
  
  interface ChatMessage {
@@ -80,7 +82,7 @@
    const { user, isAdmin } = useVoipAuth();
    const { apiCall } = useVoipApi();
    const { toast } = useToast();
-   
+ 
    const [channels, setChannels] = useState<Channel[]>([]);
    const [messages, setMessages] = useState<ChatMessage[]>([]);
    const [chatProfile, setChatProfile] = useState<ChatProfile | null>(null);
@@ -91,7 +93,17 @@
    const [showProfileSetup, setShowProfileSetup] = useState(false);
    const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
    const [editContent, setEditContent] = useState("");
-   
+ 
+   // Channel management dialogs
+   const [showChannelDialog, setShowChannelDialog] = useState(false);
+   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
+   const [channelForm, setChannelForm] = useState({
+     name: "",
+     description: "",
+     adminOnly: false,
+     isLocked: false,
+   });
+ 
    // Profile form
    const [profileForm, setProfileForm] = useState({
      displayName: "",
@@ -99,14 +111,40 @@
      avatarUrl: "",
    });
    const [isSavingProfile, setIsSavingProfile] = useState(false);
-   
+ 
+   // Auto-scroll state
    const messagesEndRef = useRef<HTMLDivElement>(null);
-   const scrollAreaRef = useRef<HTMLDivElement>(null);
+   const scrollContainerRef = useRef<HTMLDivElement>(null);
+   const [isAtBottom, setIsAtBottom] = useState(true);
+   const [hasNewMessages, setHasNewMessages] = useState(false);
+   const [previousMessageCount, setPreviousMessageCount] = useState(0);
+ 
+   // Check if user is at bottom of scroll
+   const checkIfAtBottom = useCallback(() => {
+     const container = scrollContainerRef.current;
+     if (!container) return true;
+     const threshold = 100;
+     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+   }, []);
+ 
+   // Scroll to bottom
+   const scrollToBottom = useCallback((smooth = true) => {
+     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+     setHasNewMessages(false);
+     setIsAtBottom(true);
+   }, []);
+ 
+   // Handle scroll events
+   const handleScroll = useCallback(() => {
+     const atBottom = checkIfAtBottom();
+     setIsAtBottom(atBottom);
+     if (atBottom) setHasNewMessages(false);
+   }, [checkIfAtBottom]);
  
    // Fetch initial data
    const fetchData = useCallback(async () => {
      setIsLoading(true);
-     
+ 
      const result = await apiCall<{
        channels: Channel[];
        profile: ChatProfile | null;
@@ -115,40 +153,81 @@
      if (result.data) {
        setChannels(result.data.channels);
        setChatProfile(result.data.profile);
-       
+ 
        if (!result.data.profile) {
          setShowProfileSetup(true);
        } else if (result.data.channels.length > 0) {
+         // Select first channel with messages or just first channel
          setSelectedChannel(result.data.channels[0]);
        }
      }
-     
+ 
      setIsLoading(false);
    }, [apiCall]);
+ 
+   // Mark channel as read
+   const markChannelRead = useCallback(
+     async (channelId: number) => {
+       await apiCall("voip-chat", {
+         method: "POST",
+         params: { action: "mark-read" },
+         body: { channelId },
+       });
+       // Update local unread count
+       setChannels((prev) =>
+         prev.map((ch) => (ch.id === channelId ? { ...ch, unread_count: 0 } : ch))
+       );
+     },
+     [apiCall]
+   );
  
    // Fetch messages for selected channel
    const fetchMessages = useCallback(async () => {
      if (!selectedChannel) return;
-     
+ 
      const result = await apiCall<{ messages: ChatMessage[] }>("voip-chat", {
        params: { action: "messages", channelId: selectedChannel.id.toString() },
      });
  
      if (result.data) {
-       setMessages(result.data.messages);
-       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+       const newMessages = result.data.messages;
+ 
+       // Check if we got new messages
+       if (newMessages.length > previousMessageCount && previousMessageCount > 0) {
+         if (isAtBottom) {
+           // Auto-scroll to new message
+           setTimeout(() => scrollToBottom(), 50);
+         } else {
+           // Show "new messages" pill
+           setHasNewMessages(true);
+         }
+       }
+ 
+       setMessages(newMessages);
+       setPreviousMessageCount(newMessages.length);
+ 
+       // If this is the initial load, scroll to bottom
+       if (previousMessageCount === 0 && newMessages.length > 0) {
+         setTimeout(() => scrollToBottom(false), 50);
+       }
      }
-   }, [apiCall, selectedChannel]);
+   }, [apiCall, selectedChannel, isAtBottom, previousMessageCount, scrollToBottom]);
  
    useEffect(() => {
      fetchData();
    }, [fetchData]);
  
+   // When channel changes, reset messages and scroll state
    useEffect(() => {
      if (selectedChannel) {
+       setMessages([]);
+       setPreviousMessageCount(0);
+       setHasNewMessages(false);
+       setIsAtBottom(true);
        fetchMessages();
+       markChannelRead(selectedChannel.id);
      }
-   }, [selectedChannel, fetchMessages]);
+   }, [selectedChannel]); // eslint-disable-line react-hooks/exhaustive-deps
  
    // Real-time subscription
    useEffect(() => {
@@ -175,6 +254,14 @@
      };
    }, [selectedChannel, fetchMessages]);
  
+   // Attach scroll listener
+   useEffect(() => {
+     const container = scrollContainerRef.current;
+     if (!container) return;
+     container.addEventListener("scroll", handleScroll);
+     return () => container.removeEventListener("scroll", handleScroll);
+   }, [handleScroll]);
+ 
    const handleSaveProfile = async () => {
      if (!profileForm.displayName.trim()) {
        toast({
@@ -186,7 +273,7 @@
      }
  
      setIsSavingProfile(true);
-     
+ 
      const result = await apiCall<{ profile: ChatProfile }>("voip-chat", {
        method: "POST",
        params: { action: "save-profile" },
@@ -198,30 +285,21 @@
      });
  
      if (result.error) {
-       toast({
-         title: "Error",
-         description: result.error,
-         variant: "destructive",
-       });
+       toast({ title: "Error", description: result.error, variant: "destructive" });
      } else if (result.data) {
        setChatProfile(result.data.profile);
        setShowProfileSetup(false);
-       toast({
-         title: "Profile Saved",
-         description: "You can now chat with the team!",
-       });
-       if (channels.length > 0) {
-         setSelectedChannel(channels[0]);
-       }
+       toast({ title: "Profile Saved", description: "You can now chat with the team!" });
+       if (channels.length > 0) setSelectedChannel(channels[0]);
      }
-     
+ 
      setIsSavingProfile(false);
    };
  
    const handleSendMessage = async (e: React.FormEvent) => {
      e.preventDefault();
      if (!newMessage.trim() || !selectedChannel || !chatProfile) return;
-     
+ 
      if (chatProfile.is_muted || chatProfile.is_banned) {
        toast({
          title: "Cannot Send Message",
@@ -241,39 +319,31 @@
      }
  
      setIsSending(true);
-     
+ 
      const result = await apiCall("voip-chat", {
        method: "POST",
        params: { action: "send-message" },
-       body: {
-         channelId: selectedChannel.id,
-         content: newMessage.trim(),
-       },
+       body: { channelId: selectedChannel.id, content: newMessage.trim() },
      });
  
      if (result.error) {
-       toast({
-         title: "Error",
-         description: result.error,
-         variant: "destructive",
-       });
+       toast({ title: "Error", description: result.error, variant: "destructive" });
      } else {
        setNewMessage("");
+       // Force scroll to bottom after sending
+       setTimeout(() => scrollToBottom(), 100);
      }
-     
+ 
      setIsSending(false);
    };
  
    const handleEditMessage = async () => {
      if (!editingMessage || !editContent.trim()) return;
-     
+ 
      const result = await apiCall("voip-chat", {
        method: "POST",
        params: { action: "edit-message" },
-       body: {
-         messageId: editingMessage.id,
-         content: editContent.trim(),
-       },
+       body: { messageId: editingMessage.id, content: editContent.trim() },
      });
  
      if (result.error) {
@@ -312,6 +382,86 @@
      }
    };
  
+   // Channel management
+   const handleCreateChannel = async () => {
+     if (!channelForm.name.trim()) return;
+ 
+     const result = await apiCall<{ channel: Channel }>("voip-chat", {
+       method: "POST",
+       params: { action: "create-channel" },
+       body: {
+         name: channelForm.name,
+         description: channelForm.description,
+         adminOnly: channelForm.adminOnly,
+         isLocked: channelForm.isLocked,
+       },
+     });
+ 
+     if (result.error) {
+       toast({ title: "Error", description: result.error, variant: "destructive" });
+     } else {
+       toast({ title: "Channel Created" });
+       setShowChannelDialog(false);
+       setChannelForm({ name: "", description: "", adminOnly: false, isLocked: false });
+       fetchData();
+     }
+   };
+ 
+   const handleUpdateChannel = async () => {
+     if (!editingChannel || !channelForm.name.trim()) return;
+ 
+     const result = await apiCall("voip-chat", {
+       method: "POST",
+       params: { action: "update-channel" },
+       body: {
+         channelId: editingChannel.id,
+         name: channelForm.name,
+         description: channelForm.description,
+         adminOnly: channelForm.adminOnly,
+         isLocked: channelForm.isLocked,
+       },
+     });
+ 
+     if (result.error) {
+       toast({ title: "Error", description: result.error, variant: "destructive" });
+     } else {
+       toast({ title: "Channel Updated" });
+       setEditingChannel(null);
+       setChannelForm({ name: "", description: "", adminOnly: false, isLocked: false });
+       fetchData();
+     }
+   };
+ 
+   const handleDeleteChannel = async (channelId: number) => {
+     if (!confirm("Are you sure you want to delete this channel?")) return;
+ 
+     const result = await apiCall("voip-chat", {
+       method: "POST",
+       params: { action: "delete-channel" },
+       body: { channelId },
+     });
+ 
+     if (result.error) {
+       toast({ title: "Error", description: result.error, variant: "destructive" });
+     } else {
+       toast({ title: "Channel Deleted" });
+       if (selectedChannel?.id === channelId) {
+         setSelectedChannel(channels.find((c) => c.id !== channelId) || null);
+       }
+       fetchData();
+     }
+   };
+ 
+   const openEditChannel = (channel: Channel) => {
+     setEditingChannel(channel);
+     setChannelForm({
+       name: channel.name,
+       description: channel.description || "",
+       adminOnly: channel.admin_only,
+       isLocked: channel.is_locked,
+     });
+   };
+ 
    if (isLoading) {
      return (
        <VoipLayout>
@@ -347,7 +497,7 @@
                    }
                  />
                </div>
-               
+ 
                <div className="space-y-2">
                  <Label htmlFor="avatarUrl">Avatar URL (Optional)</Label>
                  <Input
@@ -359,7 +509,7 @@
                    }
                  />
                </div>
-               
+ 
                <div className="space-y-2">
                  <Label htmlFor="bio">Bio (Optional)</Label>
                  <Textarea
@@ -394,8 +544,8 @@
      );
    }
  
-   // Banned/Muted warning
    const isBannedOrMuted = chatProfile?.is_banned || chatProfile?.is_muted;
+   const totalUnread = channels.reduce((sum, ch) => sum + (ch.unread_count || 0), 0);
  
    return (
      <VoipLayout>
@@ -407,32 +557,48 @@
                <CardTitle className="text-lg flex items-center justify-between">
                  Channels
                  {isAdmin && (
-                   <Button variant="ghost" size="icon" className="h-8 w-8">
+                   <Button
+                     variant="ghost"
+                     size="icon"
+                     className="h-8 w-8"
+                     onClick={() => {
+                       setChannelForm({ name: "", description: "", adminOnly: false, isLocked: false });
+                       setShowChannelDialog(true);
+                     }}
+                   >
                      <Plus className="w-4 h-4" />
                    </Button>
                  )}
                </CardTitle>
              </CardHeader>
-             <CardContent className="flex-1 p-2">
+             <CardContent className="flex-1 p-2 overflow-y-auto">
                <div className="space-y-1">
                  {channels.map((channel) => (
                    <button
                      key={channel.id}
                      onClick={() => setSelectedChannel(channel)}
                      className={cn(
-                       "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors",
+                       "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors relative",
                        selectedChannel?.id === channel.id
                          ? "bg-primary text-primary-foreground"
                          : "hover:bg-muted"
                      )}
                    >
-                     <Hash className="w-4 h-4 shrink-0" />
-                     <span className="truncate">{channel.name}</span>
+                     {channel.name === "announcements" ? (
+                       <Megaphone className="w-4 h-4 shrink-0" />
+                     ) : (
+                       <Hash className="w-4 h-4 shrink-0" />
+                     )}
+                     <span className="truncate flex-1">{channel.name}</span>
                      {channel.is_locked && <Lock className="w-3 h-3 shrink-0" />}
                      {channel.admin_only && (
                        <Badge variant="secondary" className="text-[10px] shrink-0">
                          Admin
                        </Badge>
+                     )}
+                     {/* Unread badge */}
+                     {(channel.unread_count || 0) > 0 && selectedChannel?.id !== channel.id && (
+                       <span className="absolute right-2 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive" />
                      )}
                    </button>
                  ))}
@@ -446,7 +612,11 @@
            {/* Channel Header */}
            <div className="border-b p-4 flex items-center justify-between">
              <div className="flex items-center gap-2">
-               <Hash className="w-5 h-5 text-muted-foreground" />
+               {selectedChannel?.name === "announcements" ? (
+                 <Megaphone className="w-5 h-5 text-muted-foreground" />
+               ) : (
+                 <Hash className="w-5 h-5 text-muted-foreground" />
+               )}
                <span className="font-semibold">{selectedChannel?.name || "Select a channel"}</span>
                {selectedChannel?.description && (
                  <span className="text-sm text-muted-foreground hidden sm:inline">
@@ -455,14 +625,35 @@
                )}
              </div>
              {isAdmin && selectedChannel && (
-               <Button variant="ghost" size="icon">
-                 <Settings className="w-4 h-4" />
-               </Button>
+               <DropdownMenu>
+                 <DropdownMenuTrigger asChild>
+                   <Button variant="ghost" size="icon">
+                     <Settings className="w-4 h-4" />
+                   </Button>
+                 </DropdownMenuTrigger>
+                 <DropdownMenuContent align="end">
+                   <DropdownMenuItem onClick={() => openEditChannel(selectedChannel)}>
+                     <Pencil className="w-4 h-4 mr-2" />
+                     Edit Channel
+                   </DropdownMenuItem>
+                   <DropdownMenuSeparator />
+                   <DropdownMenuItem
+                     className="text-destructive"
+                     onClick={() => handleDeleteChannel(selectedChannel.id)}
+                   >
+                     <Trash2 className="w-4 h-4 mr-2" />
+                     Delete Channel
+                   </DropdownMenuItem>
+                 </DropdownMenuContent>
+               </DropdownMenu>
              )}
            </div>
  
            {/* Messages */}
-           <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+           <div
+             ref={scrollContainerRef}
+             className="flex-1 overflow-y-auto p-4 relative"
+           >
              {isBannedOrMuted && (
                <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-2">
                  <AlertCircle className="w-4 h-4 text-destructive" />
@@ -487,7 +678,8 @@
                      key={msg.id}
                      className={cn(
                        "flex gap-3 group",
-                       msg.is_pinned && "bg-primary/5 -mx-2 px-2 py-2 rounded-lg border-l-2 border-primary"
+                       msg.is_pinned &&
+                         "bg-primary/5 -mx-2 px-2 py-2 rounded-lg border-l-2 border-primary"
                      )}
                    >
                      <Avatar className="w-10 h-10 shrink-0">
@@ -497,7 +689,7 @@
                        </AvatarFallback>
                      </Avatar>
                      <div className="flex-1 min-w-0">
-                       <div className="flex items-center gap-2">
+                       <div className="flex items-center gap-2 flex-wrap">
                          <span className="font-semibold text-sm">{msg.user_name}</span>
                          <span className="text-xs text-muted-foreground">
                            {format(new Date(msg.created_at), "MMM d, h:mm a")}
@@ -512,7 +704,7 @@
                            </Badge>
                          )}
                        </div>
-                       <p className="text-sm mt-0.5 break-words">{msg.content}</p>
+                       <p className="text-sm mt-0.5 break-words whitespace-pre-wrap">{msg.content}</p>
                        {msg.image_url && (
                          <img
                            src={msg.image_url}
@@ -570,7 +762,18 @@
                  <div ref={messagesEndRef} />
                </div>
              )}
-           </ScrollArea>
+ 
+             {/* New Messages Pill */}
+             {hasNewMessages && !isAtBottom && (
+               <button
+                 onClick={() => scrollToBottom()}
+                 className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-2 rounded-full shadow-lg flex items-center gap-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+               >
+                 <ArrowDown className="w-4 h-4" />
+                 New messages
+               </button>
+             )}
+           </div>
  
            {/* Message Input */}
            <form onSubmit={handleSendMessage} className="border-t p-4">
@@ -586,9 +789,7 @@
                  value={newMessage}
                  onChange={(e) => setNewMessage(e.target.value)}
                  disabled={
-                   isSending ||
-                   isBannedOrMuted ||
-                   (selectedChannel?.admin_only && !isAdmin)
+                   isSending || isBannedOrMuted || (selectedChannel?.admin_only && !isAdmin)
                  }
                  className="flex-1"
                />
@@ -601,11 +802,7 @@
                    (selectedChannel?.admin_only && !isAdmin)
                  }
                >
-                 {isSending ? (
-                   <Loader2 className="w-4 h-4 animate-spin" />
-                 ) : (
-                   <Send className="w-4 h-4" />
-                 )}
+                 {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                </Button>
              </div>
            </form>
@@ -628,6 +825,115 @@
                Cancel
              </Button>
              <Button onClick={handleEditMessage} disabled={!editContent.trim()}>
+               Save Changes
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+ 
+       {/* Create Channel Dialog */}
+       <Dialog open={showChannelDialog} onOpenChange={setShowChannelDialog}>
+         <DialogContent>
+           <DialogHeader>
+             <DialogTitle>Create Channel</DialogTitle>
+             <DialogDescription>Create a new chat channel for your team.</DialogDescription>
+           </DialogHeader>
+           <div className="space-y-4">
+             <div className="space-y-2">
+               <Label>Channel Name</Label>
+               <Input
+                 placeholder="e.g. sales-team"
+                 value={channelForm.name}
+                 onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
+               />
+             </div>
+             <div className="space-y-2">
+               <Label>Description (Optional)</Label>
+               <Input
+                 placeholder="What's this channel about?"
+                 value={channelForm.description}
+                 onChange={(e) => setChannelForm({ ...channelForm, description: e.target.value })}
+               />
+             </div>
+             <div className="flex items-center justify-between">
+               <div>
+                 <Label>Admin Only</Label>
+                 <p className="text-xs text-muted-foreground">Only admins can post</p>
+               </div>
+               <Switch
+                 checked={channelForm.adminOnly}
+                 onCheckedChange={(v) => setChannelForm({ ...channelForm, adminOnly: v })}
+               />
+             </div>
+             <div className="flex items-center justify-between">
+               <div>
+                 <Label>Locked</Label>
+                 <p className="text-xs text-muted-foreground">No one can post</p>
+               </div>
+               <Switch
+                 checked={channelForm.isLocked}
+                 onCheckedChange={(v) => setChannelForm({ ...channelForm, isLocked: v })}
+               />
+             </div>
+           </div>
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setShowChannelDialog(false)}>
+               Cancel
+             </Button>
+             <Button onClick={handleCreateChannel} disabled={!channelForm.name.trim()}>
+               Create Channel
+             </Button>
+           </DialogFooter>
+         </DialogContent>
+       </Dialog>
+ 
+       {/* Edit Channel Dialog */}
+       <Dialog open={!!editingChannel} onOpenChange={() => setEditingChannel(null)}>
+         <DialogContent>
+           <DialogHeader>
+             <DialogTitle>Edit Channel</DialogTitle>
+           </DialogHeader>
+           <div className="space-y-4">
+             <div className="space-y-2">
+               <Label>Channel Name</Label>
+               <Input
+                 value={channelForm.name}
+                 onChange={(e) => setChannelForm({ ...channelForm, name: e.target.value })}
+               />
+             </div>
+             <div className="space-y-2">
+               <Label>Description</Label>
+               <Input
+                 value={channelForm.description}
+                 onChange={(e) => setChannelForm({ ...channelForm, description: e.target.value })}
+               />
+             </div>
+             <div className="flex items-center justify-between">
+               <div>
+                 <Label>Admin Only</Label>
+                 <p className="text-xs text-muted-foreground">Only admins can post</p>
+               </div>
+               <Switch
+                 checked={channelForm.adminOnly}
+                 onCheckedChange={(v) => setChannelForm({ ...channelForm, adminOnly: v })}
+               />
+             </div>
+             <div className="flex items-center justify-between">
+               <div>
+                 <Label>Locked</Label>
+                 <p className="text-xs text-muted-foreground">No one can post</p>
+               </div>
+               <Switch
+                 checked={channelForm.isLocked}
+                 onCheckedChange={(v) => setChannelForm({ ...channelForm, isLocked: v })}
+               />
+             </div>
+           </div>
+           <DialogFooter>
+             <Button variant="outline" onClick={() => setEditingChannel(null)}>
+               Cancel
+             </Button>
+             <Button onClick={handleUpdateChannel} disabled={!channelForm.name.trim()}>
                Save Changes
              </Button>
            </DialogFooter>

@@ -428,6 +428,45 @@ export type Database = {
           },
         ]
       }
+      voip_chat_channel_reads: {
+        Row: {
+          channel_id: number
+          created_at: string | null
+          id: number
+          last_read_at: string | null
+          user_id: number
+        }
+        Insert: {
+          channel_id: number
+          created_at?: string | null
+          id?: number
+          last_read_at?: string | null
+          user_id: number
+        }
+        Update: {
+          channel_id?: number
+          created_at?: string | null
+          id?: number
+          last_read_at?: string | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_chat_channel_reads_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "voip_chat_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_chat_channel_reads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_chat_channels: {
         Row: {
           admin_only: boolean | null
@@ -919,6 +958,102 @@ export type Database = {
           },
         ]
       }
+      voip_support_ticket_messages: {
+        Row: {
+          attachment_url: string | null
+          content: string
+          created_at: string | null
+          id: number
+          is_admin_reply: boolean | null
+          ticket_id: number
+          user_id: number
+        }
+        Insert: {
+          attachment_url?: string | null
+          content: string
+          created_at?: string | null
+          id?: number
+          is_admin_reply?: boolean | null
+          ticket_id: number
+          user_id: number
+        }
+        Update: {
+          attachment_url?: string | null
+          content?: string
+          created_at?: string | null
+          id?: number
+          is_admin_reply?: boolean | null
+          ticket_id?: number
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_support_ticket_messages_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "voip_support_tickets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_support_ticket_messages_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_support_tickets: {
+        Row: {
+          assigned_to: number | null
+          closed_at: string | null
+          created_at: string | null
+          id: number
+          priority: string
+          status: string
+          subject: string
+          updated_at: string | null
+          user_id: number
+        }
+        Insert: {
+          assigned_to?: number | null
+          closed_at?: string | null
+          created_at?: string | null
+          id?: number
+          priority?: string
+          status?: string
+          subject: string
+          updated_at?: string | null
+          user_id: number
+        }
+        Update: {
+          assigned_to?: number | null
+          closed_at?: string | null
+          created_at?: string | null
+          id?: number
+          priority?: string
+          status?: string
+          subject?: string
+          updated_at?: string | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_support_tickets_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_support_tickets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_twilio_config: {
         Row: {
           account_sid: string | null
@@ -952,6 +1087,47 @@ export type Database = {
             foreignKeyName: "voip_twilio_config_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_user_preferences: {
+        Row: {
+          accent_color: string | null
+          created_at: string | null
+          id: number
+          notifications_enabled: boolean | null
+          sound_enabled: boolean | null
+          theme: string | null
+          updated_at: string | null
+          user_id: number
+        }
+        Insert: {
+          accent_color?: string | null
+          created_at?: string | null
+          id?: number
+          notifications_enabled?: boolean | null
+          sound_enabled?: boolean | null
+          theme?: string | null
+          updated_at?: string | null
+          user_id: number
+        }
+        Update: {
+          accent_color?: string | null
+          created_at?: string | null
+          id?: number
+          notifications_enabled?: boolean | null
+          sound_enabled?: boolean | null
+          theme?: string | null
+          updated_at?: string | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_user_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "voip_users"
             referencedColumns: ["id"]
           },

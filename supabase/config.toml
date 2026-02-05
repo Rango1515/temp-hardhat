@@ -20,3 +20,12 @@
  
  [functions.voip-leads]
  verify_jwt = false
+ 
+ [functions.voip-chat]
+ verify_jwt = false
+ 
+ [functions.voip-support]
+ verify_jwt = false
+ 
+ [functions.voip-preferences]
+ verify_jwt = false
