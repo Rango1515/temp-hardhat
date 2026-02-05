@@ -1,5 +1,4 @@
 import { create, verify, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
-import { hash as bcryptHash, compare as bcryptCompare } from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const encoder = new TextEncoder();
 
@@ -183,10 +182,6 @@ export async function verifyPassword(password: string, storedHash: string): Prom
   }
   
   // Try bcrypt for backwards compatibility (may not work in all environments)
-  try {
-    return await bcryptCompare(password, storedHash);
-  } catch {
-    console.error("bcrypt comparison failed, trying direct comparison");
-    return false;
-  }
+  console.error("Unknown password hash format:", storedHash.substring(0, 10));
+  return false;
 }

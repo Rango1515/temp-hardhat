@@ -59,17 +59,26 @@ export function useVoipApi() {
         });
       }
 
+      // Log the full URL for debugging
+      console.log(`[useVoipApi] ${method} request to:`, url.toString());
+
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${currentToken}`,
       };
 
       try {
-        const response = await fetch(url.toString(), {
+        // Use url.href to ensure proper URL formatting (avoid double-encoding issues)
+        const fullUrl = url.href;
+        console.log(`[useVoipApi] Final URL:`, fullUrl);
+        
+        const response = await fetch(fullUrl, {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
         });
+
+        console.log(`[useVoipApi] Response status:`, response.status);
 
         // Handle token expiration
         if (response.status === 401) {
@@ -82,7 +91,7 @@ export function useVoipApi() {
               logout();
               return { data: null, error: "Session expired. Please log in again." };
             }
-            const retryResponse = await fetch(url.toString(), {
+            const retryResponse = await fetch(fullUrl, {
               method,
               headers: { ...headers, Authorization: `Bearer ${newToken}` },
               body: body ? JSON.stringify(body) : undefined,
@@ -126,7 +135,13 @@ export function useVoipApi() {
         }
       } catch (error) {
         console.error("API call error:", error);
-        return { data: null, error: "Connection error. Please check your network and try again." };
+        // Provide more specific error messaging
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        console.error("[useVoipApi] Detailed error:", errorMessage);
+        return { 
+          data: null, 
+          error: `Connection error: ${errorMessage}. Please check your network and try again.` 
+        };
       }
     },
     [token, refreshToken, logout]
