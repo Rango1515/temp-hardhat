@@ -64,8 +64,8 @@
  
    useEffect(() => {
      checkTickets();
-     // Poll every 60 seconds
-     const interval = setInterval(checkTickets, 60000);
+     // Poll every 15 seconds for more responsive notifications
+     const interval = setInterval(checkTickets, 15000);
      return () => clearInterval(interval);
    }, [checkTickets]);
  
