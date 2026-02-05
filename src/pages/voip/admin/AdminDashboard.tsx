@@ -43,7 +43,7 @@ export default function AdminDashboard() {
         stats: AdminStats;
         recentActivity: ActivityLog[];
         callsByDay: DailyStats[];
-      }>("voip-admin", { params: { action: "analytics" } });
+      }>("voip-admin-ext", { params: { action: "analytics" } });
 
       if (result.data) {
         setStats(result.data.stats);
