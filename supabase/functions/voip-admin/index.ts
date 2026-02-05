@@ -331,8 +331,24 @@ serve(async (req) => {
 
           if (error) throw error;
 
+          // Transform data to match frontend interface
+          const transformedTokens = (tokens || []).map((t: Record<string, unknown>) => ({
+            id: t.id,
+            token: t.token,
+            email: t.email,
+            expires_at: t.expires_at,
+            used: t.used_by ? 1 : 0,
+            used_by: t.used_by,
+            used_by_name: (t.used_by_user as Record<string, unknown>)?.name || null,
+            used_by_email: (t.used_by_user as Record<string, unknown>)?.email || null,
+            used_at: t.used_at,
+            created_by: t.created_by,
+            created_by_name: (t.created_by_user as Record<string, unknown>)?.name || "System",
+            created_at: t.created_at,
+          }));
+
           return new Response(
-            JSON.stringify({ tokens }),
+            JSON.stringify({ tokens: transformedTokens }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -348,7 +364,7 @@ serve(async (req) => {
             .join("");
 
           // Default to 30 days if not specified (expires_at is required)
-          const daysToExpire = expiresInDays || 30;
+          const daysToExpire = parseInt(String(expiresInDays)) || 30;
           const expiresAt = new Date(Date.now() + daysToExpire * 24 * 60 * 60 * 1000).toISOString();
 
           const { data, error } = await supabase
