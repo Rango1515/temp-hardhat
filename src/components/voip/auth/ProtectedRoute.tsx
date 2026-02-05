@@ -22,16 +22,14 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/voip/auth" state={{ from: location }} replace />;
   }
 
-  // Show suspended modal if user is not active
+   // Block access completely if user is not active - don't render children at all
+   // This prevents bypassing the modal by removing HTML via dev tools
   if (userStatus && userStatus !== "active") {
     return (
-      <>
-        {children}
-        <SuspendedModal 
-          status={userStatus as "suspended" | "pending" | "disabled"} 
-          reason={suspensionReason || undefined} 
-        />
-      </>
+       <SuspendedModal 
+         status={userStatus as "suspended" | "pending" | "disabled"} 
+         reason={suspensionReason || undefined} 
+       />
     );
   }
 
