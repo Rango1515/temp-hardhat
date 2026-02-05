@@ -1,14 +1,19 @@
-import { useState, useEffect } from "react";
-import { VoipLayout } from "@/components/voip/layout/VoipLayout";
-import { useVoipApi } from "@/hooks/useVoipApi";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Users, Loader2, Search, ChevronDown, Phone, Clock, Calendar, AlertTriangle } from "lucide-react";
-import { format } from "date-fns";
+ import { useState, useEffect } from "react";
+ import { VoipLayout } from "@/components/voip/layout/VoipLayout";
+ import { useVoipApi } from "@/hooks/useVoipApi";
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Badge } from "@/components/ui/badge";
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+ import { Checkbox } from "@/components/ui/checkbox";
+ import { Label } from "@/components/ui/label";
+ import { Users, Loader2, Search, ChevronDown, Phone, Clock, Calendar, AlertTriangle, Trash2, AlertCircle } from "lucide-react";
+ import { format } from "date-fns";
+ import { useToast } from "@/hooks/use-toast";
 
 interface Lead {
   id: number;
@@ -48,6 +53,7 @@ interface FollowUp {
 
 export default function LeadInfo() {
   const { apiCall } = useVoipApi();
+   const { toast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [followups, setFollowups] = useState<FollowUp[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,6 +61,12 @@ export default function LeadInfo() {
   const [expandedLeadId, setExpandedLeadId] = useState<number | null>(null);
   const [leadCalls, setLeadCalls] = useState<Record<number, CallRecord[]>>({});
   const [loadingCalls, setLoadingCalls] = useState<number | null>(null);
+   const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null);
+   const [isDeleting, setIsDeleting] = useState(false);
+   const [showMasterClear, setShowMasterClear] = useState(false);
+   const [masterClearConfirmation, setMasterClearConfirmation] = useState("");
+   const [clearHistory, setClearHistory] = useState(false);
+   const [isMasterClearing, setIsMasterClearing] = useState(false);
 
   useEffect(() => {
     fetchLeads();
@@ -94,6 +106,73 @@ export default function LeadInfo() {
     setLoadingCalls(null);
   };
 
+   const handleDeleteLead = async () => {
+     if (!deletingLeadId) return;
+     
+     setIsDeleting(true);
+     const result = await apiCall("voip-leads", {
+       method: "POST",
+       params: { action: "delete-lead" },
+       body: { leadId: deletingLeadId },
+     });
+ 
+     if (result.error) {
+       toast({
+         title: "Delete Failed",
+         description: result.error,
+         variant: "destructive",
+       });
+     } else {
+       toast({
+         title: "Lead Deleted",
+         description: "Lead has been permanently removed",
+       });
+       setLeads(prev => prev.filter(l => l.id !== deletingLeadId));
+     }
+ 
+     setDeletingLeadId(null);
+     setIsDeleting(false);
+   };
+ 
+   const handleMasterClear = async () => {
+     if (masterClearConfirmation !== "DELETE ALL LEADS") {
+       toast({
+         title: "Invalid Confirmation",
+         description: "Please type exactly: DELETE ALL LEADS",
+         variant: "destructive",
+       });
+       return;
+     }
+ 
+     setIsMasterClearing(true);
+     const result = await apiCall<{ leadsDeleted: number }>("voip-leads", {
+       method: "POST",
+       params: { action: "master-clear-leads" },
+       body: { confirmation: masterClearConfirmation, clearHistory },
+     });
+ 
+     if (result.error) {
+       toast({
+         title: "Clear Failed",
+         description: result.error,
+         variant: "destructive",
+       });
+     } else {
+       toast({
+         title: "Leads Cleared",
+         description: `${result.data?.leadsDeleted || 0} leads have been deleted`,
+       });
+       setLeads([]);
+       setFollowups([]);
+       setLeadCalls({});
+     }
+ 
+     setShowMasterClear(false);
+     setMasterClearConfirmation("");
+     setClearHistory(false);
+     setIsMasterClearing(false);
+   };
+ 
   const toggleExpand = (leadId: number) => {
     if (expandedLeadId === leadId) {
       setExpandedLeadId(null);
@@ -156,9 +235,19 @@ export default function LeadInfo() {
   return (
     <VoipLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Lead Info</h1>
-          <p className="text-muted-foreground">View all leads and their call history</p>
+         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+           <div>
+             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Lead Info</h1>
+             <p className="text-muted-foreground">View all leads and their call history</p>
+           </div>
+           <Button 
+             variant="destructive" 
+             onClick={() => setShowMasterClear(true)}
+             className="gap-2"
+           >
+             <AlertCircle className="w-4 h-4" />
+             Master Clear All Leads
+           </Button>
         </div>
 
         {/* Scheduled Follow-ups */}
@@ -241,6 +330,7 @@ export default function LeadInfo() {
                     <TableHead>Status</TableHead>
                     <TableHead>Attempts</TableHead>
                     <TableHead>Created</TableHead>
+                         <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -273,10 +363,23 @@ export default function LeadInfo() {
                           <TableCell>
                             {format(new Date(lead.created_at), "MMM d, yyyy")}
                           </TableCell>
+                           <TableCell>
+                             <Button 
+                               variant="ghost" 
+                               size="sm"
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setDeletingLeadId(lead.id);
+                               }}
+                               className="text-destructive hover:text-destructive"
+                             >
+                               <Trash2 className="w-4 h-4" />
+                             </Button>
+                           </TableCell>
                         </TableRow>
                         <CollapsibleContent asChild>
-                          <TableRow>
-                            <TableCell colSpan={6} className="bg-muted/30 p-0">
+                           <TableRow>
+                             <TableCell colSpan={7} className="bg-muted/30 p-0">
                               <div className="p-4 space-y-3">
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                   <div>
@@ -358,6 +461,104 @@ export default function LeadInfo() {
             </div>
           </CardContent>
         </Card>
+         
+         {/* Delete Single Lead Confirmation */}
+         <AlertDialog open={!!deletingLeadId} onOpenChange={() => setDeletingLeadId(null)}>
+           <AlertDialogContent>
+             <AlertDialogHeader>
+               <AlertDialogTitle>Delete Lead</AlertDialogTitle>
+               <AlertDialogDescription>
+                 Are you sure you want to delete this lead? This action cannot be undone.
+                 Call history will be preserved but unlinked from this lead.
+               </AlertDialogDescription>
+             </AlertDialogHeader>
+             <AlertDialogFooter>
+               <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+               <AlertDialogAction
+                 onClick={handleDeleteLead}
+                 disabled={isDeleting}
+                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+               >
+                 {isDeleting ? (
+                   <>
+                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                     Deleting...
+                   </>
+                 ) : (
+                   "Delete Lead"
+                 )}
+               </AlertDialogAction>
+             </AlertDialogFooter>
+           </AlertDialogContent>
+         </AlertDialog>
+ 
+         {/* Master Clear Dialog */}
+         <Dialog open={showMasterClear} onOpenChange={setShowMasterClear}>
+           <DialogContent>
+             <DialogHeader>
+               <DialogTitle className="flex items-center gap-2 text-destructive">
+                 <AlertTriangle className="w-5 h-5" />
+                 Master Clear All Leads
+               </DialogTitle>
+               <DialogDescription>
+                 This will permanently delete ALL leads from the system. This action cannot be undone.
+               </DialogDescription>
+             </DialogHeader>
+             
+             <div className="space-y-4 py-4">
+               <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+                 <p className="text-sm font-medium text-destructive mb-2">Warning!</p>
+                 <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                   <li>All leads will be permanently deleted</li>
+                   <li>All assignment history will be cleared</li>
+                   <li>Duplicates can be re-imported as new leads</li>
+                   <li>Call history will be preserved but unlinked</li>
+                 </ul>
+               </div>
+               
+               <div className="flex items-center space-x-2">
+                 <Checkbox 
+                   id="clearHistory" 
+                   checked={clearHistory} 
+                   onCheckedChange={(checked) => setClearHistory(checked as boolean)}
+                 />
+                 <Label htmlFor="clearHistory" className="text-sm">
+                   Also clear upload history records
+                 </Label>
+               </div>
+               
+               <div className="space-y-2">
+                 <Label>Type <span className="font-mono text-destructive">DELETE ALL LEADS</span> to confirm:</Label>
+                 <Input 
+                   value={masterClearConfirmation}
+                   onChange={(e) => setMasterClearConfirmation(e.target.value)}
+                   placeholder="DELETE ALL LEADS"
+                   className="font-mono"
+                 />
+               </div>
+             </div>
+             
+             <DialogFooter>
+               <Button variant="outline" onClick={() => setShowMasterClear(false)} disabled={isMasterClearing}>
+                 Cancel
+               </Button>
+               <Button 
+                 variant="destructive" 
+                 onClick={handleMasterClear}
+                 disabled={masterClearConfirmation !== "DELETE ALL LEADS" || isMasterClearing}
+               >
+                 {isMasterClearing ? (
+                   <>
+                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                     Clearing...
+                   </>
+                 ) : (
+                   "Permanently Delete All Leads"
+                 )}
+               </Button>
+             </DialogFooter>
+           </DialogContent>
+         </Dialog>
       </div>
     </VoipLayout>
   );

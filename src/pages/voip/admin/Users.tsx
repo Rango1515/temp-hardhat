@@ -1,18 +1,21 @@
-import { useEffect, useState, useCallback } from "react";
-import { VoipLayout } from "@/components/voip/layout/VoipLayout";
-import { useVoipApi } from "@/hooks/useVoipApi";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Users, Search, Loader2, ChevronLeft, ChevronRight, Edit, ChevronDown, Phone, Clock, PhoneOutgoing, Trash2 } from "lucide-react";
-import { format } from "date-fns";
-import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+ import { useEffect, useState, useCallback } from "react";
+ import { VoipLayout } from "@/components/voip/layout/VoipLayout";
+ import { useVoipApi } from "@/hooks/useVoipApi";
+ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Textarea } from "@/components/ui/textarea";
+ import { Label } from "@/components/ui/label";
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+ import { Badge } from "@/components/ui/badge";
+ import { Users, Search, Loader2, ChevronLeft, ChevronRight, Edit, ChevronDown, Activity, Trash2, Clock } from "lucide-react";
+ import { format, formatDistanceToNow } from "date-fns";
+ import { useToast } from "@/hooks/use-toast";
+ import { cn } from "@/lib/utils";
 
 interface User {
   id: number;
@@ -23,14 +26,22 @@ interface User {
   created_at: string;
 }
 
-interface UserCall {
-  id: number;
-  to_number: string;
-  from_number: string;
-  start_time: string;
-  duration_seconds: number | null;
-  outcome: string | null;
-  status: string;
+ interface ActivityEvent {
+   id: number;
+   event_type: string;
+   lead_id: number | null;
+   lead_name: string | null;
+   lead_phone: string | null;
+   metadata: Record<string, unknown> | null;
+   created_at: string;
+ }
+ 
+ interface OnlineUser {
+   userId: number;
+   name: string;
+   isIdle: boolean;
+   lastHeartbeat: string;
+   sessionTime: number;
 }
 
 interface Pagination {
@@ -50,12 +61,14 @@ export default function AdminUsers() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editRole, setEditRole] = useState("");
   const [editStatus, setEditStatus] = useState("");
+   const [editReason, setEditReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(new Set());
-  const [userCalls, setUserCalls] = useState<Map<number, UserCall[]>>(new Map());
-  const [loadingCalls, setLoadingCalls] = useState<Set<number>>(new Set());
+   const [userActivity, setUserActivity] = useState<Map<number, ActivityEvent[]>>(new Map());
+   const [loadingActivity, setLoadingActivity] = useState<Set<number>>(new Set());
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -84,20 +97,34 @@ export default function AdminUsers() {
     fetchUsers();
   }, [fetchUsers]);
 
-  const fetchUserCalls = async (userId: number) => {
-    if (userCalls.has(userId)) return;
+   // Fetch online users for live status
+   useEffect(() => {
+     const fetchOnlineUsers = async () => {
+       const result = await apiCall<{ onlineUsers: OnlineUser[] }>("voip-analytics", {
+         params: { action: "online-users" },
+       });
+       if (result.data) setOnlineUsers(result.data.onlineUsers);
+     };
+ 
+     fetchOnlineUsers();
+     const interval = setInterval(fetchOnlineUsers, 15000);
+     return () => clearInterval(interval);
+   }, [apiCall]);
+ 
+   const fetchUserActivity = async (userId: number) => {
+     if (userActivity.has(userId)) return;
     
-    setLoadingCalls(prev => new Set(prev).add(userId));
+     setLoadingActivity(prev => new Set(prev).add(userId));
     
-    const result = await apiCall<{ calls: UserCall[] }>("voip-calls", {
-      params: { action: "user-calls", userId: userId.toString() },
+     const result = await apiCall<{ events: ActivityEvent[] }>("voip-admin", {
+       params: { action: "user-activity", userId: userId.toString() },
     });
     
     if (result.data) {
-      setUserCalls(prev => new Map(prev).set(userId, result.data!.calls));
+       setUserActivity(prev => new Map(prev).set(userId, result.data!.events));
     }
     
-    setLoadingCalls(prev => {
+     setLoadingActivity(prev => {
       const next = new Set(prev);
       next.delete(userId);
       return next;
@@ -111,7 +138,7 @@ export default function AdminUsers() {
         next.delete(userId);
       } else {
         next.add(userId);
-        fetchUserCalls(userId);
+         fetchUserActivity(userId);
       }
       return next;
     });
@@ -126,6 +153,7 @@ export default function AdminUsers() {
     setEditingUser(user);
     setEditRole(user.role);
     setEditStatus(user.status);
+     setEditReason("");
   };
 
   const handleSave = async () => {
@@ -133,13 +161,27 @@ export default function AdminUsers() {
 
     setIsSaving(true);
     
-    console.log("[Users] Updating user:", editingUser.id, { role: editRole, status: editStatus });
+     console.log("[Users] Updating user:", editingUser.id, { role: editRole, status: editStatus, reason: editReason });
 
-    const result = await apiCall("voip-admin", {
-      method: "PATCH",
-      params: { action: "users", id: editingUser.id.toString() },
-      body: { role: editRole, status: editStatus },
-    });
+     // Use set-status action for status changes with optional reason
+     const result = await apiCall("voip-admin", {
+       method: "POST",
+       params: { action: "set-status" },
+       body: { 
+         userId: editingUser.id, 
+         status: editStatus,
+         reason: editReason || null,
+       },
+     });
+ 
+     // Also update role if changed
+     if (editRole !== editingUser.role) {
+       await apiCall("voip-admin", {
+         method: "PATCH",
+         params: { action: "users", id: editingUser.id.toString() },
+         body: { role: editRole },
+       });
+     }
 
     console.log("[Users] Update result:", result);
 
@@ -161,6 +203,7 @@ export default function AdminUsers() {
           : u
       ));
       setEditingUser(null);
+       setEditReason("");
     }
 
     setIsSaving(false);
@@ -199,16 +242,32 @@ export default function AdminUsers() {
     setIsDeleting(false);
   };
 
-  const formatDuration = (seconds: number | null): string => {
-    if (seconds === null || seconds === undefined) return "—";
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const formatOutcome = (outcome: string | null): string => {
-    if (!outcome) return "—";
-    return outcome.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+   const getOnlineStatus = (userId: number) => {
+     const online = onlineUsers.find(u => u.userId === userId);
+     if (!online) return { status: "offline", label: "Offline", badge: "⚪" };
+     if (online.isIdle) return { status: "idle", label: "Idle", badge: "🟡" };
+     return { status: "online", label: "Online", badge: "🟢" };
+   };
+ 
+   const formatEventType = (eventType: string): string => {
+     return eventType.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+   };
+ 
+   const getEventIcon = (eventType: string) => {
+     switch (eventType) {
+       case "lead_requested":
+         return "📋";
+       case "lead_completed":
+         return "✅";
+       case "dialer_opened_textnow":
+         return "📞";
+       case "outcome_logged":
+         return "📝";
+       case "appointment_created":
+         return "📅";
+       default:
+         return "📌";
+     }
   };
 
   const getStatusBadge = (status: string) => {
@@ -286,6 +345,10 @@ export default function AdminUsers() {
                         <CollapsibleTrigger asChild>
                           <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/50 transition-colors">
                             <div className="flex items-center gap-4 flex-1 min-w-0">
+                               {/* Online Status Badge */}
+                               <div className="flex-shrink-0" title={getOnlineStatus(user.id).label}>
+                                 <span className="text-lg">{getOnlineStatus(user.id).badge}</span>
+                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium">{user.name}</p>
                                 <p className="text-sm text-muted-foreground truncate">{user.email}</p>
@@ -328,59 +391,39 @@ export default function AdminUsers() {
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                           <div className="border-t px-4 py-3 bg-muted/30">
-                            <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-                              <PhoneOutgoing className="w-4 h-4" />
-                              Call History
+                             <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                               <Activity className="w-4 h-4" />
+                               Activity / Prompt History
                             </h4>
-                            {loadingCalls.has(user.id) ? (
+                             {loadingActivity.has(user.id) ? (
                               <div className="flex items-center justify-center py-4">
                                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                               </div>
-                            ) : (userCalls.get(user.id)?.length || 0) === 0 ? (
-                              <p className="text-sm text-muted-foreground py-2">No calls made by this user yet.</p>
+                             ) : (userActivity.get(user.id)?.length || 0) === 0 ? (
+                               <p className="text-sm text-muted-foreground py-2">No activity recorded for this user yet.</p>
                             ) : (
-                              <div className="overflow-auto max-h-64">
-                                <Table>
-                                  <TableHeader>
-                                    <TableRow>
-                                      <TableHead>To Number</TableHead>
-                                      <TableHead>Duration</TableHead>
-                                      <TableHead>Outcome</TableHead>
-                                      <TableHead>Status</TableHead>
-                                      <TableHead>Date</TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    {userCalls.get(user.id)?.slice(0, 10).map((call) => (
-                                      <TableRow key={call.id}>
-                                        <TableCell className="font-mono text-sm">{call.to_number}</TableCell>
-                                        <TableCell>
-                                          <span className="flex items-center gap-1">
-                                            <Clock className="w-3 h-3" />
-                                            {formatDuration(call.duration_seconds)}
-                                          </span>
-                                        </TableCell>
-                                        <TableCell>{formatOutcome(call.outcome)}</TableCell>
-                                        <TableCell>
-                                          <span className={cn(
-                                            "px-2 py-1 rounded-full text-xs capitalize",
-                                            call.status === "completed" ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"
-                                          )}>
-                                            {call.status}
-                                          </span>
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                          {call.start_time ? format(new Date(call.start_time), "MMM d, h:mm a") : "—"}
-                                        </TableCell>
-                                      </TableRow>
-                                    ))}
-                                  </TableBody>
-                                </Table>
-                                {(userCalls.get(user.id)?.length || 0) > 10 && (
-                                  <p className="text-xs text-muted-foreground text-center py-2">
-                                    Showing 10 of {userCalls.get(user.id)?.length} calls
-                                  </p>
-                                )}
+                               <div className="space-y-2 max-h-64 overflow-auto">
+                                 {userActivity.get(user.id)?.map((event) => (
+                                   <div key={event.id} className="flex items-start gap-3 p-2 rounded bg-background">
+                                     <span className="text-lg">{getEventIcon(event.event_type)}</span>
+                                     <div className="flex-1 min-w-0">
+                                       <p className="text-sm font-medium">{formatEventType(event.event_type)}</p>
+                                       {event.lead_name && (
+                                         <p className="text-xs text-muted-foreground">
+                                           Lead: {event.lead_name} ({event.lead_phone})
+                                         </p>
+                                       )}
+                                       {event.metadata && Object.keys(event.metadata).length > 0 && (
+                                         <p className="text-xs text-muted-foreground">
+                                           {JSON.stringify(event.metadata).slice(0, 100)}
+                                         </p>
+                                       )}
+                                     </div>
+                                     <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                       {formatDistanceToNow(new Date(event.created_at), { addSuffix: true })}
+                                     </span>
+                                   </div>
+                                 ))}
                               </div>
                             )}
                           </div>
@@ -457,6 +500,22 @@ export default function AdminUsers() {
                   </SelectContent>
                 </Select>
               </div>
+               
+               {/* Optional Reason (for pending/suspended) */}
+               {(editStatus === "pending" || editStatus === "suspended") && (
+                 <div className="space-y-2">
+                   <Label>Reason (optional)</Label>
+                   <Textarea 
+                     placeholder="Enter a reason to display to the user (optional)"
+                     value={editReason}
+                     onChange={(e) => setEditReason(e.target.value)}
+                     rows={3}
+                   />
+                   <p className="text-xs text-muted-foreground">
+                     If left blank, user will see: "Your account is currently not active. Please contact support."
+                   </p>
+                 </div>
+               )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditingUser(null)} disabled={isSaving}>

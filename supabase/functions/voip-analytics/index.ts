@@ -137,10 +137,12 @@ serve(async (req) => {
         let totalDuration = 0;
         let totalSessionTime = 0;
         let appointmentsCreated = 0;
+         let interestedCount = 0;
 
         calls?.forEach(call => {
           if (call.outcome) {
             outcomes[call.outcome] = (outcomes[call.outcome] || 0) + 1;
+             if (call.outcome === "interested") interestedCount++;
           }
           totalDuration += call.duration_seconds || 0;
           totalSessionTime += call.session_duration_seconds || 0;
@@ -183,6 +185,7 @@ serve(async (req) => {
             leadsRequested,
             leadsCompleted,
             completionRate: leadsRequested > 0 ? Math.round((leadsCompleted / leadsRequested) * 100) : 0,
+             conversionRate: interestedCount > 0 ? Math.round((appointmentsCreated / interestedCount) * 100) : 0,
             avgTimePerLead: leadsCompleted > 0 ? Math.round(totalSessionTime / leadsCompleted) : 0,
             totalActiveTime,
             appointmentsCreated,
@@ -194,6 +197,54 @@ serve(async (req) => {
         );
       }
 
+       case "my-sessions": {
+         // Get call sessions for the current user with lead info
+         const { data: calls } = await supabase
+           .from("voip_calls")
+           .select("id, start_time, duration_seconds, outcome, notes, lead_id, appointment_created")
+           .eq("user_id", userId)
+           .order("start_time", { ascending: false })
+           .limit(100);
+ 
+         if (!calls || calls.length === 0) {
+           return new Response(
+             JSON.stringify({ sessions: [] }),
+             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         // Get lead info
+         const leadIds = [...new Set(calls.map(c => c.lead_id).filter(Boolean))];
+         let leadMap = new Map<number, { name: string | null; phone: string }>();
+ 
+         if (leadIds.length > 0) {
+           const { data: leads } = await supabase
+             .from("voip_leads")
+             .select("id, name, phone")
+             .in("id", leadIds);
+           
+           if (leads) {
+             leadMap = new Map(leads.map(l => [l.id, { name: l.name, phone: l.phone }]));
+           }
+         }
+ 
+         const sessions = calls.map(call => ({
+           id: call.id,
+           start_time: call.start_time,
+           duration_seconds: call.duration_seconds || 0,
+           outcome: call.outcome,
+           notes: call.notes,
+           lead_name: call.lead_id ? leadMap.get(call.lead_id)?.name : null,
+           lead_phone: call.lead_id ? leadMap.get(call.lead_id)?.phone || "Unknown" : "Unknown",
+           appointment_created: call.appointment_created || false,
+         }));
+ 
+         return new Response(
+           JSON.stringify({ sessions }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
       case "admin-stats": {
         // Admin only - system-wide analytics
         if (userRole !== "admin") {

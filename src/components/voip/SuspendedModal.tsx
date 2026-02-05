@@ -1,4 +1,6 @@
  import { AlertTriangle } from "lucide-react";
+ import { useVoipAuth } from "@/contexts/VoipAuthContext";
+ import { Button } from "@/components/ui/button";
  
  interface SuspendedModalProps {
    reason?: string;
@@ -6,6 +8,8 @@
  }
  
  export function SuspendedModal({ reason, status }: SuspendedModalProps) {
+   const { logout } = useVoipAuth();
+ 
    const getTitle = () => {
      switch (status) {
        case "suspended":
@@ -20,18 +24,19 @@
    };
  
    const getMessage = () => {
-     switch (status) {
-       case "suspended":
-         return reason
-           ? `Your account has been suspended. Reason: ${reason}`
-           : "Your account has been suspended. Please contact an administrator for more information.";
-       case "pending":
-         return "Your account is pending approval. An administrator will review your account shortly.";
-       case "disabled":
-         return "Your account has been disabled. Please contact an administrator if you believe this is an error.";
-       default:
-         return "Your account is currently unavailable. Please contact support.";
+     // If reason is provided, show it. Otherwise show default message.
+     if (reason && reason.trim()) {
+       return (
+         <div className="space-y-2">
+           <p className="font-medium">Reason:</p>
+           <p className="bg-muted/50 p-3 rounded-lg">{reason}</p>
+         </div>
+       );
      }
+ 
+     return (
+       <p>Your account is currently not active. Please contact support.</p>
+     );
    };
  
    return (
@@ -43,16 +48,22 @@
          
          <h1 className="text-2xl font-bold text-foreground mb-4">{getTitle()}</h1>
          
-         <p className="text-muted-foreground mb-6">{getMessage()}</p>
+         <div className="text-muted-foreground mb-6">{getMessage()}</div>
          
-         <div className="text-sm text-muted-foreground/70">
-           <p>Contact support:</p>
-           <a 
-             href="mailto:admin@hardhathosting.work" 
-             className="text-primary hover:underline"
-           >
-             admin@hardhathosting.work
-           </a>
+         <div className="space-y-4">
+           <div className="text-sm text-muted-foreground/70">
+             <p>Contact support:</p>
+             <a 
+               href="mailto:admin@hardhathosting.work" 
+               className="text-primary hover:underline"
+             >
+               admin@hardhathosting.work
+             </a>
+           </div>
+ 
+           <Button variant="outline" onClick={logout} className="w-full">
+             Log Out
+           </Button>
          </div>
        </div>
      </div>

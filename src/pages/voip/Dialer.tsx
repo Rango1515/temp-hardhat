@@ -389,14 +389,9 @@
                <CallTools
                  phoneNumber={currentLead?.phone || ""}
                  onTextNowOpen={handleTextNowOpen}
-                 disabled={!currentLead}
+                 disabled={false}
                />
  
-               {!currentLead && (
-                 <div className="text-center py-4 text-muted-foreground">
-                   <p className="text-sm">Request a lead to enable call tools</p>
-                 </div>
-               )}
  
                {currentLead && !hasStartedSession && (
                  <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground">
