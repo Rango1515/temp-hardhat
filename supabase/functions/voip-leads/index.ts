@@ -62,8 +62,41 @@ serve(async (req) => {
 
         if (error) throw error;
 
+        // For each upload, count how many leads have been called
+        const uploadIds = (uploads || []).map(u => u.id);
+        const calledCountMap = new Map<number, number>();
+
+        if (uploadIds.length > 0) {
+          // Get all leads from these uploads that have calls
+          const { data: leadsWithCalls } = await supabase
+            .from("voip_leads")
+            .select("id, upload_id")
+            .in("upload_id", uploadIds);
+
+          if (leadsWithCalls && leadsWithCalls.length > 0) {
+            const leadIds = leadsWithCalls.map(l => l.id);
+            const { data: calls } = await supabase
+              .from("voip_calls")
+              .select("lead_id")
+              .in("lead_id", leadIds);
+
+            const calledLeadIds = new Set((calls || []).map(c => c.lead_id));
+
+            for (const lead of leadsWithCalls) {
+              if (calledLeadIds.has(lead.id)) {
+                calledCountMap.set(lead.upload_id, (calledCountMap.get(lead.upload_id) || 0) + 1);
+              }
+            }
+          }
+        }
+
+        const enrichedUploads = (uploads || []).map(u => ({
+          ...u,
+          called_count: calledCountMap.get(u.id) || 0,
+        }));
+
         return new Response(
-          JSON.stringify({ uploads: uploads || [] }),
+          JSON.stringify({ uploads: enrichedUploads }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -506,15 +539,46 @@ serve(async (req) => {
           );
         }
 
-        const { data: leads, error } = await supabase
+        const page = parseInt(url.searchParams.get("page") || "1");
+        const pageSize = parseInt(url.searchParams.get("pageSize") || "50");
+        const search = url.searchParams.get("search") || "";
+        const offset = (page - 1) * pageSize;
+
+        // Get total count for pagination
+        let countQuery = supabase
           .from("voip_leads")
-          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to, contact_name")
+          .select("*", { count: "exact", head: true });
+
+        if (search) {
+          countQuery = countQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
+        }
+
+        const { count: totalCount } = await countQuery;
+
+        // Fetch paginated leads - order by status priority then created_at
+        let leadsQuery = supabase
+          .from("voip_leads")
+          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to, contact_name");
+
+        if (search) {
+          leadsQuery = leadsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
+        }
+
+        const { data: leads, error } = await leadsQuery
           .order("created_at", { ascending: false })
-          .limit(500);
+          .range(offset, offset + pageSize - 1);
 
         if (error) throw error;
 
-        const assignedUserIds = [...new Set((leads || []).map(l => l.assigned_to).filter(Boolean))];
+        // Sort by status priority: ASSIGNED first, then NEW, COMPLETED, DNC
+        const statusOrder: Record<string, number> = { ASSIGNED: 0, NEW: 1, COMPLETED: 2, DNC: 3 };
+        const sortedLeads = (leads || []).sort((a, b) => {
+          const aOrder = statusOrder[a.status] ?? 99;
+          const bOrder = statusOrder[b.status] ?? 99;
+          return aOrder - bOrder;
+        });
+
+        const assignedUserIds = [...new Set(sortedLeads.map(l => l.assigned_to).filter(Boolean))];
         let userMap = new Map<number, string>();
 
         if (assignedUserIds.length > 0) {
@@ -528,13 +592,13 @@ serve(async (req) => {
           }
         }
 
-        const enrichedLeads = (leads || []).map(lead => ({
+        const enrichedLeads = sortedLeads.map(lead => ({
           ...lead,
           assigned_user_name: lead.assigned_to ? userMap.get(lead.assigned_to) : null,
         }));
 
         return new Response(
-          JSON.stringify({ leads: enrichedLeads }),
+          JSON.stringify({ leads: enrichedLeads, total: totalCount || 0, page, pageSize }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

@@ -671,6 +671,86 @@ serve(async (req) => {
          );
        }
  
+      case "user-performance": {
+        // Admin only - per-user leads requested/completed/rate/appointments
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get all client users
+        const { data: allUsers } = await supabase
+          .from("voip_users")
+          .select("id, name, email")
+          .eq("role", "client");
+
+        if (!allUsers || allUsers.length === 0) {
+          return new Response(
+            JSON.stringify({ users: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const allUserIds = allUsers.map(u => u.id);
+
+        // Get activity events for all users
+        const { data: allEvents } = await supabase
+          .from("voip_activity_events")
+          .select("user_id, event_type")
+          .in("user_id", allUserIds);
+
+        // Get call counts and appointments per user
+        const { data: allCalls } = await supabase
+          .from("voip_calls")
+          .select("user_id, appointment_created")
+          .in("user_id", allUserIds);
+
+        const userPerfMap = new Map<number, {
+          leadsRequested: number;
+          leadsCompleted: number;
+          totalCalls: number;
+          appointmentsCreated: number;
+        }>();
+
+        allUserIds.forEach(uid => {
+          userPerfMap.set(uid, { leadsRequested: 0, leadsCompleted: 0, totalCalls: 0, appointmentsCreated: 0 });
+        });
+
+        allEvents?.forEach(e => {
+          const stats = userPerfMap.get(e.user_id);
+          if (!stats) return;
+          if (e.event_type === "lead_requested") stats.leadsRequested++;
+          if (e.event_type === "lead_completed") stats.leadsCompleted++;
+        });
+
+        allCalls?.forEach(c => {
+          const stats = userPerfMap.get(c.user_id);
+          if (!stats) return;
+          stats.totalCalls++;
+          if (c.appointment_created) stats.appointmentsCreated++;
+        });
+
+        const perfUsers = allUsers.map(u => {
+          const stats = userPerfMap.get(u.id)!;
+          return {
+            userId: u.id,
+            name: u.name || u.email,
+            leadsRequested: stats.leadsRequested,
+            leadsCompleted: stats.leadsCompleted,
+            completionRate: stats.leadsRequested > 0 ? Math.round((stats.leadsCompleted / stats.leadsRequested) * 100) : 0,
+            totalCalls: stats.totalCalls,
+            appointmentsCreated: stats.appointmentsCreated,
+          };
+        }).sort((a, b) => b.totalCalls - a.totalCalls);
+
+        return new Response(
+          JSON.stringify({ users: perfUsers }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
