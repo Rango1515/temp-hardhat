@@ -38,6 +38,7 @@ interface UploadHistory {
   imported_count: number;
   duplicate_count: number;
   invalid_count: number;
+  called_count: number;
   created_at: string;
 }
 
@@ -456,8 +457,9 @@ export default function LeadUpload() {
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 text-sm">
+                          <div className="flex items-center gap-3 text-sm">
                               <span className="text-green-600">{upload.imported_count} imported</span>
+                              <span className="text-blue-500">{upload.called_count} called</span>
                               <span className="text-yellow-600">{upload.duplicate_count} dup</span>
                               <span className="text-destructive">{upload.invalid_count} invalid</span>
                             </div>
