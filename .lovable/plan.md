@@ -1,189 +1,459 @@
 
-# Lead Upload Enhancement & Dialer Notepad Plan
+# VoIP System Overhaul: Twilio Removal & TextNow Integration
 
-## Overview
-This plan addresses three main improvements:
-1. Add ability to delete upload batches from the Lead Upload page
-2. Show call history for each uploaded file (who called, how long, outcome)
-3. Add a persistent notepad area to the Dialer page for workers
+This plan transforms the current Twilio-based calling system into a "Bring Your Own Dialer" model using TextNow/Google Voice, adds comprehensive analytics tracking, and implements user management enhancements.
 
 ---
 
-## Phase 1: Delete Upload Batches
+## Phase 1: Remove Twilio Dependencies
 
-### Current State
-The upload history table shows past uploads but has no way to delete them or their associated leads.
-
-### Technical Changes
-
-**File: `src/pages/voip/admin/LeadUpload.tsx`**
-- Add a delete button (Trash icon) to each row in the upload history table
-- Add confirmation dialog before deleting
-- Call new API endpoint to delete upload and cascade to leads
-
-**File: `supabase/functions/voip-leads/index.ts`**
-- Add new action: `delete-upload`
-- Deletes from `voip_lead_uploads` table
-- Cascade delete leads where `upload_id` matches (only NEW status leads)
-- Log deletion in audit table
-
-**Database Changes Required:**
-- Add cascade delete constraint OR handle in edge function logic
-- Option A: Soft delete - mark upload as deleted
-- Option B: Hard delete - remove upload and NEW leads (preserve COMPLETED/DNC leads)
-
-### UI Design
-```text
-| File         | Date       | Imported | Duplicates | Invalid | Actions     |
-|--------------|------------|----------|------------|---------|-------------|
-| leads.csv    | Feb 4...   | 50       | 5          | 2       | [View] [X]  |
-```
-
----
-
-## Phase 2: Show Call History Per Upload
-
-### Current State
-The upload history shows import stats but no visibility into call attempts made to those leads.
-
-### Technical Changes
-
-**File: `src/pages/voip/admin/LeadUpload.tsx`**
-- Add expandable row or modal for each upload showing call history
-- Display: Lead name, phone, caller, duration, outcome, date
-- Query joins `voip_calls` with `voip_leads` where `lead.upload_id` matches
-
-**File: `supabase/functions/voip-leads/index.ts`**
-- Add new action: `upload-calls`
-- Parameters: `uploadId`
-- Returns: List of calls for leads in that upload batch
-- Join query:
-  ```sql
-  SELECT c.*, l.name as lead_name, l.phone as lead_phone, u.email as caller_email
-  FROM voip_calls c
-  JOIN voip_leads l ON c.lead_id = l.id
-  LEFT JOIN voip_users u ON c.user_id = u.id
-  WHERE l.upload_id = ?
-  ORDER BY c.start_time DESC
-  ```
-
-### UI Design - Expandable Row
-```text
-| File: leads.csv | 50 imported | Feb 4, 2026
-|   [Expand/Collapse Call History v]
-|   +-------------------------------------------------+
-|   | Lead Name    | Phone        | Called By | Duration | Outcome     |
-|   |--------------|--------------|-----------|----------|-------------|
-|   | John Smith   | (555) 123... | worker1   | 2:35     | Interested  |
-|   | Jane Doe     | (555) 456... | worker2   | 0:45     | No Answer   |
-|   +-------------------------------------------------+
-```
-
----
-
-## Phase 3: Dialer Notepad
-
-### Current State
-The Dialer page has a notes field in the "Call Outcome" section, but it only appears when a lead is assigned and is submitted with the outcome.
-
-### Proposed Enhancement
-Add a persistent "Scratch Pad" or "Quick Notes" area that:
-- Appears regardless of whether a lead is assigned
-- Is NOT submitted with the call outcome (separate storage)
-- Persists during the session (localStorage)
-- Workers can jot down quick info during/before calls
-
-### Technical Changes
-
-**File: `src/pages/voip/Dialer.tsx`**
-- Add new state: `scratchPadNotes`
-- Use `localStorage` to persist notes across page refreshes
-- Add a collapsible Card below the two-column layout titled "Scratch Pad"
-- Include a Textarea with auto-save to localStorage
-- Add a "Clear" button to reset the notepad
-
-### UI Design
-```text
-+----------------------------------+
-| Scratch Pad              [Clear] |
-+----------------------------------+
-| Quick notes for your calls...    |
-|                                  |
-| [Textarea - auto-saves locally]  |
-|                                  |
-+----------------------------------+
-```
-
-### Implementation Details
-- Use `useEffect` to load notes from localStorage on mount
-- Use `useEffect` with debounce to save notes on change
-- Key: `voip_dialer_scratchpad`
-- Does NOT sync to database (privacy for workers)
-
----
-
-## Technical Summary
+### Files to Delete
+| File/Folder | Purpose |
+|-------------|---------|
+| `supabase/functions/voip-twilio/` | Twilio edge function |
+| `src/pages/voip/admin/TwilioSettings.tsx` | Twilio config page |
+| `src/pages/voip/admin/AdminApiKeys.tsx` | API keys (Twilio-only) |
+| `src/pages/voip/admin/Numbers.tsx` | Phone number management |
+| `src/pages/voip/admin/Requests.tsx` | Number request handling |
+| `src/pages/voip/MyNumbers.tsx` | User's assigned numbers |
+| `src/pages/voip/RequestNumber.tsx` | Request number page |
+| `src/components/voip/dialer/CallControls.tsx` | Twilio call controls |
+| `src/components/voip/dialer/CallTimer.tsx` | Call duration timer |
+| `src/components/voip/dialer/DialPad.tsx` | Phone keypad |
 
 ### Files to Modify
-
 | File | Changes |
 |------|---------|
-| `src/pages/voip/admin/LeadUpload.tsx` | Add delete button, expandable call history, confirmation dialogs |
-| `supabase/functions/voip-leads/index.ts` | Add `delete-upload` and `upload-calls` actions |
-| `src/pages/voip/Dialer.tsx` | Add collapsible Scratch Pad with localStorage persistence |
+| `src/App.tsx` | Remove routes for deleted pages |
+| `src/components/voip/layout/VoipSidebar.tsx` | Remove Twilio/Numbers nav items |
+| `supabase/config.toml` | Remove `voip-twilio` function config |
+| `src/pages/voip/ClientDashboard.tsx` | Remove numbers section and related API calls |
 
-### New Components
-- `AlertDialog` for delete confirmation (already available from shadcn)
-- `Collapsible` for expandable call history rows (already available)
+---
 
-### Backend Changes
+## Phase 2: Redesign Dialer Page
 
-**New Edge Function Actions:**
+### New Dialer Workflow
+The Dialer becomes a call session manager with external dialer integration.
 
-1. `delete-upload` (POST):
-   - Admin only
-   - Parameters: `uploadId`
-   - Deletes leads with status = 'NEW' only (preserves call history)
-   - Deletes upload record
-   - Returns: `{ deleted: true, leadsRemoved: number }`
+```text
++------------------------------------------+
+|  DIALER PAGE                             |
++------------------------------------------+
+|  [Request Next Lead]                     |
++------------------------------------------+
+|  Lead Details                            |
+|  - Name: John Smith                      |
+|  - Phone: (909) 555-1234                 |
+|  - Email: john@example.com               |
+|  - Website: johnsmith.com                |
++------------------------------------------+
+|  CALL TOOLS                              |
+|  [Copy Number] [Open TextNow]            |
+|  [Open Google Voice] [Dial on Device]   |
++------------------------------------------+
+|  SESSION TIMER: 00:02:34                 |
+|  Step 1: Call in TextNow                 |
+|  Step 2: Log outcome below               |
+|  Step 3: Schedule appointment if needed  |
++------------------------------------------+
+|  OUTCOME LOGGING                         |
+|  ( ) No Answer  ( ) Voicemail            |
+|  ( ) Not Interested  (*) Interested      |
+|  ( ) Wrong Number  ( ) DNC               |
+|  [Notes textarea]                        |
+|  [Submit Outcome]                        |
++------------------------------------------+
+```
 
-2. `upload-calls` (GET):
-   - Admin only
-   - Parameters: `uploadId`
-   - Returns: `{ calls: [...] }` with lead name, caller info, duration, outcome
+### Call Tools Implementation
+| Button | Action |
+|--------|--------|
+| Copy Number | Copies normalized phone to clipboard, shows "Copied!" toast |
+| Open TextNow | Opens `https://www.textnow.com/messaging` in popup (480x780), fallback to new tab |
+| Open Google Voice | Opens `https://voice.google.com/u/0/calls` in new tab |
+| Dial on Device | `tel:` link for mobile users |
 
-### Database Considerations
-- Leads that have been called (have entries in `voip_calls`) should NOT be deleted
-- Only remove leads with status = 'NEW' that haven't been worked
-- Maintain referential integrity
+### Phone Number Normalization
+```typescript
+function normalizePhone(phone: string): string {
+  return phone.replace(/[\s\-\(\)\.]/g, '');
+}
+```
+
+### Session Timer
+- Starts when user clicks "Open TextNow"
+- Tracks local session duration
+- Displayed prominently during active session
+- Duration stored with call log on submission
+
+### Outcome Enforcement
+- User MUST select an outcome before requesting another lead
+- If outcome = "Interested", automatically prompt for appointment scheduling
+- `appointment_created` boolean tracked in call logs
+
+---
+
+## Phase 3: Database Schema Updates
+
+### New Tables
+
+**voip_activity_events**
+```sql
+CREATE TABLE voip_activity_events (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES voip_users(id) ON DELETE SET NULL,
+  event_type VARCHAR(50) NOT NULL, -- lead_requested, lead_viewed, dialer_opened_textnow, lead_completed, appointment_created
+  lead_id INTEGER REFERENCES voip_leads(id) ON DELETE SET NULL,
+  metadata JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+**voip_user_sessions**
+```sql
+CREATE TABLE voip_user_sessions (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES voip_users(id) ON DELETE CASCADE,
+  session_start TIMESTAMPTZ NOT NULL,
+  session_end TIMESTAMPTZ,
+  last_heartbeat TIMESTAMPTZ DEFAULT NOW(),
+  is_idle BOOLEAN DEFAULT FALSE,
+  total_active_seconds INTEGER DEFAULT 0
+);
+```
+
+### Modify voip_calls Table
+```sql
+ALTER TABLE voip_calls ADD COLUMN IF NOT EXISTS session_duration_seconds INTEGER;
+ALTER TABLE voip_calls ADD COLUMN IF NOT EXISTS appointment_created BOOLEAN DEFAULT FALSE;
+```
+
+### Modify voip_users Table
+```sql
+ALTER TABLE voip_users ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
+ALTER TABLE voip_users ADD COLUMN IF NOT EXISTS tos_accepted BOOLEAN DEFAULT FALSE;
+ALTER TABLE voip_users ADD COLUMN IF NOT EXISTS privacy_accepted BOOLEAN DEFAULT FALSE;
+ALTER TABLE voip_users ADD COLUMN IF NOT EXISTS consent_accepted_at TIMESTAMPTZ;
+ALTER TABLE voip_users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT FALSE;
+```
+
+---
+
+## Phase 4: New Analytics System
+
+### Activity Event Tracking
+Track these events via the voip-leads edge function:
+- `lead_requested` - When user clicks "Request Next Lead"
+- `lead_viewed` - When lead details are displayed
+- `dialer_opened_textnow` - When TextNow popup is opened
+- `lead_completed` - When outcome is submitted
+- `appointment_created` - When appointment is scheduled
+
+### Admin Analytics Dashboard Enhancements
+Expand `Analytics.tsx` to include:
+- Leads requested vs completed (completion rate)
+- Outcomes breakdown (pie chart)
+- Average time per lead
+- Appointments created count
+- Conversion rate (Interested -> Appointment)
+- Per-user leaderboard
+- Date range filters
+- Activity sessions table with expandable details
+
+### Client Analytics Page (New)
+Create `src/pages/voip/MyAnalytics.tsx`:
+- Personal stats only (RLS enforced)
+- Leads requested/completed
+- Completion rate
+- Outcomes breakdown
+- Appointments created
+- Average time per lead
+- Daily activity chart
+- Session history table
+
+### Admin Client Analytics Page (New)
+Create `src/pages/voip/admin/ClientAnalytics.tsx`:
+- Session time tracking per user
+- Online now indicator (heartbeat within last 30s)
+- Time on site: today, 7d, 30d
+- Click user to drill down into timeline/sessions
+
+---
+
+## Phase 5: User Management Enhancements
+
+### User Statuses
+```typescript
+type UserStatus = 'active' | 'pending' | 'suspended' | 'disabled';
+```
+
+### Suspension Flow
+1. Admin selects user and sets status to "suspended"
+2. Admin enters suspension reason (required)
+3. System immediately invalidates user's session
+4. User sees full-screen modal: "Your account has been suspended. Reason: [reason]"
+
+### Admin Password Reset
+Add to Users page:
+- "Reset Password" button per user
+- Opens modal with new password fields
+- Calls secure edge function (not exposing service key)
+- Optionally force password change on next login
+- Logs action in audit log
+- User is logged out immediately
+
+### Account Deletion
+Already implemented, but add cascade cleanup for new tables.
+
+---
+
+## Phase 6: Appointment Pipeline
+
+### Pipeline Stages
+```typescript
+type AppointmentStatus = 'scheduled' | 'confirmed' | 'completed' | 'cancelled' | 'no_show';
+```
+
+### Admin Appointments Page Updates
+- Pipeline view: Scheduled -> Confirmed -> Completed
+- Drag-and-drop status changes
+- Calendar integration (existing)
+- Filter by status, date range, worker
+
+---
+
+## Phase 7: Reset Analytics (Admin Only)
+
+### Reset Function
+Add "Reset Analytics" button to Admin Dashboard:
+1. Confirmation modal: Type "RESET" to confirm
+2. Deletes: `voip_activity_events`, call logs (optional), aggregates
+3. Logs action in `voip_admin_audit_log`
+4. Toast confirmation
+
+---
+
+## Phase 8: Lead & Follow-Up Deletion Controls
+
+### Admin Leads Page
+- Add "Delete Lead" button with confirmation
+- Add "Delete All Leads" bulk action (type "DELETE ALL" to confirm)
+- Option to include related call logs
+
+### Admin Follow-Ups Page
+- Add "Delete Follow-Up" button
+- Add "Delete All Follow-Ups" bulk action
+
+All deletions logged in audit log.
+
+---
+
+## Phase 9: Terms of Service & Privacy Policy
+
+### New Pages
+| Route | Component |
+|-------|-----------|
+| `/terms` | `src/pages/Terms.tsx` |
+| `/privacy` | `src/pages/Privacy.tsx` |
+
+### Content Requirements
+**Terms of Service includes:**
+- All purchases final and non-refundable
+- Chargeback policy: account suspension, fee recovery
+- Fraudulent chargebacks = breach of agreement
+
+### Signup Integration
+1. Add checkbox: "I agree to the Terms of Service and Privacy Policy"
+2. Links open `/terms` and `/privacy` in new tab
+3. Signup button disabled until checked
+4. Store `tos_accepted`, `privacy_accepted`, `consent_accepted_at` in database
+
+### Footer Integration
+Add links to Terms and Privacy in Footer component.
+
+---
+
+## Phase 10: Navigation Updates
+
+### Client Sidebar
+| Item | Route | Action |
+|------|-------|--------|
+| Dashboard | `/voip/dashboard` | Keep |
+| Dialer | `/voip/dialer` | Redesign |
+| My Analytics | `/voip/my-analytics` | NEW |
+| Settings | `/voip/settings` | Keep |
+
+### Admin Sidebar
+| Item | Route | Action |
+|------|-------|--------|
+| Admin Dashboard | `/voip/admin` | Keep |
+| Users | `/voip/admin/users` | Keep + Enhance |
+| Lead Upload | `/voip/admin/leads` | Keep |
+| Lead Info | `/voip/admin/lead-info` | Keep |
+| Appointments | `/voip/admin/appointments` | Keep |
+| Duplicate Review | `/voip/admin/duplicates` | Keep |
+| Analytics | `/voip/admin/analytics` | Enhance |
+| Client Analytics | `/voip/admin/client-analytics` | NEW |
+| Caller Resources | `/voip/admin/resources` | NEW (scripts/docs) |
+| Invite Tokens | `/voip/admin/invite-tokens` | Keep |
+| Audit Log | `/voip/admin/audit-log` | NEW |
+
+### Removed from Navigation
+- Numbers, Requests, API Keys, Twilio Settings
+
+---
+
+## Phase 11: Session Heartbeat System
+
+### Frontend Implementation
+```typescript
+// In VoipAuthContext or VoipLayout
+useEffect(() => {
+  if (!isAuthenticated) return;
+  
+  const heartbeat = () => {
+    apiCall('voip-analytics', { 
+      method: 'POST', 
+      params: { action: 'heartbeat' } 
+    });
+  };
+  
+  // Initial heartbeat
+  heartbeat();
+  
+  // Every 30 seconds
+  const interval = setInterval(heartbeat, 30000);
+  
+  // Idle detection (5 min)
+  let idleTimer: NodeJS.Timeout;
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      apiCall('voip-analytics', { 
+        method: 'POST', 
+        params: { action: 'idle' } 
+      });
+    }, 5 * 60 * 1000);
+  };
+  
+  window.addEventListener('mousemove', resetIdle);
+  window.addEventListener('keypress', resetIdle);
+  resetIdle();
+  
+  return () => {
+    clearInterval(interval);
+    clearTimeout(idleTimer);
+    window.removeEventListener('mousemove', resetIdle);
+    window.removeEventListener('keypress', resetIdle);
+  };
+}, [isAuthenticated]);
+```
+
+### Backend Implementation
+Edge function tracks sessions in `voip_user_sessions` table.
+
+---
+
+## Phase 12: Live Kick for Suspended Users
+
+### Implementation
+1. Frontend polls user status every 30s (or use heartbeat response)
+2. If status = "suspended" or "disabled", show blocking modal
+3. Modal displays: "Your account has been suspended. Reason: [reason]"
+4. User cannot dismiss modal, only option is to close tab
+5. Pending users see: "Your account is pending approval"
+
+---
+
+## File Summary
+
+### New Files
+| Path | Description |
+|------|-------------|
+| `src/pages/voip/MyAnalytics.tsx` | User's personal analytics |
+| `src/pages/voip/admin/ClientAnalytics.tsx` | Admin view of user sessions |
+| `src/pages/voip/admin/AuditLog.tsx` | Admin audit log viewer |
+| `src/pages/voip/admin/CallerResources.tsx` | Scripts/training docs |
+| `src/pages/Terms.tsx` | Terms of Service |
+| `src/pages/Privacy.tsx` | Privacy Policy |
+| `src/components/voip/SuspendedModal.tsx` | Suspension blocking modal |
+| `src/components/voip/dialer/CallTools.tsx` | TextNow/GV buttons |
+| `src/components/voip/dialer/SessionTimer.tsx` | Local session timer |
+
+### Modified Files
+| Path | Changes |
+|------|---------|
+| `src/pages/voip/Dialer.tsx` | Complete redesign for TextNow workflow |
+| `src/pages/voip/Auth.tsx` | Add TOS/Privacy checkbox |
+| `src/pages/voip/admin/Analytics.tsx` | Enhanced with new metrics |
+| `src/pages/voip/admin/Users.tsx` | Add password reset, suspension reason |
+| `src/pages/voip/ClientDashboard.tsx` | Remove numbers section |
+| `src/components/voip/layout/VoipSidebar.tsx` | Update navigation |
+| `src/App.tsx` | Update routes |
+| `supabase/functions/voip-leads/index.ts` | Add activity event tracking |
+| `supabase/functions/voip-admin/index.ts` | Add password reset, audit log actions |
+| `supabase/functions/voip-analytics/index.ts` | Add heartbeat, session tracking |
+| `src/contexts/VoipAuthContext.tsx` | Add status checking |
+| `src/components/Footer.tsx` | Add Terms/Privacy links |
+
+### Deleted Files
+- `supabase/functions/voip-twilio/`
+- `src/pages/voip/admin/TwilioSettings.tsx`
+- `src/pages/voip/admin/AdminApiKeys.tsx`
+- `src/pages/voip/admin/Numbers.tsx`
+- `src/pages/voip/admin/Requests.tsx`
+- `src/pages/voip/MyNumbers.tsx`
+- `src/pages/voip/RequestNumber.tsx`
+- `src/components/voip/dialer/CallControls.tsx`
+- `src/components/voip/dialer/CallTimer.tsx`
+- `src/components/voip/dialer/DialPad.tsx`
 
 ---
 
 ## Implementation Order
 
-1. **Dialer Notepad** (simplest - no backend changes)
-   - Add localStorage-based scratch pad
-   - Collapsible card below main layout
-
-2. **Delete Upload** (requires backend)
-   - Add edge function action
-   - Add delete button with confirmation
-   - Handle cascade logic
-
-3. **Call History Per Upload** (most complex)
-   - Add edge function action with joins
-   - Add expandable rows in UI
-   - Format duration display
+1. **Database migrations** - Add new tables and columns
+2. **Remove Twilio** - Delete files, update routes, clean navigation
+3. **Redesign Dialer** - New call tools, session timer, outcome enforcement
+4. **Analytics backend** - Activity events, session tracking, heartbeat
+5. **Analytics frontend** - MyAnalytics, enhanced Admin Analytics, Client Analytics
+6. **User management** - Suspension flow, password reset, live kick
+7. **Legal pages** - Terms, Privacy, signup checkbox
+8. **Admin controls** - Reset analytics, lead/followup deletion, audit log
+9. **UI polish** - Ensure dark theme consistency, smooth workflows
 
 ---
 
-## Testing Checklist
+## Technical Notes
 
-After implementation:
-1. Test scratch pad persistence across page refreshes
-2. Test scratch pad clear button
-3. Upload a CSV and verify it appears in history
-4. Delete an upload and verify leads are removed (only NEW status)
-5. Expand an upload row to see call history
-6. Verify call duration displays correctly (mm:ss format)
-7. Verify caller name/email displays for each call
+### Popup Window for TextNow
+```typescript
+const openTextNow = () => {
+  const popup = window.open(
+    'https://www.textnow.com/messaging',
+    'TextNow',
+    'width=480,height=780,resizable=yes'
+  );
+  if (!popup || popup.closed) {
+    // Popup blocked, open in new tab
+    window.open('https://www.textnow.com/messaging', '_blank');
+  }
+  // Start session timer
+  setSessionStartTime(Date.now());
+};
+```
+
+### Phone Number Button Disabled State
+```typescript
+const hasPhone = currentLead?.phone && normalizePhone(currentLead.phone).length >= 10;
+// If !hasPhone, disable buttons and show "No phone number available"
+```
+
+### RLS for User Analytics
+```sql
+CREATE POLICY "Users can view their own analytics"
+ON voip_activity_events FOR SELECT
+TO authenticated
+USING (user_id = current_user_id());
+```
