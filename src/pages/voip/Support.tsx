@@ -1,4 +1,5 @@
  import { useState, useEffect, useCallback } from "react";
+ import { useVoipAuth } from "@/contexts/VoipAuthContext";
  import { VoipLayout } from "@/components/voip/layout/VoipLayout";
  import { useVoipApi } from "@/hooks/useVoipApi";
  import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,6 +69,7 @@
  
  export default function Support() {
    const { apiCall } = useVoipApi();
+   const { user } = useVoipAuth();
    const { toast } = useToast();
  
    const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -107,6 +109,11 @@
        if (result.data) {
          setSelectedTicket(result.data.ticket);
          setTicketMessages(result.data.messages);
+         
+         // Update the ticket in the list to reflect cleared notification
+         setTickets(prev => prev.map(t => 
+           t.id === ticketId ? { ...t, has_new_reply: false } : t
+         ));
        }
      },
      [apiCall]
