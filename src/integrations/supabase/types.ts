@@ -719,6 +719,7 @@ export type Database = {
           assigned_at: string | null
           assigned_to: number | null
           attempt_count: number | null
+          contact_name: string | null
           created_at: string | null
           deleted_at: string | null
           email: string | null
@@ -735,6 +736,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: number | null
           attempt_count?: number | null
+          contact_name?: string | null
           created_at?: string | null
           deleted_at?: string | null
           email?: string | null
@@ -751,6 +753,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: number | null
           attempt_count?: number | null
+          contact_name?: string | null
           created_at?: string | null
           deleted_at?: string | null
           email?: string | null
