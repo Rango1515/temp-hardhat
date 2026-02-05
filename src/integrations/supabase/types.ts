@@ -286,6 +286,7 @@ export type Database = {
           created_at: string | null
           created_by: number | null
           created_by_name: string | null
+          deleted_at: string | null
           id: number
           lead_id: number | null
           lead_name: string | null
@@ -300,6 +301,7 @@ export type Database = {
           created_at?: string | null
           created_by?: number | null
           created_by_name?: string | null
+          deleted_at?: string | null
           id?: number
           lead_id?: number | null
           lead_name?: string | null
@@ -314,6 +316,7 @@ export type Database = {
           created_at?: string | null
           created_by?: number | null
           created_by_name?: string | null
+          deleted_at?: string | null
           id?: number
           lead_id?: number | null
           lead_name?: string | null
@@ -345,6 +348,7 @@ export type Database = {
         Row: {
           appointment_created: boolean | null
           cost: number | null
+          deleted_at: string | null
           direction: string
           duration_seconds: number | null
           end_time: string | null
@@ -366,6 +370,7 @@ export type Database = {
         Insert: {
           appointment_created?: boolean | null
           cost?: number | null
+          deleted_at?: string | null
           direction?: string
           duration_seconds?: number | null
           end_time?: string | null
@@ -387,6 +392,7 @@ export type Database = {
         Update: {
           appointment_created?: boolean | null
           cost?: number | null
+          deleted_at?: string | null
           direction?: string
           duration_seconds?: number | null
           end_time?: string | null
@@ -417,6 +423,145 @@ export type Database = {
             foreignKeyName: "voip_calls_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_chat_channels: {
+        Row: {
+          admin_only: boolean | null
+          created_at: string | null
+          created_by: number | null
+          deleted_at: string | null
+          description: string | null
+          id: number
+          is_locked: boolean | null
+          name: string
+        }
+        Insert: {
+          admin_only?: boolean | null
+          created_at?: string | null
+          created_by?: number | null
+          deleted_at?: string | null
+          description?: string | null
+          id?: number
+          is_locked?: boolean | null
+          name: string
+        }
+        Update: {
+          admin_only?: boolean | null
+          created_at?: string | null
+          created_by?: number | null
+          deleted_at?: string | null
+          description?: string | null
+          id?: number
+          is_locked?: boolean | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_chat_channels_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_chat_messages: {
+        Row: {
+          channel_id: number
+          content: string
+          created_at: string | null
+          deleted_at: string | null
+          edited_at: string | null
+          id: number
+          image_url: string | null
+          is_pinned: boolean | null
+          user_id: number
+        }
+        Insert: {
+          channel_id: number
+          content: string
+          created_at?: string | null
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: number
+          image_url?: string | null
+          is_pinned?: boolean | null
+          user_id: number
+        }
+        Update: {
+          channel_id?: number
+          content?: string
+          created_at?: string | null
+          deleted_at?: string | null
+          edited_at?: string | null
+          id?: number
+          image_url?: string | null
+          is_pinned?: boolean | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_chat_messages_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "voip_chat_channels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_chat_messages_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_chat_user_status: {
+        Row: {
+          avatar_url: string | null
+          bio: string | null
+          created_at: string | null
+          display_name: string
+          id: number
+          is_banned: boolean | null
+          is_muted: boolean | null
+          muted_until: string | null
+          updated_at: string | null
+          user_id: number
+        }
+        Insert: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string | null
+          display_name: string
+          id?: number
+          is_banned?: boolean | null
+          is_muted?: boolean | null
+          muted_until?: string | null
+          updated_at?: string | null
+          user_id: number
+        }
+        Update: {
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string | null
+          display_name?: string
+          id?: number
+          is_banned?: boolean | null
+          is_muted?: boolean | null
+          muted_until?: string | null
+          updated_at?: string | null
+          user_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_chat_user_status_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "voip_users"
             referencedColumns: ["id"]
           },
@@ -536,6 +681,7 @@ export type Database = {
           assigned_to: number | null
           attempt_count: number | null
           created_at: string | null
+          deleted_at: string | null
           email: string | null
           id: number
           locked_until: string | null
@@ -551,6 +697,7 @@ export type Database = {
           assigned_to?: number | null
           attempt_count?: number | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string | null
           id?: number
           locked_until?: string | null
@@ -566,6 +713,7 @@ export type Database = {
           assigned_to?: number | null
           attempt_count?: number | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string | null
           id?: number
           locked_until?: string | null
@@ -724,6 +872,7 @@ export type Database = {
         Row: {
           created_at: string | null
           created_by: number | null
+          deleted_at: string | null
           email: string | null
           expires_at: string
           id: number
@@ -734,6 +883,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           created_by?: number | null
+          deleted_at?: string | null
           email?: string | null
           expires_at: string
           id?: number
@@ -744,6 +894,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           created_by?: number | null
+          deleted_at?: string | null
           email?: string | null
           expires_at?: string
           id?: number
@@ -848,6 +999,7 @@ export type Database = {
         Row: {
           consent_accepted_at: string | null
           created_at: string | null
+          deleted_at: string | null
           email: string
           force_password_change: boolean | null
           id: number
@@ -863,6 +1015,7 @@ export type Database = {
         Insert: {
           consent_accepted_at?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           email: string
           force_password_change?: boolean | null
           id?: number
@@ -878,6 +1031,7 @@ export type Database = {
         Update: {
           consent_accepted_at?: string | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string
           force_password_change?: boolean | null
           id?: number
