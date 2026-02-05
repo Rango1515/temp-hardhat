@@ -91,13 +91,10 @@ export function extractToken(authHeader: string | null): string | null {
 }
 
 // Password hashing using Web Crypto API (more reliable in Deno Deploy)
-// Using PBKDF2 with high iteration count for security (bcrypt doesn't work reliably in Deno Deploy)
 export async function hashPassword(password: string): Promise<string> {
-  // Use PBKDF2 with 100,000 iterations for strong password hashing
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
   
-  // Import password as key material
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
     encoder.encode(password),
@@ -106,7 +103,6 @@ export async function hashPassword(password: string): Promise<string> {
     ["deriveBits"]
   );
   
-  // Derive 256 bits using PBKDF2 with 100,000 iterations
   const hashBuffer = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
@@ -121,12 +117,10 @@ export async function hashPassword(password: string): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   
-  // Format: $pbkdf2$iterations$salt$hash
   return `$pbkdf2$100000$${saltHex}$${hashHex}`;
 }
 
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
-  // Check if it's our PBKDF2 format
   if (storedHash.startsWith('$pbkdf2$')) {
     const parts = storedHash.split('$');
     if (parts.length !== 5) return false;
@@ -135,10 +129,8 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     const saltHex = parts[3];
     const expectedHash = parts[4];
     
-    // Convert hex salt back to Uint8Array
     const salt = new Uint8Array(saltHex.match(/.{2}/g)!.map(byte => parseInt(byte, 16)));
     
-    // Import password as key material
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
       encoder.encode(password),
@@ -147,7 +139,6 @@ export async function verifyPassword(password: string, storedHash: string): Prom
       ["deriveBits"]
     );
     
-    // Derive bits with same parameters
     const hashBuffer = await crypto.subtle.deriveBits(
       {
         name: "PBKDF2",
@@ -165,7 +156,6 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     return actualHash === expectedHash;
   }
   
-  // Check if it's our legacy SHA-256 format (for backwards compatibility)
   if (storedHash.startsWith('$sha256$')) {
     const parts = storedHash.split('$');
     if (parts.length !== 4) return false;
@@ -181,7 +171,6 @@ export async function verifyPassword(password: string, storedHash: string): Prom
     return actualHash === expectedHash;
   }
   
-  // Try bcrypt for backwards compatibility (may not work in all environments)
   console.error("Unknown password hash format:", storedHash.substring(0, 10));
   return false;
 }
