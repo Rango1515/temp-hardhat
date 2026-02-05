@@ -171,6 +171,7 @@ serve(async (req) => {
                 phone: phone,
                 email: lead.email?.toLowerCase() || null,
                 website: lead.website || null,
+                contact_name: lead.contact_name || null,
                 status: "NEW",
                 upload_id: upload.id,
               });
@@ -256,6 +257,7 @@ serve(async (req) => {
               phone: lead.out_phone,
               email: lead.out_email || null,
               website: lead.out_website || null,
+              contact_name: lead.out_contact_name || null,
             },
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -266,7 +268,7 @@ serve(async (req) => {
         // Get current assigned lead for worker
         const { data: lead, error } = await supabase
           .from("voip_leads")
-          .select("id, name, phone, email, website, status, attempt_count")
+          .select("id, name, phone, email, website, status, attempt_count, contact_name")
           .eq("assigned_to", userId)
           .eq("status", "ASSIGNED")
           .single();
@@ -281,6 +283,7 @@ serve(async (req) => {
               phone: lead.phone,
               email: lead.email || null,
               website: lead.website || null,
+              contact_name: lead.contact_name || null,
               attempt_count: lead.attempt_count,
             } : null,
           }),
@@ -538,7 +541,7 @@ serve(async (req) => {
 
         const { data: leads, error } = await supabase
           .from("voip_leads")
-          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to")
+          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to, contact_name")
           .order("created_at", { ascending: false })
           .limit(500);
 
