@@ -26,6 +26,17 @@ const TOKEN_KEY = "voip_token";
 const REFRESH_TOKEN_KEY = "voip_refresh_token";
 const USER_KEY = "voip_user";
 
+// Helper to decode JWT and check expiry
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    // Add 60 second buffer for clock skew
+    return payload.exp * 1000 < Date.now() - 60000;
+  } catch {
+    return true; // If we can't decode it, treat as expired
+  }
+}
+
 export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<VoipUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -35,11 +46,50 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
+    const storedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
 
     if (storedToken && storedUser) {
       try {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        // Check if token is expired
+        if (isTokenExpired(storedToken)) {
+          console.log("[VoipAuth] Token expired, attempting refresh...");
+          // Token expired, try to refresh
+          if (storedRefreshToken && !isTokenExpired(storedRefreshToken)) {
+            // Refresh in background
+            fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-auth?action=refresh`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ refreshToken: storedRefreshToken }),
+            })
+              .then(res => res.ok ? res.json() : Promise.reject())
+              .then(result => {
+                localStorage.setItem(TOKEN_KEY, result.token);
+                localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken);
+                setToken(result.token);
+                setUser(JSON.parse(storedUser));
+              })
+              .catch(() => {
+                // Refresh failed, clear everything
+                localStorage.removeItem(TOKEN_KEY);
+                localStorage.removeItem(REFRESH_TOKEN_KEY);
+                localStorage.removeItem(USER_KEY);
+                setToken(null);
+                setUser(null);
+              })
+              .finally(() => setIsLoading(false));
+            return; // Exit early, setIsLoading handled in finally
+          } else {
+            // No valid refresh token, clear everything
+            console.log("[VoipAuth] Refresh token also expired, logging out");
+            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(REFRESH_TOKEN_KEY);
+            localStorage.removeItem(USER_KEY);
+          }
+        } else {
+          // Token is valid
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
+        }
       } catch {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);

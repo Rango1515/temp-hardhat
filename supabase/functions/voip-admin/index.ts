@@ -102,6 +102,47 @@ serve(async (req) => {
           );
         }
 
+        if (req.method === "DELETE") {
+          const userId = url.searchParams.get("id");
+
+          if (!userId) {
+            return new Response(
+              JSON.stringify({ error: "User ID is required" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          // Don't allow deleting yourself
+          if (parseInt(userId) === adminId) {
+            return new Response(
+              JSON.stringify({ error: "You cannot delete your own account" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          // Delete the user (calls and other data are preserved via SET NULL)
+          const { error } = await supabase
+            .from("voip_users")
+            .delete()
+            .eq("id", parseInt(userId));
+
+          if (error) throw error;
+
+          // Audit log
+          await supabase.from("voip_admin_audit_log").insert({
+            admin_id: adminId,
+            action: "user_delete",
+            entity_type: "users",
+            entity_id: parseInt(userId),
+            details: { deleted_by: adminId },
+          });
+
+          return new Response(
+            JSON.stringify({ message: "User deleted successfully" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         break;
       }
 

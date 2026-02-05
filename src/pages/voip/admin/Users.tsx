@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Users, Search, Loader2, ChevronLeft, ChevronRight, Edit, ChevronDown, Phone, Clock, PhoneOutgoing } from "lucide-react";
+import { Users, Search, Loader2, ChevronLeft, ChevronRight, Edit, ChevronDown, Phone, Clock, PhoneOutgoing, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,8 @@ export default function AdminUsers() {
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(new Set());
   const [userCalls, setUserCalls] = useState<Map<number, UserCall[]>>(new Map());
   const [loadingCalls, setLoadingCalls] = useState<Set<number>>(new Set());
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setIsLoading(true);
@@ -152,6 +155,34 @@ export default function AdminUsers() {
     }
 
     setIsSaving(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingUser) return;
+
+    setIsDeleting(true);
+
+    const result = await apiCall("voip-admin", {
+      method: "DELETE",
+      params: { action: "users", id: deletingUser.id.toString() },
+    });
+
+    if (result.error) {
+      toast({
+        title: "Delete Failed",
+        description: result.error,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "User Deleted",
+        description: `${deletingUser.name}'s account has been permanently deleted`,
+      });
+      setDeletingUser(null);
+      fetchUsers();
+    }
+
+    setIsDeleting(false);
   };
 
   const formatDuration = (seconds: number | null): string => {
@@ -265,6 +296,17 @@ export default function AdminUsers() {
                                 }}
                               >
                                 <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDeletingUser(user);
+                                }}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </Button>
                               <ChevronDown className={cn("w-4 h-4 transition-transform", expandedUsers.has(user.id) && "rotate-180")} />
                             </div>
@@ -419,6 +461,36 @@ export default function AdminUsers() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Delete User Confirmation Dialog */}
+        <AlertDialog open={!!deletingUser} onOpenChange={() => setDeletingUser(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete User Account</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to permanently delete {deletingUser?.name}'s account?
+                This action cannot be undone. All their calls and data will be preserved but they will no longer be able to log in.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete Account"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </VoipLayout>
   );
