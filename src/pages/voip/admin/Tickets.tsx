@@ -27,10 +27,21 @@
    Send,
    Search,
    Filter,
+   Trash2,
  } from "lucide-react";
  import { useToast } from "@/hooks/use-toast";
  import { format } from "date-fns";
  import { cn } from "@/lib/utils";
+ import {
+   AlertDialog,
+   AlertDialogAction,
+   AlertDialogCancel,
+   AlertDialogContent,
+   AlertDialogDescription,
+   AlertDialogFooter,
+   AlertDialogHeader,
+   AlertDialogTitle,
+ } from "@/components/ui/alert-dialog";
  
  interface SupportTicket {
    id: number;
@@ -75,6 +86,8 @@
    const [statusFilter, setStatusFilter] = useState<string>("all");
    const [categoryFilter, setCategoryFilter] = useState<string>("all");
    const [searchQuery, setSearchQuery] = useState("");
+   const [ticketToDelete, setTicketToDelete] = useState<SupportTicket | null>(null);
+   const [isDeleting, setIsDeleting] = useState(false);
  
    const fetchTickets = useCallback(async () => {
      setIsLoading(true);
@@ -168,6 +181,30 @@
      }
    };
  
+   const handleDeleteTicket = async () => {
+     if (!ticketToDelete) return;
+
+     setIsDeleting(true);
+     const result = await apiCall("voip-support", {
+       method: "POST",
+       params: { action: "delete-ticket" },
+       body: { ticketId: ticketToDelete.id },
+     });
+
+     if (result.error) {
+       toast({ title: "Error", description: result.error, variant: "destructive" });
+     } else {
+       toast({ title: "Ticket Deleted", description: "The ticket has been removed." });
+       if (selectedTicket?.id === ticketToDelete.id) {
+         setSelectedTicket(null);
+         setTicketMessages([]);
+       }
+       fetchTickets();
+     }
+     setIsDeleting(false);
+     setTicketToDelete(null);
+   };
+
    const getStatusIcon = (status: string) => {
      switch (status) {
        case "open":
@@ -299,6 +336,14 @@
                      {selectedTicket.user.email})
                    </div>
                  )}
+                 <Button
+                   variant="destructive"
+                   size="sm"
+                   onClick={() => setTicketToDelete(selectedTicket)}
+                 >
+                   <Trash2 className="w-4 h-4 mr-2" />
+                   Delete
+                 </Button>
                </div>
              </CardContent>
            </Card>
@@ -470,6 +515,17 @@
                        </div>
                      </div>
                      <MessageSquare className="w-5 h-5 text-muted-foreground shrink-0" />
+                     <Button
+                       variant="ghost"
+                       size="icon"
+                       className="shrink-0 text-muted-foreground hover:text-destructive"
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         setTicketToDelete(ticket);
+                       }}
+                     >
+                       <Trash2 className="w-4 h-4" />
+                     </Button>
                    </div>
                  </CardContent>
                </Card>
@@ -477,6 +533,29 @@
            </div>
          )}
        </div>
+
+       {/* Delete Confirmation Dialog */}
+       <AlertDialog open={!!ticketToDelete} onOpenChange={() => setTicketToDelete(null)}>
+         <AlertDialogContent>
+           <AlertDialogHeader>
+             <AlertDialogTitle>Delete Ticket?</AlertDialogTitle>
+             <AlertDialogDescription>
+               This will permanently delete ticket #{ticketToDelete?.id} "{ticketToDelete?.subject}" and all its messages. This action cannot be undone.
+             </AlertDialogDescription>
+           </AlertDialogHeader>
+           <AlertDialogFooter>
+             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+             <AlertDialogAction
+               onClick={handleDeleteTicket}
+               disabled={isDeleting}
+               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+             >
+               {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+               Delete
+             </AlertDialogAction>
+           </AlertDialogFooter>
+         </AlertDialogContent>
+       </AlertDialog>
      </VoipLayout>
    );
  }

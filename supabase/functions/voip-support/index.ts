@@ -330,6 +330,63 @@
            headers: { ...corsHeaders, "Content-Type": "application/json" },
          });
        }
+
+       // Delete ticket (admin only)
+       if (action === "delete-ticket") {
+         const { ticketId } = body;
+
+         if (!ticketId) {
+           return new Response(JSON.stringify({ error: "Ticket ID required" }), {
+             status: 400,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+
+         if (user.role !== "admin") {
+           return new Response(JSON.stringify({ error: "Admin only" }), {
+             status: 403,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+
+         const { data: ticket } = await supabase
+           .from("voip_support_tickets")
+           .select("*")
+           .eq("id", ticketId)
+           .maybeSingle();
+
+         if (!ticket) {
+           return new Response(JSON.stringify({ error: "Ticket not found" }), {
+             status: 404,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+
+         // Delete messages first (foreign key)
+         await supabase
+           .from("voip_support_ticket_messages")
+           .delete()
+           .eq("ticket_id", ticketId);
+
+         // Delete ticket
+         await supabase
+           .from("voip_support_tickets")
+           .delete()
+           .eq("id", ticketId);
+
+         // Log to audit
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: user.id,
+           action: "delete_ticket",
+           entity_type: "ticket",
+           entity_id: ticketId,
+           details: { subject: ticket.subject, user_id: ticket.user_id },
+         });
+
+         return new Response(JSON.stringify({ success: true }), {
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
      }
  
      return new Response(JSON.stringify({ error: "Unknown action" }), {
