@@ -17,7 +17,6 @@
    TrendingUp,
    Activity,
    ScrollText,
-   MessageSquare,
    Trophy,
    HelpCircle,
  } from "lucide-react";
@@ -27,7 +26,6 @@
    { href: "/voip/dialer", label: "Dialer", icon: Phone },
    { href: "/voip/my-analytics", label: "My Analytics", icon: TrendingUp },
    { href: "/voip/calls", label: "Call History", icon: History },
-   { href: "/voip/team-chat", label: "Team Chat", icon: MessageSquare, hasUnread: true },
    { href: "/voip/support", label: "Support", icon: HelpCircle },
    { href: "/voip/leaderboard", label: "Leaderboard", icon: Trophy },
    { href: "/voip/settings", label: "Settings", icon: Settings },
@@ -42,37 +40,34 @@
    { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
    { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
    { href: "/voip/admin/client-analytics", label: "Client Analytics", icon: Activity },
+   { href: "/voip/admin/tickets", label: "Tickets", icon: Ticket },
    { href: "/voip/admin/audit-log", label: "Audit Log", icon: ScrollText },
-   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
+   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: FileText },
  ];
  
  export function VoipSidebar() {
    const location = useLocation();
    const { isAdmin } = useVoipAuth();
    const { apiCall } = useVoipApi();
-   const [unreadCount, setUnreadCount] = useState(0);
+   const [ticketCount, setTicketCount] = useState(0);
  
-   // Check for unread chat messages
-   const checkUnread = useCallback(async () => {
-     const result = await apiCall<{
-       channels: Array<{ unread_count?: number }>;
-     }>("voip-chat", { params: { action: "init" } });
+   // Check for open tickets (for badge)
+   const checkTickets = useCallback(async () => {
+     const result = await apiCall<{ count: number }>("voip-support", {
+       params: { action: "ticket-count" },
+     });
  
-     if (result.data?.channels) {
-       const total = result.data.channels.reduce(
-         (sum, ch) => sum + (ch.unread_count || 0),
-         0
-       );
-       setUnreadCount(total);
+     if (result.data) {
+       setTicketCount(result.data.count);
      }
    }, [apiCall]);
  
    useEffect(() => {
-     checkUnread();
-     // Poll every 30 seconds for unread messages
-     const interval = setInterval(checkUnread, 30000);
+     checkTickets();
+     // Poll every 60 seconds
+     const interval = setInterval(checkTickets, 60000);
      return () => clearInterval(interval);
-   }, [checkUnread]);
+   }, [checkTickets]);
  
    const navItems = isAdmin ? [...adminNavItems, ...clientNavItems.slice(1)] : clientNavItems;
  
@@ -103,9 +98,12 @@
            // Add separator before client items when admin
            const isFirstClientItem = isAdmin && item.href === "/voip/dialer";
  
-           // Check for unread indicator on Team Chat
-           const showUnread =
-             item.href === "/voip/team-chat" && unreadCount > 0 && !isActive;
+             // Check for badge indicator
+             const showBadge =
+               ((item.href === "/voip/support" && !isAdmin) ||
+                 (item.href === "/voip/admin/tickets" && isAdmin)) &&
+               ticketCount > 0 &&
+               !isActive;
  
            return (
              <div key={item.href}>
@@ -127,9 +125,11 @@
                >
                  <Icon className="w-5 h-5" />
                  {item.label}
-                 {/* Unread indicator */}
-                 {showUnread && (
-                   <span className="absolute right-3 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive" />
+                   {/* Badge indicator */}
+                   {showBadge && (
+                     <span className="absolute right-3 top-1/2 -translate-y-1/2 min-w-5 h-5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-medium px-1.5">
+                       {ticketCount > 99 ? "99+" : ticketCount}
+                     </span>
                  )}
                </Link>
              </div>

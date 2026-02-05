@@ -9,14 +9,6 @@
  import { Badge } from "@/components/ui/badge";
  import { Avatar, AvatarFallback } from "@/components/ui/avatar";
  import {
-   Dialog,
-   DialogContent,
-   DialogDescription,
-   DialogFooter,
-   DialogHeader,
-   DialogTitle,
- } from "@/components/ui/dialog";
- import {
    Select,
    SelectContent,
    SelectItem,
@@ -25,7 +17,6 @@
  } from "@/components/ui/select";
  import {
    Ticket,
-   Plus,
    Loader2,
    MessageSquare,
    Clock,
@@ -34,6 +25,8 @@
    AlertCircle,
    ArrowLeft,
    Send,
+   Search,
+   Filter,
  } from "lucide-react";
  import { useToast } from "@/hooks/use-toast";
  import { format } from "date-fns";
@@ -66,33 +59,32 @@
    user?: { name: string; email: string };
  }
  
- export default function Support() {
+ export default function AdminTickets() {
    const { apiCall } = useVoipApi();
    const { toast } = useToast();
  
    const [tickets, setTickets] = useState<SupportTicket[]>([]);
+   const [filteredTickets, setFilteredTickets] = useState<SupportTicket[]>([]);
    const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
    const [ticketMessages, setTicketMessages] = useState<TicketMessage[]>([]);
    const [isLoading, setIsLoading] = useState(true);
-   const [showCreateDialog, setShowCreateDialog] = useState(false);
    const [newReply, setNewReply] = useState("");
    const [isSending, setIsSending] = useState(false);
  
-   const [ticketForm, setTicketForm] = useState({
-     subject: "",
-     content: "",
-     category: "other" as "billing" | "technical" | "sales" | "other",
-     priority: "medium" as "low" | "medium" | "high" | "urgent",
-   });
+   // Filters
+   const [statusFilter, setStatusFilter] = useState<string>("all");
+   const [categoryFilter, setCategoryFilter] = useState<string>("all");
+   const [searchQuery, setSearchQuery] = useState("");
  
    const fetchTickets = useCallback(async () => {
      setIsLoading(true);
      const result = await apiCall<{ tickets: SupportTicket[] }>("voip-support", {
-       params: { action: "my-tickets" },
+       params: { action: "all-tickets" },
      });
  
      if (result.data) {
        setTickets(result.data.tickets);
+       setFilteredTickets(result.data.tickets);
      }
      setIsLoading(false);
    }, [apiCall]);
@@ -116,38 +108,28 @@
      fetchTickets();
    }, [fetchTickets]);
  
-   const handleCreateTicket = async () => {
-     if (!ticketForm.subject.trim() || !ticketForm.content.trim()) {
-       toast({
-         title: "Required Fields",
-         description: "Please fill in subject and message",
-         variant: "destructive",
-       });
-       return;
+   // Apply filters
+   useEffect(() => {
+     let filtered = [...tickets];
+ 
+     if (statusFilter !== "all") {
+       filtered = filtered.filter((t) => t.status === statusFilter);
+     }
+     if (categoryFilter !== "all") {
+       filtered = filtered.filter((t) => t.category === categoryFilter);
+     }
+     if (searchQuery.trim()) {
+       const query = searchQuery.toLowerCase();
+       filtered = filtered.filter(
+         (t) =>
+           t.subject.toLowerCase().includes(query) ||
+           t.user?.name?.toLowerCase().includes(query) ||
+           t.user?.email?.toLowerCase().includes(query)
+       );
      }
  
-     setIsSending(true);
-     const result = await apiCall<{ ticket: SupportTicket }>("voip-support", {
-       method: "POST",
-       params: { action: "create-ticket" },
-       body: {
-         subject: ticketForm.subject.trim(),
-         content: ticketForm.content.trim(),
-           category: ticketForm.category,
-         priority: ticketForm.priority,
-       },
-     });
- 
-     if (result.error) {
-       toast({ title: "Error", description: result.error, variant: "destructive" });
-     } else {
-       toast({ title: "Ticket Created", description: "We'll get back to you soon!" });
-       setShowCreateDialog(false);
-         setTicketForm({ subject: "", content: "", category: "other", priority: "medium" });
-       fetchTickets();
-     }
-     setIsSending(false);
-   };
+     setFilteredTickets(filtered);
+   }, [tickets, statusFilter, categoryFilter, searchQuery]);
  
    const handleReply = async () => {
      if (!selectedTicket || !newReply.trim()) return;
@@ -164,8 +146,26 @@
      } else {
        setNewReply("");
        fetchTicketMessages(selectedTicket.id);
+       fetchTickets();
      }
      setIsSending(false);
+   };
+ 
+   const handleUpdateStatus = async (status: string) => {
+     if (!selectedTicket) return;
+ 
+     const result = await apiCall("voip-support", {
+       method: "POST",
+       params: { action: "update-ticket" },
+       body: { ticketId: selectedTicket.id, status },
+     });
+ 
+     if (result.error) {
+       toast({ title: "Error", description: result.error, variant: "destructive" });
+     } else {
+       fetchTicketMessages(selectedTicket.id);
+       fetchTickets();
+     }
    };
  
    const getStatusIcon = (status: string) => {
@@ -226,6 +226,8 @@
      }
    };
  
+   const openTicketCount = tickets.filter((t) => t.status === "open" || t.status === "in_progress").length;
+ 
    if (isLoading) {
      return (
        <VoipLayout>
@@ -262,7 +264,7 @@
                      {format(new Date(selectedTicket.created_at), "MMM d, yyyy h:mm a")}
                    </CardDescription>
                  </div>
-                 <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-2 flex-wrap">
                    <Badge variant="outline">{getCategoryLabel(selectedTicket.category)}</Badge>
                    <Badge className={cn("border", getStatusColor(selectedTicket.status))}>
                      {getStatusIcon(selectedTicket.status)}
@@ -271,12 +273,34 @@
                    <Badge className={cn("border", getPriorityColor(selectedTicket.priority))}>
                      {selectedTicket.priority}
                    </Badge>
-                   {selectedTicket.has_new_reply && (
-                     <Badge className="bg-primary text-primary-foreground">New Reply</Badge>
-                   )}
                  </div>
                </div>
              </CardHeader>
+ 
+             <CardContent className="border-t pt-4">
+               <div className="flex items-center gap-4 flex-wrap">
+                 <div className="flex items-center gap-2">
+                   <Label>Status:</Label>
+                   <Select value={selectedTicket.status} onValueChange={handleUpdateStatus}>
+                     <SelectTrigger className="w-36">
+                       <SelectValue />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="open">Open</SelectItem>
+                       <SelectItem value="in_progress">In Progress</SelectItem>
+                       <SelectItem value="resolved">Resolved</SelectItem>
+                       <SelectItem value="closed">Closed</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 {selectedTicket.user && (
+                   <div className="text-sm text-muted-foreground ml-auto">
+                     From: <span className="font-medium">{selectedTicket.user.name}</span> (
+                     {selectedTicket.user.email})
+                   </div>
+                 )}
+               </div>
+             </CardContent>
            </Card>
  
            <Card>
@@ -321,18 +345,15 @@
                  </div>
                ))}
  
-                 {selectedTicket.status !== "closed" && selectedTicket.status !== "resolved" && (
+               {selectedTicket.status !== "closed" && (
                  <div className="pt-4 border-t">
-                   <Label className="mb-2 block">Reply</Label>
-                   <div className="flex gap-2">
-                     <Textarea
-                       placeholder="Type your reply..."
-                       value={newReply}
-                       onChange={(e) => setNewReply(e.target.value)}
-                       rows={3}
-                       className="flex-1"
-                     />
-                   </div>
+                   <Label className="mb-2 block">Reply as Admin</Label>
+                   <Textarea
+                     placeholder="Type your reply..."
+                     value={newReply}
+                     onChange={(e) => setNewReply(e.target.value)}
+                     rows={3}
+                   />
                    <Button
                      className="mt-2"
                      onClick={handleReply}
@@ -347,21 +368,6 @@
                    </Button>
                  </div>
                )}
-                 {(selectedTicket.status === "closed" || selectedTicket.status === "resolved") && (
-                   <div className="pt-4 border-t text-center text-muted-foreground">
-                     <p>This ticket is {selectedTicket.status}.</p>
-                     <Button
-                       variant="outline"
-                       className="mt-2"
-                       onClick={() => {
-                         setSelectedTicket(null);
-                         setShowCreateDialog(true);
-                       }}
-                     >
-                       Create New Ticket
-                     </Button>
-                   </div>
-                 )}
              </CardContent>
            </Card>
          </div>
@@ -372,32 +378,69 @@
    return (
      <VoipLayout>
        <div className="space-y-6">
-         <div className="flex items-center justify-between">
+         <div className="flex items-center justify-between flex-wrap gap-4">
            <div>
-             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Support</h1>
+             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Support Tickets</h1>
              <p className="text-muted-foreground">
-               Create and track your support requests
+               {openTicketCount} open ticket{openTicketCount !== 1 ? "s" : ""}
              </p>
            </div>
-           <Button onClick={() => setShowCreateDialog(true)}>
-             <Plus className="w-4 h-4 mr-2" />
-             New Ticket
-           </Button>
          </div>
  
-         {tickets.length === 0 ? (
+         {/* Filters */}
+         <Card>
+           <CardContent className="p-4">
+             <div className="flex flex-wrap gap-4">
+               <div className="flex-1 min-w-[200px]">
+                 <div className="relative">
+                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                   <Input
+                     placeholder="Search by subject, name, or email..."
+                     className="pl-9"
+                     value={searchQuery}
+                     onChange={(e) => setSearchQuery(e.target.value)}
+                   />
+                 </div>
+               </div>
+               <Select value={statusFilter} onValueChange={setStatusFilter}>
+                 <SelectTrigger className="w-36">
+                   <Filter className="w-4 h-4 mr-2" />
+                   <SelectValue placeholder="Status" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="all">All Status</SelectItem>
+                   <SelectItem value="open">Open</SelectItem>
+                   <SelectItem value="in_progress">In Progress</SelectItem>
+                   <SelectItem value="resolved">Resolved</SelectItem>
+                   <SelectItem value="closed">Closed</SelectItem>
+                 </SelectContent>
+               </Select>
+               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                 <SelectTrigger className="w-36">
+                   <SelectValue placeholder="Category" />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="all">All Categories</SelectItem>
+                   <SelectItem value="billing">Billing</SelectItem>
+                   <SelectItem value="technical">Technical</SelectItem>
+                   <SelectItem value="sales">Sales</SelectItem>
+                   <SelectItem value="other">Other</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+           </CardContent>
+         </Card>
+ 
+         {filteredTickets.length === 0 ? (
            <Card>
              <CardContent className="py-12 text-center">
                <Ticket className="w-12 h-12 mx-auto mb-4 opacity-50" />
-               <p className="text-muted-foreground">No tickets yet</p>
-                 <Button className="mt-4" onClick={() => setShowCreateDialog(true)}>
-                   Create Your First Ticket
-                 </Button>
+               <p className="text-muted-foreground">No tickets found</p>
              </CardContent>
            </Card>
          ) : (
            <div className="space-y-3">
-             {tickets.map((ticket) => (
+             {filteredTickets.map((ticket) => (
                <Card
                  key={ticket.id}
                  className="cursor-pointer hover:bg-muted/50 transition-colors"
@@ -406,25 +449,23 @@
                  <CardContent className="p-4">
                    <div className="flex items-center gap-4">
                      <div className="flex-1 min-w-0">
-                       <div className="flex items-center gap-2 mb-1">
+                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                          <span className="font-semibold truncate">{ticket.subject}</span>
-                           <Badge variant="outline" className="shrink-0">
-                             {getCategoryLabel(ticket.category)}
-                           </Badge>
+                         <Badge variant="outline" className="shrink-0">
+                           {getCategoryLabel(ticket.category)}
+                         </Badge>
                          <Badge className={cn("border shrink-0", getStatusColor(ticket.status))}>
                            {getStatusIcon(ticket.status)}
                            <span className="ml-1 capitalize">
                              {ticket.status.replace("_", " ")}
                            </span>
                          </Badge>
-                           {ticket.has_new_reply && (
-                             <Badge className="bg-primary text-primary-foreground shrink-0">
-                               New Reply
-                             </Badge>
-                           )}
+                         <Badge className={cn("border shrink-0", getPriorityColor(ticket.priority))}>
+                           {ticket.priority}
+                         </Badge>
                        </div>
                        <div className="text-sm text-muted-foreground">
-                           #{ticket.id} •{" "}
+                         #{ticket.id} • {ticket.user?.name} ({ticket.user?.email}) •{" "}
                          {format(new Date(ticket.updated_at), "MMM d, h:mm a")}
                        </div>
                      </div>
@@ -436,93 +477,6 @@
            </div>
          )}
        </div>
- 
-       {/* Create Ticket Dialog */}
-       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-         <DialogContent className="sm:max-w-lg">
-           <DialogHeader>
-             <DialogTitle>Create Support Ticket</DialogTitle>
-             <DialogDescription>
-               Describe your issue and we'll get back to you as soon as possible.
-             </DialogDescription>
-           </DialogHeader>
-           <div className="space-y-4">
-             <div className="space-y-2">
-               <Label>Subject *</Label>
-               <Input
-                 placeholder="Brief description of your issue"
-                 value={ticketForm.subject}
-                 onChange={(e) => setTicketForm({ ...ticketForm, subject: e.target.value })}
-               />
-             </div>
-             <div className="space-y-2">
-                 <Label>Category</Label>
-                 <Select
-                   value={ticketForm.category}
-                   onValueChange={(v) =>
-                     setTicketForm({ ...ticketForm, category: v as typeof ticketForm.category })
-                   }
-                 >
-                   <SelectTrigger>
-                     <SelectValue />
-                   </SelectTrigger>
-                   <SelectContent>
-                     <SelectItem value="billing">Billing</SelectItem>
-                     <SelectItem value="technical">Technical</SelectItem>
-                     <SelectItem value="sales">Sales</SelectItem>
-                     <SelectItem value="other">Other</SelectItem>
-                   </SelectContent>
-                 </Select>
-               </div>
-               <div className="space-y-2">
-               <Label>Priority</Label>
-               <Select
-                 value={ticketForm.priority}
-                 onValueChange={(v) =>
-                   setTicketForm({ ...ticketForm, priority: v as typeof ticketForm.priority })
-                 }
-               >
-                 <SelectTrigger>
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="low">Low</SelectItem>
-                   <SelectItem value="medium">Medium</SelectItem>
-                   <SelectItem value="high">High</SelectItem>
-                   <SelectItem value="urgent">Urgent</SelectItem>
-                 </SelectContent>
-               </Select>
-             </div>
-             <div className="space-y-2">
-               <Label>Message *</Label>
-               <Textarea
-                 placeholder="Describe your issue in detail..."
-                 value={ticketForm.content}
-                 onChange={(e) => setTicketForm({ ...ticketForm, content: e.target.value })}
-                 rows={5}
-               />
-             </div>
-           </div>
-           <DialogFooter>
-             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-               Cancel
-             </Button>
-             <Button
-               onClick={handleCreateTicket}
-               disabled={isSending || !ticketForm.subject.trim() || !ticketForm.content.trim()}
-             >
-               {isSending ? (
-                 <>
-                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                   Creating...
-                 </>
-               ) : (
-                 "Submit Ticket"
-               )}
-             </Button>
-           </DialogFooter>
-         </DialogContent>
-       </Dialog>
      </VoipLayout>
    );
  }

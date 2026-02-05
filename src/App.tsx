@@ -1,37 +1,37 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-
-// Pages
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
-import DemoSite from "./pages/DemoSite";
-
-// VoIP Pages
-import { VoipAuthProvider } from "./contexts/VoipAuthContext";
-import { ProtectedRoute } from "./components/voip/auth/ProtectedRoute";
-import { AdminRoute } from "./components/voip/auth/AdminRoute";
-import VoipAuth from "./pages/voip/Auth";
-import ClientDashboard from "./pages/voip/ClientDashboard";
-import Dialer from "./pages/voip/Dialer";
-import CallHistory from "./pages/voip/CallHistory";
-import Settings from "./pages/voip/Settings";
-import MyAnalytics from "./pages/voip/MyAnalytics";
-import AdminDashboard from "./pages/voip/admin/AdminDashboard";
-import AdminUsers from "./pages/voip/admin/Users";
-import AdminAnalytics from "./pages/voip/admin/Analytics";
-import AdminInviteTokens from "./pages/voip/admin/InviteTokens";
-import LeadUpload from "./pages/voip/admin/LeadUpload";
-import LeadInfo from "./pages/voip/admin/LeadInfo";
-import DuplicateReview from "./pages/voip/admin/DuplicateReview";
-import Appointments from "./pages/voip/admin/Appointments";
-import ClientAnalytics from "./pages/voip/admin/ClientAnalytics";
-import AuditLog from "./pages/voip/admin/AuditLog";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
- import TeamChat from "./pages/voip/TeamChat";
+ import { Toaster } from "@/components/ui/toaster";
+ import { Toaster as Sonner } from "@/components/ui/sonner";
+ import { TooltipProvider } from "@/components/ui/tooltip";
+ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+ import { BrowserRouter, Routes, Route } from "react-router-dom";
+ 
+ // Pages
+ import Index from "./pages/Index";
+ import NotFound from "./pages/NotFound";
+ import DemoSite from "./pages/DemoSite";
+ 
+ // VoIP Pages
+ import { VoipAuthProvider } from "./contexts/VoipAuthContext";
+ import { ProtectedRoute } from "./components/voip/auth/ProtectedRoute";
+ import { AdminRoute } from "./components/voip/auth/AdminRoute";
+ import VoipAuth from "./pages/voip/Auth";
+ import ClientDashboard from "./pages/voip/ClientDashboard";
+ import Dialer from "./pages/voip/Dialer";
+ import CallHistory from "./pages/voip/CallHistory";
+ import Settings from "./pages/voip/Settings";
+ import MyAnalytics from "./pages/voip/MyAnalytics";
+ import AdminDashboard from "./pages/voip/admin/AdminDashboard";
+ import AdminUsers from "./pages/voip/admin/Users";
+ import AdminAnalytics from "./pages/voip/admin/Analytics";
+ import AdminInviteTokens from "./pages/voip/admin/InviteTokens";
+ import LeadUpload from "./pages/voip/admin/LeadUpload";
+ import LeadInfo from "./pages/voip/admin/LeadInfo";
+ import DuplicateReview from "./pages/voip/admin/DuplicateReview";
+ import Appointments from "./pages/voip/admin/Appointments";
+ import ClientAnalytics from "./pages/voip/admin/ClientAnalytics";
+ import AuditLog from "./pages/voip/admin/AuditLog";
+ import AdminTickets from "./pages/voip/admin/Tickets";
+ import Terms from "./pages/Terms";
+ import Privacy from "./pages/Privacy";
  import Leaderboard from "./pages/voip/Leaderboard";
  import Support from "./pages/voip/Support";
 
@@ -60,7 +60,6 @@ const App = () => (
             <Route path="/voip/my-analytics" element={<ProtectedRoute><MyAnalytics /></ProtectedRoute>} />
             <Route path="/voip/calls" element={<ProtectedRoute><CallHistory /></ProtectedRoute>} />
             <Route path="/voip/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-             <Route path="/voip/team-chat" element={<ProtectedRoute><TeamChat /></ProtectedRoute>} />
              <Route path="/voip/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
              <Route path="/voip/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
 
@@ -75,6 +74,7 @@ const App = () => (
             <Route path="/voip/admin/client-analytics" element={<AdminRoute><ClientAnalytics /></AdminRoute>} />
             <Route path="/voip/admin/audit-log" element={<AdminRoute><AuditLog /></AdminRoute>} />
             <Route path="/voip/admin/invite-tokens" element={<AdminRoute><AdminInviteTokens /></AdminRoute>} />
+             <Route path="/voip/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
 
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />

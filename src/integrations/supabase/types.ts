@@ -1006,8 +1006,10 @@ export type Database = {
       voip_support_tickets: {
         Row: {
           assigned_to: number | null
+          category: string | null
           closed_at: string | null
           created_at: string | null
+          has_new_reply: boolean | null
           id: number
           priority: string
           status: string
@@ -1017,8 +1019,10 @@ export type Database = {
         }
         Insert: {
           assigned_to?: number | null
+          category?: string | null
           closed_at?: string | null
           created_at?: string | null
+          has_new_reply?: boolean | null
           id?: number
           priority?: string
           status?: string
@@ -1028,8 +1032,10 @@ export type Database = {
         }
         Update: {
           assigned_to?: number | null
+          category?: string | null
           closed_at?: string | null
           created_at?: string | null
+          has_new_reply?: boolean | null
           id?: number
           priority?: string
           status?: string
