@@ -15,13 +15,16 @@ import {
   TrendingUp,
   Activity,
   ScrollText,
-} from "lucide-react";
+ } from "lucide-react";
+ import { MessageSquare, Trophy } from "lucide-react";
 
 const clientNavItems = [
   { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/voip/dialer", label: "Dialer", icon: Phone },
   { href: "/voip/my-analytics", label: "My Analytics", icon: TrendingUp },
   { href: "/voip/calls", label: "Call History", icon: History },
+   { href: "/voip/team-chat", label: "Team Chat", icon: MessageSquare },
+   { href: "/voip/leaderboard", label: "Leaderboard", icon: Trophy },
   { href: "/voip/settings", label: "Settings", icon: Settings },
 ];
 

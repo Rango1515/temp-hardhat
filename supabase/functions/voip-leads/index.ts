@@ -1099,6 +1099,251 @@ serve(async (req) => {
         );
       }
 
+       // ==================== TRASH MANAGEMENT ====================
+ 
+       case "trash-items": {
+         // Admin only - soft delete items
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { entityType, ids } = await req.json();
+         const validEntities = ["leads", "appointments", "calls"];
+         
+         if (!validEntities.includes(entityType) || !Array.isArray(ids) || ids.length === 0) {
+           return new Response(
+             JSON.stringify({ error: "Invalid entityType or ids" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const tableMap: Record<string, string> = {
+           leads: "voip_leads",
+           appointments: "voip_appointments",
+           calls: "voip_calls",
+         };
+ 
+         const { error } = await supabase
+           .from(tableMap[entityType])
+           .update({ deleted_at: new Date().toISOString() })
+           .in("id", ids);
+ 
+         if (error) throw error;
+ 
+         // Log action
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: userId,
+           action: "trash_items",
+           entity_type: entityType,
+           details: { ids, count: ids.length },
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true, count: ids.length }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       case "restore-items": {
+         // Admin only - restore soft deleted items
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { entityType: restoreType, ids: restoreIds } = await req.json();
+         const validRestoreEntities = ["leads", "appointments", "calls"];
+         
+         if (!validRestoreEntities.includes(restoreType) || !Array.isArray(restoreIds)) {
+           return new Response(
+             JSON.stringify({ error: "Invalid entityType or ids" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const restoreTableMap: Record<string, string> = {
+           leads: "voip_leads",
+           appointments: "voip_appointments",
+           calls: "voip_calls",
+         };
+ 
+         const { error } = await supabase
+           .from(restoreTableMap[restoreType])
+           .update({ deleted_at: null })
+           .in("id", restoreIds);
+ 
+         if (error) throw error;
+ 
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: userId,
+           action: "restore_items",
+           entity_type: restoreType,
+           details: { ids: restoreIds, count: restoreIds.length },
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true, count: restoreIds.length }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       case "permanent-delete": {
+         // Admin only - permanently delete items
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { entityType: deleteType, ids: deleteIds, confirmation } = await req.json();
+         
+         if (confirmation !== "DELETE") {
+           return new Response(
+             JSON.stringify({ error: "Confirmation required" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const validDeleteEntities = ["leads", "appointments", "calls"];
+         if (!validDeleteEntities.includes(deleteType) || !Array.isArray(deleteIds)) {
+           return new Response(
+             JSON.stringify({ error: "Invalid entityType or ids" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const deleteTableMap: Record<string, string> = {
+           leads: "voip_leads",
+           appointments: "voip_appointments",
+           calls: "voip_calls",
+         };
+ 
+         const { error } = await supabase
+           .from(deleteTableMap[deleteType])
+           .delete()
+           .in("id", deleteIds);
+ 
+         if (error) throw error;
+ 
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: userId,
+           action: "permanent_delete",
+           entity_type: deleteType,
+           details: { ids: deleteIds, count: deleteIds.length },
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true, count: deleteIds.length }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       case "bulk-delete": {
+         // Admin only - bulk delete based on age
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const { entityType: bulkType, bulkAction, confirmation: bulkConfirm } = await req.json();
+         
+         if (bulkConfirm !== "DELETE") {
+           return new Response(
+             JSON.stringify({ error: "Confirmation required" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const validBulkEntities = ["leads", "appointments", "calls"];
+         const validBulkActions = ["older-7", "older-30", "older-90", "all"];
+         
+         if (!validBulkEntities.includes(bulkType) || !validBulkActions.includes(bulkAction)) {
+           return new Response(
+             JSON.stringify({ error: "Invalid parameters" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const bulkTableMap: Record<string, string> = {
+           leads: "voip_leads",
+           appointments: "voip_appointments",
+           calls: "voip_calls",
+         };
+ 
+         let query = supabase.from(bulkTableMap[bulkType]).delete();
+         
+         if (bulkAction === "all") {
+           // Delete all trashed items
+           query = query.not("deleted_at", "is", null);
+         } else {
+           const days = parseInt(bulkAction.split("-")[1]);
+           const cutoffDate = new Date();
+           cutoffDate.setDate(cutoffDate.getDate() - days);
+           query = query.lt("deleted_at", cutoffDate.toISOString());
+         }
+ 
+         const { error, count } = await query;
+         if (error) throw error;
+ 
+         await supabase.from("voip_admin_audit_log").insert({
+           admin_id: userId,
+           action: "bulk_delete",
+           entity_type: bulkType,
+           details: { bulkAction, deletedCount: count },
+         });
+ 
+         return new Response(
+           JSON.stringify({ success: true, count: count || 0 }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
+       case "trashed-count": {
+         // Admin only - get count of trashed items
+         if (userRole !== "admin") {
+           return new Response(
+             JSON.stringify({ error: "Admin access required" }),
+             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const entityType = url.searchParams.get("entityType");
+         const validCountEntities = ["leads", "appointments", "calls"];
+         
+         if (!entityType || !validCountEntities.includes(entityType)) {
+           return new Response(
+             JSON.stringify({ error: "Invalid entityType" }),
+             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+           );
+         }
+ 
+         const countTableMap: Record<string, string> = {
+           leads: "voip_leads",
+           appointments: "voip_appointments",
+           calls: "voip_calls",
+         };
+ 
+         const { count, error } = await supabase
+           .from(countTableMap[entityType])
+           .select("*", { count: "exact", head: true })
+           .not("deleted_at", "is", null);
+ 
+         if (error) throw error;
+ 
+         return new Response(
+           JSON.stringify({ count: count || 0 }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),

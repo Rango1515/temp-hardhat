@@ -580,6 +580,97 @@ serve(async (req) => {
         );
       }
 
+       case "leaderboard": {
+         // Get leaderboard data - accessible to all users
+         const period = url.searchParams.get("period") || "today";
+         
+         // Get date ranges
+         const now = new Date();
+         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+         const weekStart = new Date(now);
+         weekStart.setDate(weekStart.getDate() - 7);
+         const monthStart = new Date(now);
+         monthStart.setMonth(monthStart.getMonth() - 1);
+ 
+         // Get all calls with user info
+         const { data: leaderboardCalls } = await supabase
+           .from("voip_calls")
+           .select("user_id, outcome, appointment_created, start_time")
+           .gte("start_time", monthStart.toISOString());
+ 
+         // Get all client users
+         const { data: clientUsers } = await supabase
+           .from("voip_users")
+           .select("id, name")
+           .eq("role", "client");
+ 
+         // Build stats per user
+         const leaderboardStats = new Map<number, {
+           calls_today: number;
+           calls_week: number;
+           calls_month: number;
+           appointments_today: number;
+           appointments_week: number;
+           appointments_month: number;
+         }>();
+ 
+         clientUsers?.forEach(u => {
+           leaderboardStats.set(u.id, {
+             calls_today: 0,
+             calls_week: 0,
+             calls_month: 0,
+             appointments_today: 0,
+             appointments_week: 0,
+             appointments_month: 0,
+           });
+         });
+ 
+         leaderboardCalls?.forEach(call => {
+           if (!call.user_id || !leaderboardStats.has(call.user_id)) return;
+           const stats = leaderboardStats.get(call.user_id)!;
+           const callDate = new Date(call.start_time);
+ 
+           // Month stats
+           stats.calls_month++;
+           if (call.appointment_created) stats.appointments_month++;
+ 
+           // Week stats
+           if (callDate >= weekStart) {
+             stats.calls_week++;
+             if (call.appointment_created) stats.appointments_week++;
+           }
+ 
+           // Today stats
+           if (call.start_time >= todayStart) {
+             stats.calls_today++;
+             if (call.appointment_created) stats.appointments_today++;
+           }
+         });
+ 
+         const leaderboard = clientUsers?.map(u => {
+           const stats = leaderboardStats.get(u.id) || {
+             calls_today: 0, calls_week: 0, calls_month: 0,
+             appointments_today: 0, appointments_week: 0, appointments_month: 0,
+           };
+           
+           const totalCalls = stats.calls_month;
+           const totalAppts = stats.appointments_month;
+           const conversionRate = totalCalls > 0 ? (totalAppts / totalCalls) * 100 : 0;
+ 
+           return {
+             user_id: u.id,
+             user_name: u.name,
+             ...stats,
+             conversion_rate: Math.round(conversionRate * 10) / 10,
+           };
+         }) || [];
+ 
+         return new Response(
+           JSON.stringify({ leaderboard }),
+           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+         );
+       }
+ 
       default:
         return new Response(
           JSON.stringify({ error: "Invalid action" }),
