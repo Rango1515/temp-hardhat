@@ -5,12 +5,10 @@ import {
   LayoutDashboard,
   Phone,
   History,
-  Key,
   Settings,
   Users,
   BarChart3,
   FileText,
-  PhoneCall,
   Ticket,
   Upload,
   CalendarDays,
@@ -26,15 +24,12 @@ const clientNavItems = [
 const adminNavItems = [
   { href: "/voip/admin", label: "Admin Dashboard", icon: LayoutDashboard },
   { href: "/voip/admin/users", label: "Users", icon: Users },
-  { href: "/voip/admin/numbers", label: "Numbers", icon: PhoneCall },
   { href: "/voip/admin/leads", label: "Lead Upload", icon: Upload },
   { href: "/voip/admin/lead-info", label: "Lead Info", icon: FileText },
   { href: "/voip/admin/appointments", label: "Appointments", icon: CalendarDays },
   { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: Ticket },
-  { href: "/voip/admin/api-keys", label: "API Keys", icon: Key },
-  { href: "/voip/admin/twilio", label: "Twilio Settings", icon: Phone },
 ];
 
 export function VoipSidebar() {
