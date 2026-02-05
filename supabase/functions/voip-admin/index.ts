@@ -120,20 +120,56 @@ serve(async (req) => {
             );
           }
 
+        const userIdInt = parseInt(userId);
+
+        // Clear references in related tables before deletion
+        // Clear signup tokens used_by references
+        await supabase
+          .from("voip_signup_tokens")
+          .update({ used_by: null })
+          .eq("used_by", userIdInt);
+
+        // Clear refresh tokens
+        await supabase
+          .from("voip_refresh_tokens")
+          .delete()
+          .eq("user_id", userIdInt);
+
+        // Clear API keys
+        await supabase
+          .from("voip_api_keys")
+          .delete()
+          .eq("user_id", userIdInt);
+
+        // Clear lead assignments
+        await supabase
+          .from("voip_leads")
+          .update({ assigned_to: null })
+          .eq("assigned_to", userIdInt);
+
+        // Clear worker lead history
+        await supabase
+          .from("voip_worker_lead_history")
+          .delete()
+          .eq("worker_id", userIdInt);
+
           // Delete the user (calls and other data are preserved via SET NULL)
           const { error } = await supabase
             .from("voip_users")
             .delete()
-            .eq("id", parseInt(userId));
+          .eq("id", userIdInt);
 
-          if (error) throw error;
+        if (error) {
+          console.error("[users DELETE] Error deleting user:", error);
+          throw error;
+        }
 
           // Audit log
           await supabase.from("voip_admin_audit_log").insert({
             admin_id: adminId,
             action: "user_delete",
             entity_type: "users",
-            entity_id: parseInt(userId),
+          entity_id: userIdInt,
             details: { deleted_by: adminId },
           });
 

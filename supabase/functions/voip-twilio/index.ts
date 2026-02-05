@@ -3,9 +3,56 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
 
+// TwiML to properly connect a call between the caller and recipient
+function generateCallTwiML(toNumber: string, callerId: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Connecting your call. Please hold.</Say>
+  <Dial callerId="${callerId}" timeout="30">
+    <Number>${toNumber}</Number>
+  </Dial>
+</Response>`;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  const url = new URL(req.url);
+  const action = url.searchParams.get("action");
+
+  // Handle TwiML webhook callback from Twilio (no auth required)
+  if (action === "twiml") {
+    try {
+      // Parse form data from Twilio webhook
+      const formData = await req.formData();
+      const to = formData.get("To") as string;
+      const from = formData.get("From") as string;
+      
+      console.log(`[twiml] Generating TwiML for call from ${from} to ${to}`);
+      
+      const twiml = generateCallTwiML(to, from);
+      
+      return new Response(twiml, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/xml",
+        },
+      });
+    } catch (e) {
+      console.error("[twiml] Error generating TwiML:", e);
+      // Return a fallback TwiML that says there was an error
+      return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">We're sorry, there was an error connecting your call. Please try again.</Say>
+  <Hangup/>
+</Response>`, {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/xml" },
+      });
+    }
   }
 
   const token = extractToken(req.headers.get("Authorization"));
@@ -27,9 +74,6 @@ serve(async (req) => {
   const userId = parseInt(payload.sub);
   const userRole = payload.role;
   const userName = payload.name || "Unknown";
-
-  const url = new URL(req.url);
-  const action = url.searchParams.get("action");
 
   try {
     // Worker action: make-call (available to all authenticated users)
@@ -62,13 +106,18 @@ serve(async (req) => {
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${config.account_sid}/Calls.json`;
         const auth = btoa(`${config.account_sid}:${config.auth_token}`);
 
+        // Get the edge function URL for TwiML webhook
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+        const twimlUrl = `${supabaseUrl}/functions/v1/voip-twilio?action=twiml`;
+
         const formData = new URLSearchParams();
         formData.append("To", toNumber);
         formData.append("From", config.outbound_number);
-        // Use a TwiML URL that plays a message and connects the call
-        formData.append("Url", "http://demo.twilio.com/docs/voice.xml");
+        // Use our custom TwiML endpoint that properly connects calls
+        formData.append("Url", twimlUrl);
+        formData.append("Method", "POST");
 
-        console.log(`[make-call] User ${userId} (${userName}) calling ${toNumber}`);
+        console.log(`[make-call] User ${userId} (${userName}) calling ${toNumber} via ${twimlUrl}`);
 
         const response = await fetch(twilioUrl, {
           method: "POST",
@@ -249,10 +298,15 @@ serve(async (req) => {
           const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${config.account_sid}/Calls.json`;
           const auth = btoa(`${config.account_sid}:${config.auth_token}`);
 
+          // Get the edge function URL for TwiML webhook
+          const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+          const twimlUrl = `${supabaseUrl}/functions/v1/voip-twilio?action=twiml`;
+
           const formData = new URLSearchParams();
           formData.append("To", toNumber);
           formData.append("From", config.outbound_number);
-          formData.append("Url", "http://demo.twilio.com/docs/voice.xml"); // Test TwiML
+          formData.append("Url", twimlUrl);
+          formData.append("Method", "POST");
 
           const response = await fetch(twilioUrl, {
             method: "POST",
