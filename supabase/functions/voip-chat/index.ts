@@ -57,8 +57,46 @@
            .eq("user_id", user.id)
            .single();
  
+         // Get unread counts for each channel
+         const { data: channelReads } = await supabase
+           .from("voip_chat_channel_reads")
+           .select("channel_id, last_read_at")
+           .eq("user_id", user.id);
+ 
+         const readMap = new Map(
+           (channelReads || []).map((r: any) => [r.channel_id, r.last_read_at])
+         );
+ 
+         // Count unread messages per channel
+         const channelsWithUnread = await Promise.all(
+           (channels || []).map(async (channel: any) => {
+             const lastRead = readMap.get(channel.id);
+             let unreadCount = 0;
+ 
+             if (lastRead) {
+               const { count } = await supabase
+                 .from("voip_chat_messages")
+                 .select("*", { count: "exact", head: true })
+                 .eq("channel_id", channel.id)
+                 .is("deleted_at", null)
+                 .gt("created_at", lastRead);
+               unreadCount = count || 0;
+             } else {
+               // Never opened - count all messages
+               const { count } = await supabase
+                 .from("voip_chat_messages")
+                 .select("*", { count: "exact", head: true })
+                 .eq("channel_id", channel.id)
+                 .is("deleted_at", null);
+               unreadCount = count || 0;
+             }
+ 
+             return { ...channel, unread_count: unreadCount };
+           })
+         );
+ 
          return new Response(
-           JSON.stringify({ channels: channels || [], profile }),
+           JSON.stringify({ channels: channelsWithUnread, profile }),
            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
          );
        }
@@ -98,6 +136,26 @@
          }));
  
          return new Response(JSON.stringify({ messages: formattedMessages }), {
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+ 
+       // Get all channels for admin management
+       if (action === "admin-channels") {
+         if (user.role !== "admin") {
+           return new Response(JSON.stringify({ error: "Admin only" }), {
+             status: 403,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         const { data: channels } = await supabase
+           .from("voip_chat_channels")
+           .select("*")
+           .is("deleted_at", null)
+           .order("name");
+ 
+         return new Response(JSON.stringify({ channels: channels || [] }), {
            headers: { ...corsHeaders, "Content-Type": "application/json" },
          });
        }
@@ -235,6 +293,32 @@
          });
        }
  
+       // Mark channel as read
+       if (action === "mark-read") {
+         const { channelId } = body;
+         if (!channelId) {
+           return new Response(JSON.stringify({ error: "Channel ID required" }), {
+             status: 400,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         await supabase
+           .from("voip_chat_channel_reads")
+           .upsert(
+             {
+               user_id: user.id,
+               channel_id: channelId,
+               last_read_at: new Date().toISOString(),
+             },
+             { onConflict: "user_id,channel_id" }
+           );
+ 
+         return new Response(JSON.stringify({ success: true }), {
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+ 
        // Edit message
        if (action === "edit-message") {
          const { messageId, content } = body;
@@ -329,6 +413,94 @@
            .from("voip_chat_user_status")
            .update({ is_banned: ban })
            .eq("user_id", userId);
+ 
+         return new Response(JSON.stringify({ success: true }), {
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+ 
+       // Create channel (admin only)
+       if (action === "create-channel") {
+         if (user.role !== "admin") {
+           return new Response(JSON.stringify({ error: "Admin only" }), {
+             status: 403,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         const { name, description, adminOnly, isLocked } = body;
+         if (!name?.trim()) {
+           return new Response(JSON.stringify({ error: "Channel name required" }), {
+             status: 400,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         const { data: channel, error } = await supabase
+           .from("voip_chat_channels")
+           .insert({
+             name: name.trim().toLowerCase().replace(/\s+/g, "-"),
+             description: description?.trim() || null,
+             admin_only: adminOnly || false,
+             is_locked: isLocked || false,
+             created_by: user.id,
+           })
+           .select()
+           .single();
+ 
+         if (error) throw error;
+ 
+         return new Response(JSON.stringify({ channel }), {
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+ 
+       // Update channel (admin only)
+       if (action === "update-channel") {
+         if (user.role !== "admin") {
+           return new Response(JSON.stringify({ error: "Admin only" }), {
+             status: 403,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         const { channelId, name, description, adminOnly, isLocked } = body;
+         if (!channelId) {
+           return new Response(JSON.stringify({ error: "Channel ID required" }), {
+             status: 400,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         await supabase
+           .from("voip_chat_channels")
+           .update({
+             name: name?.trim().toLowerCase().replace(/\s+/g, "-"),
+             description: description?.trim() || null,
+             admin_only: adminOnly,
+             is_locked: isLocked,
+           })
+           .eq("id", channelId);
+ 
+         return new Response(JSON.stringify({ success: true }), {
+           headers: { ...corsHeaders, "Content-Type": "application/json" },
+         });
+       }
+ 
+       // Delete channel (admin only)
+       if (action === "delete-channel") {
+         if (user.role !== "admin") {
+           return new Response(JSON.stringify({ error: "Admin only" }), {
+             status: 403,
+             headers: { ...corsHeaders, "Content-Type": "application/json" },
+           });
+         }
+ 
+         const { channelId } = body;
+         await supabase
+           .from("voip_chat_channels")
+           .update({ deleted_at: new Date().toISOString() })
+           .eq("id", channelId);
  
          return new Response(JSON.stringify({ success: true }), {
            headers: { ...corsHeaders, "Content-Type": "application/json" },
