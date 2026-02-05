@@ -140,14 +140,17 @@ interface Lead {
      setIsLoadingLead(false);
    };
  
-   const handleTextNowOpen = () => {
-     setSessionStartTime(Date.now());
-     setHasStartedSession(true);
-     toast({
-       title: "Session Started",
-       description: "Make your call in TextNow, then log the outcome here",
-     });
-   };
+    const handleTextNowOpen = () => {
+      // Only start the timer on the first TextNow open, don't reset on subsequent opens
+      if (!sessionStartTime) {
+        setSessionStartTime(Date.now());
+        setHasStartedSession(true);
+        toast({
+          title: "Session Started",
+          description: "Make your call in TextNow, then log the outcome here",
+        });
+      }
+    };
  
    const handleSubmitOutcome = async () => {
      if (!currentLead || !selectedOutcome) {
