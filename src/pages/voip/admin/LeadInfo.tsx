@@ -11,7 +11,7 @@
  import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
  import { Checkbox } from "@/components/ui/checkbox";
  import { Label } from "@/components/ui/label";
- import { Users, Loader2, Search, ChevronDown, Phone, Clock, Calendar, AlertTriangle, Trash2, AlertCircle } from "lucide-react";
+ import { Users, Loader2, Search, ChevronDown, Phone, Clock, Calendar, AlertTriangle, Trash2, AlertCircle, X } from "lucide-react";
  import { format } from "date-fns";
  import { useToast } from "@/hooks/use-toast";
 
@@ -61,12 +61,13 @@ export default function LeadInfo() {
   const [expandedLeadId, setExpandedLeadId] = useState<number | null>(null);
   const [leadCalls, setLeadCalls] = useState<Record<number, CallRecord[]>>({});
   const [loadingCalls, setLoadingCalls] = useState<number | null>(null);
-   const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null);
-   const [isDeleting, setIsDeleting] = useState(false);
-   const [showMasterClear, setShowMasterClear] = useState(false);
-   const [masterClearConfirmation, setMasterClearConfirmation] = useState("");
-   const [clearHistory, setClearHistory] = useState(false);
-   const [isMasterClearing, setIsMasterClearing] = useState(false);
+    const [deletingLeadId, setDeletingLeadId] = useState<number | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [showMasterClear, setShowMasterClear] = useState(false);
+    const [masterClearConfirmation, setMasterClearConfirmation] = useState("");
+    const [clearHistory, setClearHistory] = useState(false);
+    const [isMasterClearing, setIsMasterClearing] = useState(false);
+    const [deletingFollowupId, setDeletingFollowupId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchLeads();
@@ -173,6 +174,30 @@ export default function LeadInfo() {
      setIsMasterClearing(false);
    };
  
+  const handleDeleteFollowup = async (callId: number) => {
+    setDeletingFollowupId(callId);
+    const result = await apiCall("voip-leads", {
+      method: "POST",
+      params: { action: "delete-followup" },
+      body: { callId },
+    });
+
+    if (result.error) {
+      toast({
+        title: "Delete Failed",
+        description: result.error,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Follow-up Removed",
+        description: "Scheduled follow-up has been deleted",
+      });
+      setFollowups(prev => prev.filter(f => f.id !== callId));
+    }
+    setDeletingFollowupId(null);
+  };
+
   const toggleExpand = (leadId: number) => {
     if (expandedLeadId === leadId) {
       setExpandedLeadId(null);
@@ -270,7 +295,7 @@ export default function LeadInfo() {
                     <div className="flex items-center gap-3">
                       <Phone className="w-4 h-4 text-muted-foreground" />
                       <div>
-                        <p className="font-medium">{fu.lead_name || fu.lead_phone}</p>
+                        <p className="font-medium">{fu.lead_name || "None"}</p>
                         <p className="text-sm text-muted-foreground">
                           Assigned by {fu.caller_name}
                         </p>
@@ -286,6 +311,19 @@ export default function LeadInfo() {
                           {format(new Date(fu.followup_at), "h:mm a")}
                         </p>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteFollowup(fu.id)}
+                        disabled={deletingFollowupId === fu.id}
+                        className="text-destructive hover:text-destructive ml-2"
+                      >
+                        {deletingFollowupId === fu.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <X className="w-4 h-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                 ))}

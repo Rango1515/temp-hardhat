@@ -813,6 +813,48 @@ serve(async (req) => {
          );
        }
 
+      case "delete-followup": {
+        // Admin only - delete a scheduled follow-up by clearing followup fields on the call
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { callId } = await req.json();
+        if (!callId) {
+          return new Response(
+            JSON.stringify({ error: "callId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { error: updateError } = await supabase
+          .from("voip_calls")
+          .update({
+            followup_at: null,
+            followup_priority: null,
+            followup_notes: null,
+          })
+          .eq("id", callId);
+
+        if (updateError) throw updateError;
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "followup_deleted",
+          entity_type: "calls",
+          entity_id: callId,
+        });
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       case "duplicates": {
         // Admin only - get pending duplicate leads for review
         if (userRole !== "admin") {
