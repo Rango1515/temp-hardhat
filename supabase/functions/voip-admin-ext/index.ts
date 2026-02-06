@@ -200,7 +200,7 @@ serve(async (req) => {
         break;
       }
 
-      // ── System analytics ────────────────────────────────
+      // ── System analytics (enhanced) ─────────────────────
       case "analytics": {
         const { count: totalUsers } = await supabase
           .from("voip_users")
@@ -229,6 +229,63 @@ serve(async (req) => {
           .select("*", { count: "exact", head: true })
           .eq("status", "pending");
 
+        // Available leads count
+        const { count: availableLeads } = await supabase
+          .from("voip_leads")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "NEW");
+
+        // Recent activity from audit log (last 10)
+        const { data: recentLogs } = await supabase
+          .from("voip_admin_audit_log")
+          .select("id, action, entity_type, created_at, admin_id")
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        // Get admin names for activity
+        const adminIds = [...new Set((recentLogs || []).map(l => l.admin_id))];
+        const adminMap = new Map<number, string>();
+        if (adminIds.length > 0) {
+          const { data: admins } = await supabase
+            .from("voip_users")
+            .select("id, name, email")
+            .in("id", adminIds);
+          if (admins) {
+            for (const a of admins) {
+              adminMap.set(a.id, a.name || a.email);
+            }
+          }
+        }
+
+        const recentActivity = (recentLogs || []).map(log => ({
+          id: log.id,
+          action: log.action,
+          entity_type: log.entity_type,
+          user_name: adminMap.get(log.admin_id) || "System",
+          created_at: log.created_at,
+        }));
+
+        // Daily call volume (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const { data: recentCalls } = await supabase
+          .from("voip_calls")
+          .select("start_time")
+          .gte("start_time", thirtyDaysAgo.toISOString());
+
+        const callsByDay: Record<string, number> = {};
+        recentCalls?.forEach(call => {
+          if (call.start_time) {
+            const date = call.start_time.split("T")[0];
+            callsByDay[date] = (callsByDay[date] || 0) + 1;
+          }
+        });
+
+        const callsByDayArray = Object.entries(callsByDay)
+          .map(([date, count]) => ({ date, count }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+
         return new Response(
           JSON.stringify({
             stats: {
@@ -238,7 +295,10 @@ serve(async (req) => {
               totalNumbers: totalNumbers || 0,
               assignedNumbers: assignedNumbers || 0,
               pendingRequests: pendingRequests || 0,
+              availableLeads: availableLeads || 0,
             },
+            recentActivity,
+            callsByDay: callsByDayArray,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );

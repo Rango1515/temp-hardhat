@@ -62,12 +62,10 @@ serve(async (req) => {
 
         if (error) throw error;
 
-        // For each upload, count how many leads have been called
         const uploadIds = (uploads || []).map(u => u.id);
         const calledCountMap = new Map<number, number>();
 
         if (uploadIds.length > 0) {
-          // Get all leads from these uploads that have calls
           const { data: leadsWithCalls } = await supabase
             .from("voip_leads")
             .select("id, upload_id")
@@ -229,7 +227,7 @@ serve(async (req) => {
           action: "lead_upload",
           entity_type: "leads",
           entity_id: upload.id,
-          details: { filename, importedCount, duplicateCount, invalidCount, reviewQueueCount },
+          details: { filename, importedCount, duplicateCount, invalidCount, reviewQueueCount, category },
         });
 
         return new Response(
@@ -319,7 +317,7 @@ serve(async (req) => {
       }
 
       case "complete": {
-        const { leadId, outcome, notes, followupAt, followupPriority, followupNotes } = await req.json();
+        const { leadId, outcome, notes, followupAt, followupPriority, followupNotes, sessionDurationSeconds } = await req.json();
 
         if (!leadId || !outcome) {
           return new Response(
@@ -379,6 +377,7 @@ serve(async (req) => {
           .update(updateData)
           .eq("id", leadId);
 
+        // Insert call record with session_duration_seconds
         await supabase.from("voip_calls").insert({
           user_id: userId,
           lead_id: leadId,
@@ -390,6 +389,7 @@ serve(async (req) => {
           followup_at: followupAt || null,
           followup_priority: followupPriority || null,
           followup_notes: followupNotes || null,
+          session_duration_seconds: sessionDurationSeconds || 0,
         });
 
         return new Response(
@@ -555,7 +555,6 @@ serve(async (req) => {
         const search = url.searchParams.get("search") || "";
         const offset = (page - 1) * pageSize;
 
-        // Get total count for pagination
         let countQuery = supabase
           .from("voip_leads")
           .select("*", { count: "exact", head: true });
@@ -566,7 +565,6 @@ serve(async (req) => {
 
         const { count: totalCount } = await countQuery;
 
-        // Fetch paginated leads - order by status priority then created_at
         let leadsQuery = supabase
           .from("voip_leads")
           .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to, contact_name, category");
@@ -581,7 +579,6 @@ serve(async (req) => {
 
         if (error) throw error;
 
-        // Sort by status priority: ASSIGNED first, then NEW, COMPLETED, DNC
         const statusOrder: Record<string, number> = { ASSIGNED: 0, NEW: 1, COMPLETED: 2, DNC: 3 };
         const sortedLeads = (leads || []).sort((a, b) => {
           const aOrder = statusOrder[a.status] ?? 99;
@@ -841,15 +838,33 @@ serve(async (req) => {
       }
 
       case "category-counts": {
-        const { data: leads, error } = await supabase
+        // Return ALL distinct categories from the DB with counts of NEW leads
+        const { data: allCategories, error: catError } = await supabase
+          .from("voip_leads")
+          .select("category");
+
+        if (catError) throw catError;
+
+        // Count NEW leads per category
+        const { data: newLeads, error: newError } = await supabase
           .from("voip_leads")
           .select("category")
           .eq("status", "NEW");
 
-        if (error) throw error;
+        if (newError) throw newError;
 
         const counts: Record<string, number> = {};
-        for (const lead of (leads || [])) {
+        // Initialize all known categories with 0
+        const allCats = new Set<string>();
+        for (const lead of (allCategories || [])) {
+          const cat = lead.category || "uncategorized";
+          allCats.add(cat);
+        }
+        for (const cat of allCats) {
+          counts[cat] = 0;
+        }
+        // Fill in actual NEW counts
+        for (const lead of (newLeads || [])) {
           const cat = lead.category || "uncategorized";
           counts[cat] = (counts[cat] || 0) + 1;
         }
