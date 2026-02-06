@@ -22,7 +22,7 @@ import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2, ChevronDown, P
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { LEAD_CATEGORIES, getCategoryLabel } from "@/lib/leadCategories";
+import { UPLOAD_CATEGORIES, getCategoryLabel } from "@/lib/leadCategories";
 
 interface ParsedLead {
   name: string;
@@ -352,7 +352,7 @@ export default function LeadUpload() {
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent className="bg-popover z-50">
-                  {LEAD_CATEGORIES.map((cat) => (
+                  {UPLOAD_CATEGORIES.map((cat) => (
                     <SelectItem key={cat.value} value={cat.value}>
                       {cat.label}
                     </SelectItem>

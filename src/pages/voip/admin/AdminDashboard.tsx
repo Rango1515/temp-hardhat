@@ -3,7 +3,7 @@ import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { StatCard } from "@/components/voip/dashboard/StatCard";
 import { useVoipApi } from "@/hooks/useVoipApi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Phone, PhoneCall, Hash, FileText, TrendingUp, Loader2 } from "lucide-react";
+import { Users, Phone, PhoneCall, Hash, FileText, TrendingUp, Loader2, Target, CalendarCheck, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
 
 interface AdminStats {
@@ -13,6 +13,7 @@ interface AdminStats {
   totalNumbers: number;
   assignedNumbers: number;
   pendingRequests: number;
+  availableLeads: number;
 }
 
 interface ActivityLog {
@@ -28,9 +29,21 @@ interface DailyStats {
   count: number;
 }
 
+interface AnalyticsStats {
+  totalCalls: number;
+  leadsRequested: number;
+  leadsCompleted: number;
+  completionRate: number;
+  appointmentsCreated: number;
+  conversionRate: number;
+  outcomes: Record<string, number>;
+  leaderboard: { userId: number; name: string; calls: number; appointments: number }[];
+}
+
 export default function AdminDashboard() {
   const { apiCall } = useVoipApi();
   const [stats, setStats] = useState<AdminStats | null>(null);
+  const [analyticsStats, setAnalyticsStats] = useState<AnalyticsStats | null>(null);
   const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([]);
   const [callsByDay, setCallsByDay] = useState<DailyStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -39,16 +52,24 @@ export default function AdminDashboard() {
     const fetchData = async () => {
       setIsLoading(true);
 
-      const result = await apiCall<{
-        stats: AdminStats;
-        recentActivity: ActivityLog[];
-        callsByDay: DailyStats[];
-      }>("voip-admin-ext", { params: { action: "analytics" } });
+      // Fetch both endpoints in parallel
+      const [extResult, analyticsResult] = await Promise.all([
+        apiCall<{
+          stats: AdminStats;
+          recentActivity: ActivityLog[];
+          callsByDay: DailyStats[];
+        }>("voip-admin-ext", { params: { action: "analytics" } }),
+        apiCall<AnalyticsStats>("voip-analytics", { params: { action: "admin-stats" } }),
+      ]);
 
-      if (result.data) {
-        setStats(result.data.stats);
-        setRecentActivity(result.data.recentActivity || []);
-        setCallsByDay(result.data.callsByDay || []);
+      if (extResult.data) {
+        setStats(extResult.data.stats);
+        setRecentActivity(extResult.data.recentActivity || []);
+        setCallsByDay(extResult.data.callsByDay || []);
+      }
+
+      if (analyticsResult.data) {
+        setAnalyticsStats(analyticsResult.data);
       }
 
       setIsLoading(false);
@@ -62,6 +83,16 @@ export default function AdminDashboard() {
       .split("_")
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join(" ");
+  };
+
+  const outcomeLabels: Record<string, string> = {
+    interested: "Interested",
+    not_interested: "Not Interested",
+    no_answer: "No Answer",
+    voicemail: "Voicemail",
+    wrong_number: "Wrong Number",
+    dnc: "Do Not Call",
+    followup: "Follow-up",
   };
 
   if (isLoading) {
@@ -82,46 +113,19 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground">System overview and management</p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <StatCard
-            title="Total Users"
-            value={stats?.totalUsers || 0}
-            subtitle={`${stats?.activeUsers || 0} active`}
-            icon={Users}
-          />
-          <StatCard
-            title="Total Calls"
-            value={stats?.totalCalls || 0}
-            icon={PhoneCall}
-          />
-          <StatCard
-            title="Phone Numbers"
-            value={stats?.totalNumbers || 0}
-            subtitle={`${stats?.assignedNumbers || 0} assigned`}
-            icon={Hash}
-          />
-          <StatCard
-            title="Pending Requests"
-            value={stats?.pendingRequests || 0}
-            icon={FileText}
-            variant={stats?.pendingRequests && stats.pendingRequests > 0 ? "warning" : "default"}
-          />
-          <StatCard
-            title="Active Users"
-            value={stats?.activeUsers || 0}
-            icon={TrendingUp}
-            variant="success"
-          />
-          <StatCard
-            title="Available Numbers"
-            value={(stats?.totalNumbers || 0) - (stats?.assignedNumbers || 0)}
-            icon={Phone}
-          />
+        {/* System Stats */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <StatCard title="Total Users" value={stats?.totalUsers || 0} subtitle={`${stats?.activeUsers || 0} active`} icon={Users} />
+          <StatCard title="Total Calls" value={stats?.totalCalls || 0} icon={PhoneCall} />
+          <StatCard title="Available Leads" value={stats?.availableLeads || 0} icon={FileText} variant="success" />
+          <StatCard title="Leads Requested" value={analyticsStats?.leadsRequested || 0} icon={Target} />
+          <StatCard title="Leads Completed" value={analyticsStats?.leadsCompleted || 0} icon={TrendingUp} />
+          <StatCard title="Appointments" value={analyticsStats?.appointmentsCreated || 0} icon={CalendarCheck} variant="success" />
+          <StatCard title="Completion Rate" value={`${analyticsStats?.completionRate || 0}%`} icon={BarChart3} />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Call Volume Chart Placeholder */}
+          {/* Call Volume Chart */}
           <Card>
             <CardHeader>
               <CardTitle>Call Volume (30 Days)</CardTitle>
@@ -146,6 +150,76 @@ export default function AdminDashboard() {
                       />
                     );
                   })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Call Outcomes Breakdown */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Call Outcomes</CardTitle>
+              <CardDescription>Distribution of call results</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analyticsStats?.outcomes && Object.keys(analyticsStats.outcomes).length > 0 ? (
+                <div className="space-y-3">
+                  {Object.entries(analyticsStats.outcomes)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([outcome, count]) => (
+                      <div key={outcome} className="flex items-center justify-between">
+                        <span className="text-sm">{outcomeLabels[outcome] || outcome}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-32 h-2 bg-muted rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary rounded-full"
+                              style={{ width: `${(count / (analyticsStats?.totalCalls || 1)) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-sm font-medium w-12 text-right">{count}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="h-48 flex items-center justify-center text-muted-foreground">
+                  No outcomes data yet
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Mini Leaderboard */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Performers</CardTitle>
+              <CardDescription>By total calls</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analyticsStats?.leaderboard && analyticsStats.leaderboard.length > 0 ? (
+                <div className="space-y-3">
+                  {analyticsStats.leaderboard.slice(0, 5).map((user, i) => (
+                    <div key={user.userId} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                      <div className="flex items-center gap-3">
+                        <span className="w-6 text-center font-bold text-muted-foreground">{i + 1}</span>
+                        <span className="font-medium">{user.name}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-3 h-3" /> {user.calls}
+                        </span>
+                        <span className="flex items-center gap-1 text-green-500">
+                          <CalendarCheck className="w-3 h-3" /> {user.appointments}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-48 flex items-center justify-center text-muted-foreground">
+                  No performance data yet
                 </div>
               )}
             </CardContent>

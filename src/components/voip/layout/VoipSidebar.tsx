@@ -18,17 +18,19 @@
    Activity,
    ScrollText,
    Trophy,
-   HelpCircle,
- } from "lucide-react";
+    HelpCircle,
+    BookOpen,
+  } from "lucide-react";
  
  const clientNavItems = [
    { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
    { href: "/voip/dialer", label: "Dialer", icon: Phone },
    { href: "/voip/my-analytics", label: "My Analytics", icon: TrendingUp },
    { href: "/voip/calls", label: "Call History", icon: History },
-   { href: "/voip/support", label: "Support", icon: HelpCircle },
-   { href: "/voip/leaderboard", label: "Leaderboard", icon: Trophy },
-   { href: "/voip/settings", label: "Settings", icon: Settings },
+    { href: "/voip/support", label: "Support", icon: HelpCircle },
+    { href: "/voip/how-to", label: "How To?", icon: BookOpen },
+    { href: "/voip/leaderboard", label: "Leaderboard", icon: Trophy },
+    { href: "/voip/settings", label: "Settings", icon: Settings },
  ];
  
  const adminNavItems = [

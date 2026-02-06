@@ -32,8 +32,9 @@
  import AdminTickets from "./pages/voip/admin/Tickets";
  import Terms from "./pages/Terms";
  import Privacy from "./pages/Privacy";
- import Leaderboard from "./pages/voip/Leaderboard";
- import Support from "./pages/voip/Support";
+import Leaderboard from "./pages/voip/Leaderboard";
+import Support from "./pages/voip/Support";
+import HowTo from "./pages/voip/HowTo";
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => (
             <Route path="/voip/calls" element={<ProtectedRoute><CallHistory /></ProtectedRoute>} />
             <Route path="/voip/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
              <Route path="/voip/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
+             <Route path="/voip/how-to" element={<ProtectedRoute><HowTo /></ProtectedRoute>} />
              <Route path="/voip/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
 
             {/* VoIP Admin Routes */}
