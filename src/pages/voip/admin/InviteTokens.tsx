@@ -333,6 +333,7 @@ export default function InviteTokens() {
                     <TableHead>Used By</TableHead>
                     <TableHead>Used At</TableHead>
                     <TableHead>Created By</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -351,6 +352,15 @@ export default function InviteTokens() {
                       </TableCell>
                       <TableCell>{formatDate(token.used_at)}</TableCell>
                       <TableCell>{token.created_by_name}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(token.id)}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -137,6 +137,26 @@ serve(async (req) => {
           );
         }
 
+        // Check if user's signup token has expired (non-admin only)
+        if (user.role !== "admin") {
+          const { data: signupTokens } = await supabase
+            .from("voip_signup_tokens")
+            .select("expires_at")
+            .eq("used_by", user.id)
+            .limit(1);
+
+          if (signupTokens && signupTokens.length > 0) {
+            const tokenExpiry = signupTokens[0].expires_at;
+            if (tokenExpiry && new Date(tokenExpiry) < new Date()) {
+              console.log(`[voip-auth] Login blocked - token expired for user ${user.id}`);
+              return new Response(
+                JSON.stringify({ error: "Your invite token has expired. Please contact an admin for a new invite." }),
+                { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          }
+        }
+
         const passwordMatch = await verifyPassword(password, user.password_hash);
         if (!passwordMatch) {
           return new Response(
@@ -372,7 +392,7 @@ serve(async (req) => {
 
         const { data: users } = await supabase
           .from("voip_users")
-          .select("id, name, email, role, status")
+          .select("id, name, email, role, status, suspension_reason")
           .eq("id", parseInt(payload.sub));
 
         if (!users || users.length === 0) {
@@ -383,13 +403,33 @@ serve(async (req) => {
         }
 
         const user = users[0];
+
+        // Check if user's signup token has expired (only for non-admin users)
+        let effectiveStatus = user.status;
+        if (user.role !== "admin" && user.status === "active") {
+          const { data: signupTokens } = await supabase
+            .from("voip_signup_tokens")
+            .select("expires_at")
+            .eq("used_by", user.id)
+            .limit(1);
+
+          if (signupTokens && signupTokens.length > 0) {
+            const tokenExpiry = signupTokens[0].expires_at;
+            if (tokenExpiry && new Date(tokenExpiry) < new Date()) {
+              effectiveStatus = "token_expired";
+              console.log(`[voip-auth] User ${user.id} token expired at ${tokenExpiry}`);
+            }
+          }
+        }
+
         return new Response(
           JSON.stringify({
             id: user.id,
             name: user.name,
             email: user.email,
             role: user.role,
-            status: user.status,
+            status: effectiveStatus,
+            suspension_reason: user.suspension_reason || null,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
