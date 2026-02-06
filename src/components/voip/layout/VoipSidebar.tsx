@@ -40,7 +40,7 @@
    { href: "/voip/admin/lead-info", label: "Lead Info", icon: FileText },
    { href: "/voip/admin/appointments", label: "Appointments", icon: CalendarDays },
    { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
-   { href: "/voip/admin/analytics", label: "Analytics", icon: BarChart3 },
+   
    { href: "/voip/admin/client-analytics", label: "Client Analytics", icon: Activity },
    { href: "/voip/admin/tickets", label: "Tickets", icon: Ticket },
    { href: "/voip/admin/audit-log", label: "Audit Log", icon: ScrollText },

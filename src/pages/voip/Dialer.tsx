@@ -63,7 +63,7 @@ export default function Dialer() {
   const [appointmentOutcome, setAppointmentOutcome] = useState<string>("manual");
   const [hasStartedSession, setHasStartedSession] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
-    return localStorage.getItem("voip_lead_category") || "electricians";
+    return localStorage.getItem("voip_lead_category") || "";
   });
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
 
