@@ -12,8 +12,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Phone, User, Mail, Globe, Loader2, CalendarIcon, RefreshCw, StickyNote, ChevronDown, Trash2, CalendarPlus, AlertCircle, Tag, Check, ChevronsUpDown, Search } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Phone, User, Mail, Globe, Loader2, CalendarIcon, RefreshCw, StickyNote, ChevronDown, Trash2, CalendarPlus, AlertCircle, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -66,8 +66,6 @@ export default function Dialer() {
     return localStorage.getItem("voip_lead_category") || "electricians";
   });
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
-  const [categoryOpen, setCategoryOpen] = useState(false);
-  const [categorySearch, setCategorySearch] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(SCRATCH_PAD_KEY);
@@ -127,7 +125,6 @@ export default function Dialer() {
   const handleCategoryChange = (value: string) => {
     setSelectedCategory(value);
     localStorage.setItem("voip_lead_category", value);
-    setCategoryOpen(false);
     // Sync to database in background
     apiCall("voip-preferences", {
       method: "POST",
@@ -297,13 +294,6 @@ export default function Dialer() {
     .filter(cat => cat !== "uncategorized")
     .sort((a, b) => getCategoryLabel(a).localeCompare(getCategoryLabel(b)));
 
-  // Filter categories by search
-  const filteredCategories = categorySearch
-    ? dynamicCategories.filter(cat =>
-        getCategoryLabel(cat).toLowerCase().includes(categorySearch.toLowerCase())
-      )
-    : dynamicCategories;
-
   return (
     <VoipLayout>
       <div className="max-w-5xl mx-auto space-y-6">
@@ -353,67 +343,24 @@ export default function Dialer() {
                       <Tag className="w-4 h-4" />
                       Select Lead Type
                     </Label>
-                    <Popover open={categoryOpen} onOpenChange={setCategoryOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          aria-expanded={categoryOpen}
-                          className="w-full justify-between"
-                        >
-                          {selectedCategory
-                            ? `${getCategoryLabel(selectedCategory)} (${categoryCounts[selectedCategory] || 0})`
-                            : "Select category..."}
-                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-                        <Command>
-                          <CommandInput
-                            placeholder="Search lead type..."
-                            value={categorySearch}
-                            onValueChange={setCategorySearch}
-                          />
-                          <CommandList>
-                            <CommandEmpty>
-                              {categorySearch ? (
-                                <div className="p-3 text-sm text-muted-foreground text-center">
-                                  <Search className="w-5 h-5 mx-auto mb-2 opacity-50" />
-                                  <p>No matches.</p>
-                                  <p className="text-xs mt-1">
-                                    Request admin to upload leads for: <strong>{categorySearch}</strong>
-                                  </p>
-                                </div>
-                              ) : (
-                                <p className="p-3 text-sm text-muted-foreground text-center">
-                                  No categories available yet. Ask admin to upload leads.
-                                </p>
-                              )}
-                            </CommandEmpty>
-                            <CommandGroup>
-                              {filteredCategories.map((cat) => (
-                                <CommandItem
-                                  key={cat}
-                                  value={getCategoryLabel(cat)}
-                                  onSelect={() => handleCategoryChange(cat)}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      selectedCategory === cat ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  {getCategoryLabel(cat)}
-                                  <span className="ml-auto text-muted-foreground">
-                                    ({categoryCounts[cat] || 0})
-                                  </span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                    <Select value={selectedCategory} onValueChange={handleCategoryChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select category..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dynamicCategories.length === 0 ? (
+                          <div className="p-3 text-sm text-muted-foreground text-center">
+                            No categories available yet. Ask admin to upload leads.
+                          </div>
+                        ) : (
+                          dynamicCategories.map((cat) => (
+                            <SelectItem key={cat} value={cat}>
+                              {getCategoryLabel(cat)} ({categoryCounts[cat] || 0})
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <Button onClick={requestNextLead} disabled={isLoadingLead} size="lg" className="w-full">
                     {isLoadingLead ? (
