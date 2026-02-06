@@ -18,6 +18,7 @@ export default function VoipAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [activeTab, setActiveTab] = useState("login");
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -117,7 +118,9 @@ export default function VoipAuth() {
               <HardHat className="w-6 h-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-foreground">Client Login</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            {activeTab === "login" ? "Client Login" : "Client Sign Up"}
+          </h1>
         </div>
 
         <Card className="border-border/50">
@@ -128,7 +131,7 @@ export default function VoipAuth() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="login" className="w-full">
+            <Tabs defaultValue="login" className="w-full" onValueChange={(v) => { setActiveTab(v); setError(""); }}>
               <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="login">Login</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
