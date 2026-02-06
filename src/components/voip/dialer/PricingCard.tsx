@@ -61,7 +61,7 @@ export function PricingCard() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground mt-2 italic">
-              Prices are negotiable — use your discretion based on the client's needs.
+              Prices are negotiable — use your discretion based on the client's needs. Standard Landing Pages have a minimum selling price of $150.
             </p>
           </CardContent>
         </CollapsibleContent>
