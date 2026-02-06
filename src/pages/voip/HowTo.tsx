@@ -2,7 +2,7 @@ import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Copy, Phone, CheckCircle, AlertTriangle, MessageSquare, Target, Calendar } from "lucide-react";
+import { Copy, Phone, CheckCircle, AlertTriangle, MessageSquare, Target, Calendar, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const FULL_SCRIPT = `Cold Call Script — Hardhat Hosting
@@ -186,6 +186,55 @@ export default function HowTo() {
               <p className="text-sm font-medium text-destructive">"We already have a website"</p>
               <p className="text-sm text-muted-foreground mt-1 italic">
                 → "Nice — is it generating calls consistently? If not, we can improve it."
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pricing Pitch Guide */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-primary" />
+              Pricing Pitch Guide
+            </CardTitle>
+            <CardDescription>Talking points for pricing conversations</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Key Talking Points</p>
+              <div className="space-y-1.5">
+                <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
+                  "Our basic plan is $25/mo — includes hosting + support"
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
+                  "If you want more pages or functionality, we offer $30/mo"
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
+                  "For fully custom sites with ongoing support it's $50/mo"
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Pricing Objection Handlers</p>
+              <div className="p-3 rounded-lg border">
+                <p className="text-sm font-medium text-destructive">"Too cheap?"</p>
+                <p className="text-sm text-muted-foreground mt-1 italic">
+                  → "We keep prices low by focusing on great service and scalable hosting."
+                </p>
+              </div>
+              <div className="p-3 rounded-lg border">
+                <p className="text-sm font-medium text-destructive">"Too expensive?"</p>
+                <p className="text-sm text-muted-foreground mt-1 italic">
+                  → "Compare to average $79/mo retainers — ours is cheaper with same support."
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <p className="text-sm">
+                <strong>Market Context:</strong> Industry average for monthly website maintenance is $29–$79/mo. Our pricing is at the low end with full support included.
               </p>
             </div>
           </CardContent>
