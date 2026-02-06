@@ -855,10 +855,12 @@ serve(async (req) => {
       }
 
       case "category-counts": {
-        // Return ALL distinct categories from the DB with counts of NEW leads
+        // Return ALL distinct categories from the DB with counts of NEW (available) leads
+        // Only count non-deleted leads
         const { data: allCategories, error: catError } = await supabase
           .from("voip_leads")
-          .select("category");
+          .select("category")
+          .is("deleted_at", null);
 
         if (catError) throw catError;
 
@@ -866,7 +868,8 @@ serve(async (req) => {
         const { data: newLeads, error: newError } = await supabase
           .from("voip_leads")
           .select("category")
-          .eq("status", "NEW");
+          .eq("status", "NEW")
+          .is("deleted_at", null);
 
         if (newError) throw newError;
 
@@ -888,6 +891,60 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ counts }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "hide-category": {
+        // Admin-only: soft-delete all leads in a category (removes it from dialer dropdown)
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const body = await req.json();
+        const categoryToHide = body.category;
+        if (!categoryToHide) {
+          return new Response(
+            JSON.stringify({ error: "Category is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Get count of leads that will be affected
+        const { data: affectedLeads, error: countErr } = await supabase
+          .from("voip_leads")
+          .select("id")
+          .eq("category", categoryToHide)
+          .is("deleted_at", null);
+
+        if (countErr) throw countErr;
+
+        const affectedCount = affectedLeads?.length || 0;
+
+        // Soft-delete all leads in this category
+        const { error: hideErr } = await supabase
+          .from("voip_leads")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("category", categoryToHide)
+          .is("deleted_at", null);
+
+        if (hideErr) throw hideErr;
+
+        // Audit log
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "hide_category",
+          entity_type: "lead_category",
+          details: { category: categoryToHide, leadsHidden: affectedCount },
+        });
+
+        console.log(`Admin ${userId} hid category "${categoryToHide}" affecting ${affectedCount} leads`);
+
+        return new Response(
+          JSON.stringify({ success: true, leadsHidden: affectedCount }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

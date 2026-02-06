@@ -72,6 +72,10 @@ export default function LeadUpload() {
   const [uploadCalls, setUploadCalls] = useState<Map<number, CallRecord[]>>(new Map());
   const [loadingCalls, setLoadingCalls] = useState<Set<number>>(new Set());
   const [uploadCategory, setUploadCategory] = useState<string>("uncategorized");
+  const [categoryToRemove, setCategoryToRemove] = useState<string | null>(null);
+  const [removeCategoryDialogOpen, setRemoveCategoryDialogOpen] = useState(false);
+  const [isRemovingCategory, setIsRemovingCategory] = useState(false);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
 
   // Auto-detect mode
   const [autoDetectMode, setAutoDetectMode] = useState(true);
@@ -91,6 +95,7 @@ export default function LeadUpload() {
       params: { action: "category-counts" },
     });
     if (result.data?.counts) {
+      setCategoryCounts(result.data.counts);
       setExistingCategories(Object.keys(result.data.counts).sort());
     }
   }, [apiCall]);
@@ -151,6 +156,28 @@ export default function LeadUpload() {
     setIsDeleting(false);
     setDeleteDialogOpen(false);
     setUploadToDelete(null);
+  };
+
+  const handleRemoveCategory = async () => {
+    if (!categoryToRemove) return;
+    setIsRemovingCategory(true);
+    const result = await apiCall<{ success: boolean; leadsHidden: number }>("voip-leads", {
+      method: "POST",
+      params: { action: "hide-category" },
+      body: { category: categoryToRemove },
+    });
+    if (result.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({
+        title: "Category Removed",
+        description: `"${getCategoryLabel(categoryToRemove)}" removed from dialer. ${result.data?.leadsHidden || 0} leads hidden.`,
+      });
+      fetchExistingCategories();
+    }
+    setIsRemovingCategory(false);
+    setRemoveCategoryDialogOpen(false);
+    setCategoryToRemove(null);
   };
 
   const formatDuration = (seconds: number | null): string => {
@@ -622,9 +649,52 @@ export default function LeadUpload() {
             )}
           </CardContent>
         </Card>
+        {/* Manage Categories */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Tag className="w-5 h-5" />
+              Manage Dialer Categories
+            </CardTitle>
+            <CardDescription>
+              Remove categories from the dialer dropdown. This will hide all leads in that category.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {existingCategories.filter(c => c !== "uncategorized").length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">No categories found</p>
+            ) : (
+              <div className="space-y-2">
+                {existingCategories
+                  .filter(c => c !== "uncategorized")
+                  .map((cat) => (
+                    <div key={cat} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                      <div>
+                        <p className="font-medium">{getCategoryLabel(cat)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {categoryCounts[cat] || 0} available leads
+                        </p>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setCategoryToRemove(cat);
+                          setRemoveCategoryDialogOpen(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Upload Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -647,6 +717,35 @@ export default function LeadUpload() {
                 </>
               ) : (
                 "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Category Confirmation Dialog */}
+      <AlertDialog open={removeCategoryDialogOpen} onOpenChange={setRemoveCategoryDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Category?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove "{categoryToRemove ? getCategoryLabel(categoryToRemove) : ""}" from the dialer dropdown and hide all {categoryToRemove ? (categoryCounts[categoryToRemove] || 0) : 0} leads in this category. This action is logged.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemovingCategory}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRemoveCategory}
+              disabled={isRemovingCategory}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isRemovingCategory ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove Category"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
