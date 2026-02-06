@@ -88,9 +88,26 @@ serve(async (req) => {
           }
         }
 
+        // Get category per upload from leads
+        const categoryMap = new Map<number, string>();
+        if (uploadIds.length > 0) {
+          const { data: leadCats } = await supabase
+            .from("voip_leads")
+            .select("upload_id, category")
+            .in("upload_id", uploadIds);
+          if (leadCats) {
+            for (const lead of leadCats) {
+              if (lead.category && lead.upload_id && !categoryMap.has(lead.upload_id)) {
+                categoryMap.set(lead.upload_id, lead.category);
+              }
+            }
+          }
+        }
+
         const enrichedUploads = (uploads || []).map(u => ({
           ...u,
           called_count: calledCountMap.get(u.id) || 0,
+          category: categoryMap.get(u.id) || "uncategorized",
         }));
 
         return new Response(
@@ -194,7 +211,7 @@ serve(async (req) => {
                 contact_name: lead.contact_name || null,
                 status: "NEW",
                 upload_id: upload.id,
-                category: category || null,
+                category: category || "uncategorized",
               });
 
             if (insertError) {

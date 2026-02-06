@@ -8,6 +8,7 @@ const KNOWN_LABELS: Record<string, string> = {
   coffee_shops: "Coffee Shops",
   restaurants: "Restaurants",
   landscapers: "Landscapers",
+  uncategorized: "Uncategorized",
   other: "Custom / Other",
 };
 
@@ -25,6 +26,33 @@ export const UPLOAD_CATEGORIES = [
 ] as const;
 
 export type LeadCategory = typeof UPLOAD_CATEGORIES[number]["value"];
+
+// Filler words to strip from filenames when auto-detecting category
+const FILLER_WORDS = new Set([
+  "leads", "lead", "list", "import", "file", "data", "contacts",
+  "2024", "2025", "2026", "2027", "new", "updated", "final", "v2", "v3",
+]);
+
+/**
+ * Extracts a category name from a filename.
+ * Example: "fitness_leads_list.txt" → "fitness"
+ */
+export function extractCategoryFromFilename(filename: string): string {
+  // Remove extension
+  const withoutExt = filename.replace(/\.[^.]+$/, "");
+  // Replace _ and - with spaces
+  const spaced = withoutExt.replace(/[_-]/g, " ");
+  // Split into words, remove filler words
+  const words = spaced
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 0 && !FILLER_WORDS.has(w));
+
+  if (words.length === 0) return "uncategorized";
+
+  // Join remaining words with underscore for storage
+  return words.join("_");
+}
 
 /**
  * Returns a friendly label for any category value.
