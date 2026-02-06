@@ -1,103 +1,228 @@
 
-# Lead Category System
+# VoIP System Enhancement Plan
 
 ## Overview
-Add a category field to the lead management system so workers can choose what type of leads they want to call, and admins can assign categories when uploading leads.
+This plan covers 8 features: dynamic lead categories with search, analytics fixes, admin dashboard improvements, timer reset behavior, TextNow auto-open, and a "How To?" guide page.
 
-## What Changes
+---
 
-### 1. Database
-- Add a `category` column (VARCHAR, nullable, default `NULL`) to the `voip_leads` table
-- Update the `assign_next_lead` PostgreSQL function to accept an optional `p_category` parameter and filter leads by it
-- Add a `lead_category` column to `voip_user_preferences` table to persist each user's last selected category
+## 1. Dynamic Lead Categories with Search + Landscapers
 
-### 2. Backend (Edge Functions)
+### What Changes
+- Remove the hard-coded `LEAD_CATEGORIES` array from `src/lib/leadCategories.ts`
+- Update `category-counts` backend action to return ALL distinct categories from the `voip_leads` table (not just known ones), with their available (NEW status) counts
+- Update `src/pages/voip/Dialer.tsx` to:
+  - Fetch categories dynamically from the API instead of using the static list
+  - Replace the `<Select>` dropdown with a searchable `<Command>` (cmdk) popover that filters categories live as the user types
+  - Show "No matches. Request admin to upload leads for: [typed value]" when search has no results
+  - "Landscapers" will automatically appear once an admin uploads leads with that category
+- Add "landscapers" as a default option in the `LeadUpload.tsx` category selector
+- Keep `leadCategories.ts` as a fallback label map, but the dropdown is driven by DB data
 
-**voip-leads (request-next action)**
-- Accept a `category` query parameter
-- Pass it to the updated `assign_next_lead` database function
-- Return a "No more leads available in this category" message when empty
+### Files to Edit
+- `src/lib/leadCategories.ts` -- add "landscapers" to the static label map, add a helper that returns labels for dynamic categories
+- `supabase/functions/voip-leads/index.ts` -- update `category-counts` action to return distinct categories from DB
+- `src/pages/voip/Dialer.tsx` -- replace Select with searchable Command popover, fetch categories dynamically
+- `src/pages/voip/admin/LeadUpload.tsx` -- add "Landscapers" to the upload category selector
 
-**voip-leads (upload action)**
-- Accept a `category` field from the request body
-- Store it on each inserted lead
+---
 
-**voip-leads (stats action)**
-- Add a new `category-counts` action that returns the count of available (NEW status) leads grouped by category
+## 2. Fix Analytics (Client + Admin) -- Compute from Real Data
 
-**voip-leads (all-leads action)**
-- Include the `category` field in the returned lead data
+### Current Problem
+Analytics rely on `voip_activity_events` for "leads requested" and "leads completed" counts. These events are tracked separately and can get out of sync. The actual source of truth is:
+- `voip_calls` table (each call outcome = one record)
+- `voip_worker_lead_history` table (each lead assignment = one record)
+- `voip_leads` table (lead status)
 
-**voip-preferences**
-- Support saving/loading `lead_category` from `voip_user_preferences`
+### What Changes
+**Backend (`voip-analytics`):**
+- Rewrite `my-stats` action to compute stats directly from `voip_calls` and `voip_worker_lead_history`:
+  - **Leads Requested** = count of rows in `voip_worker_lead_history` for that user
+  - **Leads Completed** = count of `voip_calls` with a final outcome (no_answer, not_interested, voicemail, interested, dnc, wrong_number, followup)
+  - **Completion Rate** = Completed / Requested
+  - **Appointments** = count of `voip_calls` where `appointment_created = true`
+  - **Conversion Rate** = Appointments / Interested outcomes (tooltip: "Appointments / Interested leads")
+  - **Avg Time/Lead** = average `session_duration_seconds` from `voip_calls` where session_duration > 0
+- Rewrite `admin-stats` action using the same logic but across all users
+- Rewrite `user-performance` action to use the same source-of-truth tables
+- Rewrite `leaderboard` action to use `voip_calls` directly (it already does, but ensure appointment counts are correct)
 
-### 3. Dialer Page (Worker UI)
-- Add a dropdown labeled "Select Lead Type" above the "Request Next Lead" button
-- Options: Electricians, General Contractors, Roofing Companies, HVAC, Plumbing, Coffee Shops, Restaurants, Custom / Other
-- Each option shows remaining lead count in parentheses, e.g. "Electricians (24)"
-- Selected category is saved to localStorage immediately and synced to the database
-- Default category: Electricians
-- When no leads remain in the selected category, show: "No more leads available in this category."
-- Styled to match the dark theme with rounded modern appearance
+**Ensure call logging is complete:**
+- In the `complete` action of `voip-leads`, verify `session_duration_seconds` is stored (it's already being passed from the frontend but the insert needs to include it -- currently it's missing from the insert!)
+- Add `session_duration_seconds` to the voip_calls insert in the `complete` action
 
-### 4. Lead Upload Page (Admin UI)
-- Add a required "Lead Category" dropdown above the Import button
-- Same category options as the Dialer
-- The selected category is sent with every lead in the upload batch
-- Category column shown in the upload preview table
+**Frontend pages (no logic changes needed, just verify data flows):**
+- `MyAnalytics.tsx` -- already displays the right fields; data will now be correct
+- `Analytics.tsx` (Admin) -- already wired; data will now be correct
+- `ClientAnalytics.tsx` -- already has the performance table; data will now be correct
+- `Leaderboard.tsx` -- already wired; data will now be correct
 
-### 5. Lead Info Page (Admin UI)
-- Add a Category column to the leads table so admins can see each lead's category
+### Files to Edit
+- `supabase/functions/voip-analytics/index.ts` -- rewrite `my-stats`, `admin-stats`, `user-performance` to use real tables
+- `supabase/functions/voip-leads/index.ts` -- add `session_duration_seconds` to the `complete` action insert
 
-## Category Options
-| Value | Label |
-|-------|-------|
-| `electricians` | Electricians |
-| `general_contractors` | General Contractors |
-| `roofing` | Roofing Companies |
-| `hvac` | HVAC |
-| `plumbing` | Plumbing |
-| `coffee_shops` | Coffee Shops |
-| `restaurants` | Restaurants |
-| `other` | Custom / Other |
+---
+
+## 3. Fix Admin Dashboard + Add Analytics
+
+### Current Problem
+The Admin Dashboard calls `voip-admin-ext?action=analytics` which only returns basic counts (users, calls, numbers). It doesn't show call volume trends, recent activity, or user performance data.
+
+### What Changes
+- Update the `analytics` action in `voip-admin-ext` to also return:
+  - Recent activity from `voip_admin_audit_log` (last 10 entries with user names)
+  - Daily call volume for the last 30 days from `voip_calls`
+  - Available leads count from `voip_leads` where status = 'NEW'
+- Update `AdminDashboard.tsx` to:
+  - Add "Available Leads" stat card
+  - Show call outcomes breakdown (reuse admin-stats data)
+  - Show a mini leaderboard (top 5 users by calls)
+  - Fetch data from both `voip-admin-ext?action=analytics` (for system counts) and `voip-analytics?action=admin-stats` (for call analytics) in parallel
+
+### Files to Edit
+- `supabase/functions/voip-admin-ext/index.ts` -- enhance `analytics` action with recent activity + daily calls + available leads
+- `src/pages/voip/admin/AdminDashboard.tsx` -- add analytics cards, call volume chart, outcomes breakdown, mini leaderboard
+
+---
+
+## 4. Call Timer: Reset on Each New Lead
+
+### Current Behavior
+Timer persists across lead requests (by design per previous requirement). Now the user wants it to reset each time.
+
+### What Changes
+- In `Dialer.tsx`, when `requestNextLead` is called and a lead is successfully assigned:
+  - Reset `sessionStartTime` to `Date.now()` immediately
+  - Set `hasStartedSession` to `true`
+  - This makes the timer auto-start at 00:00 when a new lead arrives
+- Remove the dependency on "Open TextNow" to start the timer -- timer starts on lead assignment
+- Timer stops when outcome is submitted (already works)
+
+### Files to Edit
+- `src/pages/voip/Dialer.tsx` -- modify `requestNextLead` success handler to set sessionStartTime = Date.now()
+
+---
+
+## 5. TextNow: Auto-Open on Every New Lead
+
+### What Changes
+- In `Dialer.tsx`, after a lead is successfully assigned in `requestNextLead`:
+  - Programmatically trigger TextNow open/focus
+  - Pass a ref or callback to `CallTools` to trigger the open
+- In `CallTools.tsx`:
+  - Expose an `openTextNow` method via `useImperativeHandle` or accept a trigger prop
+  - If popup is blocked, show a persistent warning banner at the top of the Call Tools card
+- Track popup blocked state and show a small banner: "Popup blocked -- allow popups for this site to auto-open TextNow"
+
+### Files to Edit
+- `src/components/voip/dialer/CallTools.tsx` -- expose open method via ref, add popup-blocked banner
+- `src/pages/voip/Dialer.tsx` -- call CallTools open on lead assignment
+
+---
+
+## 6. Add "How To?" Client Tab
+
+### What Changes
+- Create a new page `src/pages/voip/HowTo.tsx` with:
+  - A clean card layout with the cold call script
+  - Sections: Intro, Reason, Value, Hook Question, Offer, Close
+  - Objections handling section
+  - "Copy Script" button that copies the full script to clipboard
+  - DNC compliance note
+- Add route `/voip/how-to` in `App.tsx`
+- Add "How To?" nav item in `VoipSidebar.tsx` under the CLIENT section (after "Support", before "Leaderboard")
+
+### Files to Create/Edit
+- `src/pages/voip/HowTo.tsx` -- new page
+- `src/App.tsx` -- add route
+- `src/components/voip/layout/VoipSidebar.tsx` -- add nav item
+
+---
 
 ## Technical Details
 
-### Database Migration SQL
+### Backend Changes Summary
+
+**`voip-leads/index.ts` (complete action):**
 ```text
--- Add category column to voip_leads
-ALTER TABLE voip_leads ADD COLUMN IF NOT EXISTS category VARCHAR DEFAULT NULL;
-
--- Add lead_category preference column
-ALTER TABLE voip_user_preferences ADD COLUMN IF NOT EXISTS lead_category VARCHAR DEFAULT 'electricians';
-
--- Replace assign_next_lead function to accept category filter
-CREATE OR REPLACE FUNCTION assign_next_lead(p_worker_id INTEGER, p_category VARCHAR DEFAULT NULL)
-RETURNS TABLE(...) -- same columns as before
--- Adds: AND (p_category IS NULL OR l.category = p_category) to the WHERE clause
+// Add session_duration_seconds to the voip_calls insert:
+await supabase.from("voip_calls").insert({
+  ...existing fields...,
+  session_duration_seconds: sessionDurationSeconds || 0,
+});
 ```
 
-### Files to Create/Edit
-- **Migration**: New SQL migration for `category` column and updated function
-- **supabase/functions/voip-leads/index.ts**: Update `request-next`, `upload`, `all-leads` actions; add `category-counts` action
-- **supabase/functions/voip-preferences/index.ts**: Include `lead_category` in get/save
-- **src/pages/voip/Dialer.tsx**: Add category dropdown, fetch counts, persist selection
-- **src/pages/voip/admin/LeadUpload.tsx**: Add required category selector, send with upload
-- **src/pages/voip/admin/LeadInfo.tsx**: Show category column in leads table
-
-### Data Flow
+**`voip-leads/index.ts` (category-counts action):**
 ```text
-Admin uploads leads with category
-        |
-        v
-voip_leads table stores category per lead
-        |
-        v
-Worker selects category in Dialer dropdown
-        |
-        v
-"Request Next Lead" passes category to assign_next_lead()
-        |
-        v
-Only leads matching that category are assigned
+// Query all distinct categories from voip_leads where status = 'NEW'
+// Return: { counts: { electricians: 24, landscapers: 10, ... } }
+// Also return the full list of distinct categories (including those with 0 NEW leads)
 ```
+
+**`voip-analytics/index.ts` (my-stats):**
+```text
+// Leads Requested = COUNT from voip_worker_lead_history WHERE worker_id = userId
+// Leads Completed = COUNT from voip_calls WHERE user_id = userId AND outcome IS NOT NULL
+// Completion Rate = Completed / Requested
+// Appointments = COUNT from voip_calls WHERE appointment_created = true
+// Conversion Rate = Appointments / COUNT(outcome = 'interested')
+// Avg Time/Lead = AVG(session_duration_seconds) WHERE session_duration_seconds > 0
+```
+
+**`voip-admin-ext/index.ts` (analytics):**
+```text
+// Add: available leads count, recent audit log entries (last 10), daily call volume (30 days)
+```
+
+### Frontend Changes Summary
+
+**Dialer.tsx -- Searchable Category Selector:**
+- Replace `<Select>` with a `<Popover>` + `<Command>` (from cmdk, already installed)
+- Command input filters categories dynamically
+- Empty state: "No matches. Request admin to upload leads for: [search term]"
+
+**Dialer.tsx -- Timer + TextNow on lead request:**
+- On successful lead assignment: set `sessionStartTime = Date.now()`, call `callToolsRef.current?.openTextNow()`
+- Remove the "click Open TextNow to start timer" instruction
+
+**AdminDashboard.tsx:**
+- Fetch both admin-ext analytics and voip-analytics admin-stats in parallel
+- Display: system stats + call volume chart + outcomes breakdown + recent activity + mini leaderboard
+
+### Data Flow for Analytics
+
+```text
+Worker clicks "Request Next Lead"
+  -> voip_worker_lead_history gets a row (already exists)
+  -> voip_leads status = ASSIGNED
+
+Worker submits outcome
+  -> voip_calls gets a row with outcome + session_duration_seconds
+  -> voip_leads status updated
+
+Analytics queries:
+  Leads Requested = COUNT(voip_worker_lead_history WHERE worker_id = X)
+  Leads Completed = COUNT(voip_calls WHERE user_id = X)
+  Appointments = COUNT(voip_calls WHERE appointment_created = true)
+```
+
+### Edge Functions to Deploy
+- `voip-leads` (session_duration_seconds fix + dynamic category-counts)
+- `voip-analytics` (rewritten stats computation)
+- `voip-admin-ext` (enhanced analytics action)
+
+### New Files
+- `src/pages/voip/HowTo.tsx`
+
+### Modified Files
+- `src/lib/leadCategories.ts`
+- `src/pages/voip/Dialer.tsx`
+- `src/components/voip/dialer/CallTools.tsx`
+- `src/pages/voip/admin/AdminDashboard.tsx`
+- `src/pages/voip/admin/LeadUpload.tsx`
+- `src/components/voip/layout/VoipSidebar.tsx`
+- `src/App.tsx`
+- `supabase/functions/voip-leads/index.ts`
+- `supabase/functions/voip-analytics/index.ts`
+- `supabase/functions/voip-admin-ext/index.ts`
