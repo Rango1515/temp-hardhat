@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 import { getCategoryLabel } from "@/lib/leadCategories";
 
 const SCRATCH_PAD_KEY = "voip_dialer_scratchpad";
+const CURRENT_LEAD_KEY = "voip_current_lead";
+const SESSION_START_KEY = "voip_session_start";
 
 interface Lead {
   id: number;
@@ -48,9 +50,17 @@ export default function Dialer() {
   const { toast } = useToast();
   const callToolsRef = useRef<CallToolsRef>(null);
   const requestInFlightRef = useRef(false);
-  const [currentLead, setCurrentLead] = useState<Lead | null>(null);
+  const [currentLead, setCurrentLead] = useState<Lead | null>(() => {
+    try {
+      const saved = localStorage.getItem(CURRENT_LEAD_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [isLoadingLead, setIsLoadingLead] = useState(false);
-  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(() => {
+    const saved = localStorage.getItem(SESSION_START_KEY);
+    return saved ? Number(saved) : null;
+  });
   const [sessionDuration, setSessionDuration] = useState(0);
   const [selectedOutcome, setSelectedOutcome] = useState("");
   const [notes, setNotes] = useState("");
@@ -63,7 +73,12 @@ export default function Dialer() {
   const [scratchPadOpen, setScratchPadOpen] = useState(true);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [appointmentOutcome, setAppointmentOutcome] = useState<string>("manual");
-  const [hasStartedSession, setHasStartedSession] = useState(false);
+  const [hasStartedSession, setHasStartedSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem(CURRENT_LEAD_KEY);
+      return !!saved;
+    } catch { return false; }
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
     return localStorage.getItem("voip_lead_category") || "";
   });
@@ -83,6 +98,23 @@ export default function Dialer() {
     }, 500);
     return () => clearTimeout(timeoutId);
   }, [scratchPadNotes]);
+
+  // Persist current lead and session start time to localStorage
+  useEffect(() => {
+    if (currentLead) {
+      localStorage.setItem(CURRENT_LEAD_KEY, JSON.stringify(currentLead));
+    } else {
+      localStorage.removeItem(CURRENT_LEAD_KEY);
+    }
+  }, [currentLead]);
+
+  useEffect(() => {
+    if (sessionStartTime) {
+      localStorage.setItem(SESSION_START_KEY, String(sessionStartTime));
+    } else {
+      localStorage.removeItem(SESSION_START_KEY);
+    }
+  }, [sessionStartTime]);
 
   const clearScratchPad = () => {
     setScratchPadNotes("");
@@ -183,10 +215,6 @@ export default function Dialer() {
         title: "Lead Assigned",
         description: `${result.data.lead.name} - ${result.data.lead.phone}`,
       });
-      // Auto-open TextNow on every new lead
-      setTimeout(() => {
-        callToolsRef.current?.openTextNow();
-      }, 300);
       // Refresh counts after assigning
       fetchCategoryCounts();
     } else {
