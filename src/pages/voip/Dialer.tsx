@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { CallTools, CallToolsRef } from "@/components/voip/dialer/CallTools";
 import { SessionTimer } from "@/components/voip/dialer/SessionTimer";
+import { PricingCard } from "@/components/voip/dialer/PricingCard";
 import { AppointmentModal } from "@/components/voip/AppointmentModal";
 import { useVoipApi } from "@/hooks/useVoipApi";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -45,7 +47,7 @@ export default function Dialer() {
   const { apiCall } = useVoipApi();
   const { toast } = useToast();
   const callToolsRef = useRef<CallToolsRef>(null);
-
+  const requestInFlightRef = useRef(false);
   const [currentLead, setCurrentLead] = useState<Lead | null>(null);
   const [isLoadingLead, setIsLoadingLead] = useState(false);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
@@ -66,6 +68,7 @@ export default function Dialer() {
     return localStorage.getItem("voip_lead_category") || "";
   });
   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
+  const [isCategoryCountsLoading, setIsCategoryCountsLoading] = useState(true);
 
   useEffect(() => {
     const saved = localStorage.getItem(SCRATCH_PAD_KEY);
@@ -87,12 +90,14 @@ export default function Dialer() {
   };
 
   const fetchCategoryCounts = useCallback(async () => {
+    setIsCategoryCountsLoading(true);
     const result = await apiCall<{ counts: Record<string, number> }>("voip-leads", {
       params: { action: "category-counts" },
     });
     if (result.data?.counts) {
       setCategoryCounts(result.data.counts);
     }
+    setIsCategoryCountsLoading(false);
   }, [apiCall]);
 
   useEffect(() => {
@@ -134,6 +139,8 @@ export default function Dialer() {
   };
 
   const requestNextLead = async () => {
+    if (requestInFlightRef.current) return;
+
     if (currentLead && !selectedOutcome && hasStartedSession) {
       toast({
         title: "Log Outcome First",
@@ -143,6 +150,7 @@ export default function Dialer() {
       return;
     }
 
+    requestInFlightRef.current = true;
     setIsLoadingLead(true);
     setCurrentLead(null);
     setSessionStartTime(null);
@@ -190,6 +198,7 @@ export default function Dialer() {
     }
 
     setIsLoadingLead(false);
+    requestInFlightRef.current = false;
   };
 
   const handleTextNowOpen = () => {
@@ -315,6 +324,8 @@ export default function Dialer() {
           </Card>
         )}
 
+        <PricingCard />
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -343,24 +354,30 @@ export default function Dialer() {
                       <Tag className="w-4 h-4" />
                       Select Lead Type
                     </Label>
-                    <Select value={selectedCategory} onValueChange={handleCategoryChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select category..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {dynamicCategories.length === 0 ? (
-                          <div className="p-3 text-sm text-muted-foreground text-center">
-                            No categories available yet. Ask admin to upload leads.
-                          </div>
-                        ) : (
-                          dynamicCategories.map((cat) => (
-                            <SelectItem key={cat} value={cat}>
-                              {getCategoryLabel(cat)} ({categoryCounts[cat] || 0})
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                    {isCategoryCountsLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full" />
+                      </div>
+                    ) : (
+                      <Select value={selectedCategory} onValueChange={handleCategoryChange}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select category..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {dynamicCategories.length === 0 ? (
+                            <div className="p-3 text-sm text-muted-foreground text-center">
+                              No categories available yet. Ask admin to upload leads.
+                            </div>
+                          ) : (
+                            dynamicCategories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {getCategoryLabel(cat)} ({categoryCounts[cat] || 0})
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                   <Button onClick={requestNextLead} disabled={isLoadingLead} size="lg" className="w-full">
                     {isLoadingLead ? (
