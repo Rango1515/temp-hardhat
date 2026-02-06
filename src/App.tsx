@@ -21,7 +21,7 @@
  import MyAnalytics from "./pages/voip/MyAnalytics";
  import AdminDashboard from "./pages/voip/admin/AdminDashboard";
  import AdminUsers from "./pages/voip/admin/Users";
- import AdminAnalytics from "./pages/voip/admin/Analytics";
+ 
  import AdminInviteTokens from "./pages/voip/admin/InviteTokens";
  import LeadUpload from "./pages/voip/admin/LeadUpload";
  import LeadInfo from "./pages/voip/admin/LeadInfo";
@@ -72,7 +72,7 @@ const App = () => (
             <Route path="/voip/admin/lead-info" element={<AdminRoute><LeadInfo /></AdminRoute>} />
             <Route path="/voip/admin/appointments" element={<AdminRoute><Appointments /></AdminRoute>} />
             <Route path="/voip/admin/duplicates" element={<AdminRoute><DuplicateReview /></AdminRoute>} />
-            <Route path="/voip/admin/analytics" element={<AdminRoute><AdminAnalytics /></AdminRoute>} />
+            
             <Route path="/voip/admin/client-analytics" element={<AdminRoute><ClientAnalytics /></AdminRoute>} />
             <Route path="/voip/admin/audit-log" element={<AdminRoute><AuditLog /></AdminRoute>} />
             <Route path="/voip/admin/invite-tokens" element={<AdminRoute><AdminInviteTokens /></AdminRoute>} />
