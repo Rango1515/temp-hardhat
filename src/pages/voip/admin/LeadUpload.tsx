@@ -511,7 +511,7 @@ export default function LeadUpload() {
 
             {/* Upload button — always visible when a file is selected */}
             {file && (
-              <Button onClick={handleImport} disabled={isImporting || validCount === 0 || isParsing} size="lg" className="w-full">
+              <Button onClick={handleImport} disabled={isImporting || isParsing} size="lg" className="w-full">
                 {isImporting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
