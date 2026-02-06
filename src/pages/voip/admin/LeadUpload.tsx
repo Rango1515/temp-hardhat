@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,11 +19,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2, ChevronDown, Phone, Clock, User, Tag } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2, ChevronDown, Phone, Clock, User, Tag, Wand2, PenLine, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { UPLOAD_CATEGORIES, getCategoryLabel } from "@/lib/leadCategories";
+import { UPLOAD_CATEGORIES, getCategoryLabel, extractCategoryFromFilename } from "@/lib/leadCategories";
 
 interface ParsedLead {
   name: string;
@@ -42,6 +43,7 @@ interface UploadHistory {
   invalid_count: number;
   called_count: number;
   created_at: string;
+  category?: string;
 }
 
 interface CallRecord {
@@ -69,7 +71,12 @@ export default function LeadUpload() {
   const [expandedUploads, setExpandedUploads] = useState<Set<number>>(new Set());
   const [uploadCalls, setUploadCalls] = useState<Map<number, CallRecord[]>>(new Map());
   const [loadingCalls, setLoadingCalls] = useState<Set<number>>(new Set());
-  const [uploadCategory, setUploadCategory] = useState<string>("electricians");
+  const [uploadCategory, setUploadCategory] = useState<string>("uncategorized");
+
+  // Auto-detect mode
+  const [autoDetectMode, setAutoDetectMode] = useState(true);
+  const [customCategoryInput, setCustomCategoryInput] = useState("");
+  const [existingCategories, setExistingCategories] = useState<string[]>([]);
 
   const fetchHistory = useCallback(async () => {
     const result = await apiCall<{ uploads: UploadHistory[] }>("voip-leads", {
@@ -79,23 +86,29 @@ export default function LeadUpload() {
     setIsLoadingHistory(false);
   }, [apiCall]);
 
+  const fetchExistingCategories = useCallback(async () => {
+    const result = await apiCall<{ counts: Record<string, number> }>("voip-leads", {
+      params: { action: "category-counts" },
+    });
+    if (result.data?.counts) {
+      setExistingCategories(Object.keys(result.data.counts).sort());
+    }
+  }, [apiCall]);
+
   useEffect(() => {
     fetchHistory();
-  }, [fetchHistory]);
+    fetchExistingCategories();
+  }, [fetchHistory, fetchExistingCategories]);
 
   const fetchUploadCalls = async (uploadId: number) => {
     if (uploadCalls.has(uploadId)) return;
-    
     setLoadingCalls(prev => new Set(prev).add(uploadId));
-    
     const result = await apiCall<{ calls: CallRecord[] }>("voip-leads", {
       params: { action: "upload-calls", uploadId: uploadId.toString() },
     });
-    
     if (result.data) {
       setUploadCalls(prev => new Map(prev).set(uploadId, result.data!.calls));
     }
-    
     setLoadingCalls(prev => {
       const next = new Set(prev);
       next.delete(uploadId);
@@ -123,29 +136,18 @@ export default function LeadUpload() {
 
   const handleConfirmDelete = async () => {
     if (!uploadToDelete) return;
-    
     setIsDeleting(true);
-    
     const result = await apiCall<{ deleted: boolean; leadsRemoved: number }>("voip-leads", {
       method: "POST",
       params: { action: "delete-upload" },
       body: { uploadId: uploadToDelete.id },
     });
-
     if (result.error) {
-      toast({
-        title: "Delete Failed",
-        description: result.error,
-        variant: "destructive",
-      });
+      toast({ title: "Delete Failed", description: result.error, variant: "destructive" });
     } else if (result.data) {
-      toast({
-        title: "Upload Deleted",
-        description: `Removed upload and ${result.data.leadsRemoved} unused leads.`,
-      });
+      toast({ title: "Upload Deleted", description: `Removed upload and ${result.data.leadsRemoved} unused leads.` });
       fetchHistory();
     }
-    
     setIsDeleting(false);
     setDeleteDialogOpen(false);
     setUploadToDelete(null);
@@ -167,7 +169,6 @@ export default function LeadUpload() {
     const result: string[] = [];
     let current = "";
     let inQuotes = false;
-    
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
       if (char === '"') {
@@ -186,13 +187,11 @@ export default function LeadUpload() {
   const parseFile = async (selectedFile: File) => {
     setIsParsing(true);
     setParsedLeads([]);
-
     try {
       const text = await selectedFile.text();
       const lines = text.split(/\r?\n/).filter((line) => line.trim());
       const ext = selectedFile.name.split(".").pop()?.toLowerCase();
       const isCSV = ext === "csv";
-
       const firstLine = lines[0]?.toLowerCase() || "";
       const hasHeader = firstLine.includes("name") || firstLine.includes("phone") || firstLine.includes("email");
       const dataLines = hasHeader ? lines.slice(1) : lines;
@@ -200,18 +199,15 @@ export default function LeadUpload() {
       const leads: ParsedLead[] = dataLines.map((line) => {
         const parts = isCSV ? parseCSVLine(line) : line.split("|").map((p) => p.trim());
         const [name, phone, email, website] = parts;
-
         const cleanValue = (val: string | undefined) => {
           if (!val) return "";
           const lower = val.toLowerCase();
           if (["none", "null", "—", "-", "n/a"].includes(lower)) return "";
           return val.trim();
         };
-
         const cleanedPhone = cleanValue(phone)?.replace(/[^\d+]/g, "") || "";
         const cleanedEmail = cleanValue(email)?.toLowerCase() || "";
         const cleanedWebsite = cleanValue(website) || "";
-
         const lead: ParsedLead = {
           name: cleanValue(name) || "—",
           phone: cleanedPhone,
@@ -219,24 +215,16 @@ export default function LeadUpload() {
           website: cleanedWebsite ? (cleanedWebsite.startsWith("http") ? cleanedWebsite : `https://${cleanedWebsite}`) : "",
           valid: true,
         };
-
         if (!cleanedPhone || cleanedPhone.length < 10) {
           lead.valid = false;
           lead.error = "Invalid phone number";
         }
-
         return lead;
       });
-
       setParsedLeads(leads);
     } catch {
-      toast({
-        title: "Parse Error",
-        description: "Failed to parse the file",
-        variant: "destructive",
-      });
+      toast({ title: "Parse Error", description: "Failed to parse the file", variant: "destructive" });
     }
-
     setIsParsing(false);
   };
 
@@ -245,47 +233,43 @@ export default function LeadUpload() {
     if (selectedFile) {
       const ext = selectedFile.name.split(".").pop()?.toLowerCase();
       if (!["txt", "doc", "docx", "csv"].includes(ext || "")) {
-        toast({
-          title: "Invalid File Type",
-          description: "Please upload a .txt, .doc, .docx, or .csv file",
-          variant: "destructive",
-        });
+        toast({ title: "Invalid File Type", description: "Please upload a .txt, .doc, .docx, or .csv file", variant: "destructive" });
         return;
       }
       setFile(selectedFile);
       parseFile(selectedFile);
+
+      // Auto-detect category from filename
+      if (autoDetectMode) {
+        const detected = extractCategoryFromFilename(selectedFile.name);
+        setUploadCategory(detected);
+      }
+    }
+  };
+
+  const handleAddCustomCategory = () => {
+    const cat = customCategoryInput.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!cat) return;
+    setUploadCategory(cat);
+    setCustomCategoryInput("");
+    if (!existingCategories.includes(cat)) {
+      setExistingCategories(prev => [...prev, cat].sort());
     }
   };
 
   const handleImport = async () => {
     if (!file || parsedLeads.length === 0) return;
-
     const validLeads = parsedLeads.filter((l) => l.valid);
     if (validLeads.length === 0) {
-      toast({
-        title: "No Valid Leads",
-        description: "No valid leads to import",
-        variant: "destructive",
-      });
+      toast({ title: "No Valid Leads", description: "No valid leads to import", variant: "destructive" });
       return;
     }
-
     if (!uploadCategory) {
-      toast({
-        title: "Category Required",
-        description: "Please select a lead category before importing",
-        variant: "destructive",
-      });
+      toast({ title: "Category Required", description: "Please select a lead category before importing", variant: "destructive" });
       return;
     }
-
     setIsImporting(true);
-
-    const result = await apiCall<{
-      imported_count: number;
-      duplicate_count: number;
-      invalid_count: number;
-    }>("voip-leads", {
+    const result = await apiCall<{ imported_count: number; duplicate_count: number; invalid_count: number }>("voip-leads", {
       method: "POST",
       params: { action: "upload" },
       body: {
@@ -299,28 +283,29 @@ export default function LeadUpload() {
         })),
       },
     });
-
     if (result.error) {
-      toast({
-        title: "Import Failed",
-        description: result.error,
-        variant: "destructive",
-      });
+      toast({ title: "Import Failed", description: result.error, variant: "destructive" });
     } else if (result.data) {
-      toast({
-        title: "Import Complete",
-        description: `Imported ${result.data.imported_count} leads. ${result.data.duplicate_count} duplicates skipped.`,
-      });
+      toast({ title: "Import Complete", description: `Imported ${result.data.imported_count} leads as "${getCategoryLabel(uploadCategory)}". ${result.data.duplicate_count} duplicates skipped.` });
       setFile(null);
       setParsedLeads([]);
+      setUploadCategory("uncategorized");
       fetchHistory();
+      fetchExistingCategories();
     }
-
     setIsImporting(false);
   };
 
   const validCount = parsedLeads.filter((l) => l.valid).length;
   const invalidCount = parsedLeads.filter((l) => !l.valid).length;
+
+  // Merge static + dynamic categories for manual mode
+  const allCategoryOptions = Array.from(
+    new Set([
+      ...UPLOAD_CATEGORIES.map(c => c.value),
+      ...existingCategories,
+    ])
+  ).sort((a, b) => getCategoryLabel(a).localeCompare(getCategoryLabel(b)));
 
   return (
     <VoipLayout>
@@ -342,23 +327,77 @@ export default function LeadUpload() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
+            {/* Category Mode Toggle */}
+            <div className="space-y-3">
               <Label className="flex items-center gap-2">
                 <Tag className="w-4 h-4" />
                 Lead Category <span className="text-destructive">*</span>
               </Label>
-              <Select value={uploadCategory} onValueChange={setUploadCategory}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent className="bg-popover z-50">
-                  {UPLOAD_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                <Button
+                  variant={autoDetectMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAutoDetectMode(true)}
+                >
+                  <Wand2 className="w-3 h-3 mr-1" />
+                  Auto from Filename
+                </Button>
+                <Button
+                  variant={!autoDetectMode ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAutoDetectMode(false)}
+                >
+                  <PenLine className="w-3 h-3 mr-1" />
+                  Manual
+                </Button>
+              </div>
+
+              {autoDetectMode ? (
+                <div className="p-3 rounded-lg bg-muted/50">
+                  {file ? (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Detected category:</span>
+                      <Badge variant="secondary" className="text-sm">
+                        {getCategoryLabel(uploadCategory)}
+                      </Badge>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAutoDetectMode(false)}>
+                        Change
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Upload a file to auto-detect category from filename (e.g. <code>fitness_leads.txt</code> → Fitness)
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover z-50">
+                      {allCategoryOptions.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {getCategoryLabel(cat)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Or create new category..."
+                      value={customCategoryInput}
+                      onChange={(e) => setCustomCategoryInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddCustomCategory()}
+                    />
+                    <Button variant="outline" size="sm" onClick={handleAddCustomCategory} disabled={!customCategoryInput.trim()}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -393,6 +432,10 @@ export default function LeadUpload() {
                     <XCircle className="w-4 h-4 text-destructive" />
                     <span className="text-sm">{invalidCount} invalid</span>
                   </div>
+                  <Badge variant="outline" className="ml-auto">
+                    <Tag className="w-3 h-3 mr-1" />
+                    {getCategoryLabel(uploadCategory)}
+                  </Badge>
                 </div>
 
                 <div className="max-h-64 overflow-auto border rounded-lg">
@@ -404,6 +447,7 @@ export default function LeadUpload() {
                         <TableHead>Phone</TableHead>
                         <TableHead>Email</TableHead>
                         <TableHead>Website</TableHead>
+                        <TableHead>Category</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -420,6 +464,11 @@ export default function LeadUpload() {
                           <TableCell className="font-mono text-sm">{lead.phone || "—"}</TableCell>
                           <TableCell>{lead.email || "—"}</TableCell>
                           <TableCell className="max-w-32 truncate">{lead.website || "—"}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {getCategoryLabel(uploadCategory)}
+                            </Badge>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -440,7 +489,7 @@ export default function LeadUpload() {
                   ) : (
                     <>
                       <Upload className="w-4 h-4 mr-2" />
-                      Import {validCount} Leads
+                      Import {validCount} Leads as "{getCategoryLabel(uploadCategory)}"
                     </>
                   )}
                 </Button>
@@ -482,14 +531,19 @@ export default function LeadUpload() {
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
                             <div className="min-w-0">
-                              <p className="font-medium truncate">{upload.filename}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium truncate">{upload.filename}</p>
+                                <Badge variant="outline" className="text-xs shrink-0">
+                                  {getCategoryLabel(upload.category)}
+                                </Badge>
+                              </div>
                               <p className="text-xs text-muted-foreground">
                                 {format(new Date(upload.created_at), "MMM d, yyyy h:mm a")}
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-3 text-sm">
+                            <div className="flex items-center gap-3 text-sm">
                               <span className="text-green-600">{upload.imported_count} imported</span>
                               <span className="text-blue-500">{upload.called_count} called</span>
                               <span className="text-yellow-600">{upload.duplicate_count} dup</span>
@@ -499,10 +553,7 @@ export default function LeadUpload() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteClick(upload);
-                              }}
+                              onClick={(e) => { e.stopPropagation(); handleDeleteClick(upload); }}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -579,7 +630,7 @@ export default function LeadUpload() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Upload?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete the upload record for "{uploadToDelete?.filename}" and remove any leads that haven't been called yet. Leads that have already been called will be preserved.
+              This will delete the upload record for "{uploadToDelete?.filename}" and remove any leads that haven't been called yet.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

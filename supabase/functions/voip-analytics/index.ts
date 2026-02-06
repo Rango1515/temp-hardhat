@@ -29,8 +29,30 @@ serve(async (req) => {
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
+  // Helper: compute date filter from period
+  function getDateFilter(period: string): string | null {
+    const now = new Date();
+    switch (period) {
+      case "today":
+        return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      case "week": {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 7);
+        return d.toISOString();
+      }
+      case "month": {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 30);
+        return d.toISOString();
+      }
+      default:
+        return null; // "all" or unknown
+    }
+  }
+
   try {
     switch (action) {
+      // ── Session tracking ────────────────────────────
       case "heartbeat": {
         const { data: existingSession } = await supabase
           .from("voip_user_sessions")
@@ -119,16 +141,13 @@ serve(async (req) => {
         );
       }
 
+      // ── My Stats ────────────────────────────────────
       case "my-stats": {
-        // === FIXED: Compute stats from real tables ===
-        
-        // Leads Requested = rows in voip_worker_lead_history for this user
         const { count: leadsRequested } = await supabase
           .from("voip_worker_lead_history")
           .select("*", { count: "exact", head: true })
           .eq("worker_id", userId);
 
-        // Get all calls for this user
         const { data: calls } = await supabase
           .from("voip_calls")
           .select("outcome, duration_seconds, session_duration_seconds, appointment_created, start_time")
@@ -141,7 +160,6 @@ serve(async (req) => {
         let appointmentsCreated = 0;
         let interestedCount = 0;
 
-        // Leads completed = calls with a final outcome
         const finalOutcomes = new Set(["no_answer", "not_interested", "voicemail", "interested", "dnc", "wrong_number", "followup"]);
         let leadsCompleted = 0;
 
@@ -163,7 +181,6 @@ serve(async (req) => {
         const conversionRate = interestedCount > 0 ? Math.round((appointmentsCreated / interestedCount) * 100) : 0;
         const avgTimePerLead = sessionTimeCount > 0 ? Math.round(totalSessionTime / sessionTimeCount) : 0;
 
-        // Get session stats
         const { data: sessions } = await supabase
           .from("voip_user_sessions")
           .select("total_active_seconds")
@@ -171,7 +188,6 @@ serve(async (req) => {
 
         const totalActiveTime = sessions?.reduce((sum, s) => sum + (s.total_active_seconds || 0), 0) || 0;
 
-        // Daily activity (last 7 days)
         const dailyActivity: Record<string, number> = {};
         calls?.forEach(call => {
           if (call.start_time) {
@@ -199,6 +215,7 @@ serve(async (req) => {
         );
       }
 
+      // ── My Sessions ─────────────────────────────────
       case "my-sessions": {
         const { data: calls } = await supabase
           .from("voip_calls")
@@ -245,6 +262,7 @@ serve(async (req) => {
         );
       }
 
+      // ── Admin Stats (enhanced with period + category + category performance) ──
       case "admin-stats": {
         if (userRole !== "admin") {
           return new Response(
@@ -253,25 +271,46 @@ serve(async (req) => {
           );
         }
 
-        // === FIXED: Compute from real tables ===
-        
-        // Total leads requested (system-wide)
-        const { count: totalLeadsRequested } = await supabase
+        const period = url.searchParams.get("period") || "all";
+        const categoryFilter = url.searchParams.get("category") || null;
+        const dateFilter = getDateFilter(period);
+
+        // Get leads requested (with optional date filter)
+        let historyQuery = supabase
           .from("voip_worker_lead_history")
           .select("*", { count: "exact", head: true });
+        if (dateFilter) {
+          historyQuery = historyQuery.gte("created_at", dateFilter);
+        }
+        const { count: totalLeadsRequested } = await historyQuery;
 
-        // Get all calls
-        const { data: calls } = await supabase
+        // Get all calls (with optional date filter)
+        let callsQuery = supabase
           .from("voip_calls")
-          .select("user_id, outcome, session_duration_seconds, appointment_created, start_time");
+          .select("user_id, outcome, session_duration_seconds, appointment_created, start_time, lead_id");
+        if (dateFilter) {
+          callsQuery = callsQuery.gte("start_time", dateFilter);
+        }
+        const { data: allCalls } = await callsQuery;
 
-        const totalCalls = calls?.length || 0;
+        // If category filter, filter calls by lead category
+        let calls = allCalls || [];
+        if (categoryFilter) {
+          const { data: categoryLeads } = await supabase
+            .from("voip_leads")
+            .select("id")
+            .eq("category", categoryFilter);
+          const catLeadIds = new Set((categoryLeads || []).map(l => l.id));
+          calls = calls.filter(c => c.lead_id && catLeadIds.has(c.lead_id));
+        }
+
+        const totalCalls = calls.length;
         const finalOutcomes = new Set(["no_answer", "not_interested", "voicemail", "interested", "dnc", "wrong_number", "followup"]);
         let leadsCompleted = 0;
-        const appointmentsCreated = calls?.filter(c => c.appointment_created).length || 0;
+        const appointmentsCreated = calls.filter(c => c.appointment_created).length;
 
         const outcomes: Record<string, number> = {};
-        calls?.forEach(call => {
+        calls.forEach(call => {
           if (call.outcome) {
             outcomes[call.outcome] = (outcomes[call.outcome] || 0) + 1;
             if (finalOutcomes.has(call.outcome)) leadsCompleted++;
@@ -282,9 +321,9 @@ serve(async (req) => {
         const completionRate = reqCount > 0 ? Math.round((leadsCompleted / reqCount) * 100) : 0;
         const conversionRate = leadsCompleted > 0 ? Math.round((appointmentsCreated / leadsCompleted) * 100) : 0;
 
-        // Daily call volume (last 14 days)
+        // Daily call volume (last 30 days or full period)
         const dailyCalls: Record<string, number> = {};
-        calls?.forEach(call => {
+        calls.forEach(call => {
           if (call.start_time) {
             const date = call.start_time.split("T")[0];
             dailyCalls[date] = (dailyCalls[date] || 0) + 1;
@@ -293,7 +332,7 @@ serve(async (req) => {
 
         // Per-user leaderboard
         const userStats: Record<number, { calls: number; appointments: number }> = {};
-        calls?.forEach(call => {
+        calls.forEach(call => {
           if (call.user_id) {
             if (!userStats[call.user_id]) {
               userStats[call.user_id] = { calls: 0, appointments: 0 };
@@ -320,6 +359,37 @@ serve(async (req) => {
           })).sort((a, b) => b.calls - a.calls);
         }
 
+        // Category performance breakdown (uses unfiltered-by-category calls for the period)
+        const periodCalls = allCalls || [];
+        const { data: allLeadsForCat } = await supabase
+          .from("voip_leads")
+          .select("id, category");
+
+        const leadCatMap = new Map<number, string>();
+        (allLeadsForCat || []).forEach(l => {
+          leadCatMap.set(l.id, l.category || "uncategorized");
+        });
+
+        const catStats: Record<string, { totalCalls: number; interested: number; appointments: number }> = {};
+        periodCalls.forEach(call => {
+          if (!call.lead_id) return;
+          const cat = leadCatMap.get(call.lead_id) || "uncategorized";
+          if (!catStats[cat]) catStats[cat] = { totalCalls: 0, interested: 0, appointments: 0 };
+          catStats[cat].totalCalls++;
+          if (call.outcome === "interested") catStats[cat].interested++;
+          if (call.appointment_created) catStats[cat].appointments++;
+        });
+
+        const categoryPerformance = Object.entries(catStats).map(([category, stats]) => ({
+          category,
+          totalCalls: stats.totalCalls,
+          interested: stats.interested,
+          appointments: stats.appointments,
+          interestedRate: stats.totalCalls > 0 ? Math.round((stats.interested / stats.totalCalls) * 1000) / 10 : 0,
+          appointmentRate: stats.totalCalls > 0 ? Math.round((stats.appointments / stats.totalCalls) * 1000) / 10 : 0,
+          conversionRate: stats.interested > 0 ? Math.round((stats.appointments / stats.interested) * 1000) / 10 : 0,
+        })).sort((a, b) => b.conversionRate - a.conversionRate);
+
         return new Response(
           JSON.stringify({
             totalCalls,
@@ -332,13 +402,15 @@ serve(async (req) => {
             dailyCalls: Object.entries(dailyCalls)
               .map(([date, count]) => ({ date, count }))
               .sort((a, b) => a.date.localeCompare(b.date))
-              .slice(-14),
+              .slice(-30),
             leaderboard: leaderboard.slice(0, 10),
+            categoryPerformance,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
+      // ── Online Users ────────────────────────────────
       case "online-users": {
         if (userRole !== "admin") {
           return new Response(
@@ -362,11 +434,11 @@ serve(async (req) => {
           );
         }
 
-        const userIds = sessions.map(s => s.user_id);
+        const onlineUserIds = sessions.map(s => s.user_id);
         const { data: users } = await supabase
           .from("voip_users")
           .select("id, name, email")
-          .in("id", userIds);
+          .in("id", onlineUserIds);
 
         const onlineUsers = sessions.map(session => ({
           userId: session.user_id,
@@ -382,6 +454,7 @@ serve(async (req) => {
         );
       }
 
+      // ── User Sessions ───────────────────────────────
       case "user-sessions": {
         if (userRole !== "admin") {
           return new Response(
@@ -428,16 +501,13 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             sessions: sessions || [],
-            summary: {
-              today: todayTime,
-              week: weekTime,
-              month: monthTime,
-            },
+            summary: { today: todayTime, week: weekTime, month: monthTime },
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
+      // ── Reset Analytics ─────────────────────────────
       case "reset-analytics": {
         if (userRole !== "admin") {
           return new Response(
@@ -468,6 +538,7 @@ serve(async (req) => {
         );
       }
 
+      // ── Summary ─────────────────────────────────────
       case "summary": {
         const { data: calls, error } = await supabase
           .from("voip_calls")
@@ -486,12 +557,8 @@ serve(async (req) => {
           new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
         )[0];
 
-        const successRate = totalCalls > 0 
-          ? Math.round((successfulCalls / totalCalls) * 100) 
-          : 0;
-        const avgDuration = successfulCalls > 0 
-          ? Math.round(totalDuration / successfulCalls) 
-          : 0;
+        const successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0;
+        const avgDuration = successfulCalls > 0 ? Math.round(totalDuration / successfulCalls) : 0;
 
         return new Response(
           JSON.stringify({
@@ -508,6 +575,7 @@ serve(async (req) => {
         );
       }
 
+      // ── Daily Stats ─────────────────────────────────
       case "daily": {
         const days = parseInt(url.searchParams.get("days") || "7");
         const startDate = new Date();
@@ -522,7 +590,6 @@ serve(async (req) => {
         if (error) throw error;
 
         const dailyStats: Record<string, { calls: number; duration: number }> = {};
-        
         calls?.forEach(call => {
           const date = call.start_time.split("T")[0];
           if (!dailyStats[date]) {
@@ -542,6 +609,7 @@ serve(async (req) => {
         );
       }
 
+      // ── Top Numbers ─────────────────────────────────
       case "top-numbers": {
         const { data: calls, error } = await supabase
           .from("voip_calls")
@@ -551,7 +619,6 @@ serve(async (req) => {
         if (error) throw error;
 
         const numberStats: Record<string, { call_count: number; total_duration: number }> = {};
-        
         calls?.forEach(call => {
           if (!numberStats[call.to_number]) {
             numberStats[call.to_number] = { call_count: 0, total_duration: 0 };
@@ -571,89 +638,101 @@ serve(async (req) => {
         );
       }
 
+      // ── Leaderboard (enhanced with per-user metrics + myRank) ──
       case "leaderboard": {
         const period = url.searchParams.get("period") || "today";
+        const dateFilter = getDateFilter(period);
         
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        const weekStart = new Date(now);
-        weekStart.setDate(weekStart.getDate() - 7);
-        const monthStart = new Date(now);
-        monthStart.setMonth(monthStart.getMonth() - 1);
-
-        const { data: leaderboardCalls } = await supabase
+        // Get calls for the period
+        let lbQuery = supabase
           .from("voip_calls")
-          .select("user_id, outcome, appointment_created, start_time")
-          .gte("start_time", monthStart.toISOString());
+          .select("user_id, outcome, appointment_created, start_time, session_duration_seconds");
+        if (dateFilter) {
+          lbQuery = lbQuery.gte("start_time", dateFilter);
+        }
+        const { data: leaderboardCalls } = await lbQuery;
 
         const { data: clientUsers } = await supabase
           .from("voip_users")
           .select("id, name")
           .eq("role", "client");
 
-        const leaderboardStats = new Map<number, {
-          calls_today: number;
-          calls_week: number;
-          calls_month: number;
-          appointments_today: number;
-          appointments_week: number;
-          appointments_month: number;
+        // Build per-user stats
+        const lbStats = new Map<number, {
+          calls: number;
+          appointments: number;
+          interested: number;
+          dnc: number;
+          followup: number;
+          totalSessionDuration: number;
+          sessionCount: number;
         }>();
 
         clientUsers?.forEach(u => {
-          leaderboardStats.set(u.id, {
-            calls_today: 0,
-            calls_week: 0,
-            calls_month: 0,
-            appointments_today: 0,
-            appointments_week: 0,
-            appointments_month: 0,
+          lbStats.set(u.id, {
+            calls: 0, appointments: 0, interested: 0, dnc: 0, followup: 0,
+            totalSessionDuration: 0, sessionCount: 0,
           });
         });
 
-        leaderboardCalls?.forEach(call => {
-          if (!call.user_id || !leaderboardStats.has(call.user_id)) return;
-          const stats = leaderboardStats.get(call.user_id)!;
-          const callDate = new Date(call.start_time);
-
-          stats.calls_month++;
-          if (call.appointment_created) stats.appointments_month++;
-
-          if (callDate >= weekStart) {
-            stats.calls_week++;
-            if (call.appointment_created) stats.appointments_week++;
-          }
-
-          if (call.start_time >= todayStart) {
-            stats.calls_today++;
-            if (call.appointment_created) stats.appointments_today++;
+        (leaderboardCalls || []).forEach(call => {
+          if (!call.user_id || !lbStats.has(call.user_id)) return;
+          const stats = lbStats.get(call.user_id)!;
+          stats.calls++;
+          if (call.appointment_created) stats.appointments++;
+          if (call.outcome === "interested") stats.interested++;
+          if (call.outcome === "dnc") stats.dnc++;
+          if (call.outcome === "followup") stats.followup++;
+          if (call.session_duration_seconds && call.session_duration_seconds > 0) {
+            stats.totalSessionDuration += call.session_duration_seconds;
+            stats.sessionCount++;
           }
         });
 
-        const leaderboard = clientUsers?.map(u => {
-          const stats = leaderboardStats.get(u.id) || {
-            calls_today: 0, calls_week: 0, calls_month: 0,
-            appointments_today: 0, appointments_week: 0, appointments_month: 0,
-          };
-          
-          const totalCalls = stats.calls_month;
-          const totalAppts = stats.appointments_month;
-          const conversionRate = totalCalls > 0 ? (totalAppts / totalCalls) * 100 : 0;
+        const leaderboard = (clientUsers || []).map(u => {
+          const stats = lbStats.get(u.id)!;
+          const score = (stats.calls * 1) + (stats.interested * 3) + (stats.appointments * 6) - (stats.dnc * 2);
+          const conversionRate = stats.calls > 0 ? Math.round((stats.appointments / stats.calls) * 1000) / 10 : 0;
+          const avgSessionDuration = stats.sessionCount > 0 ? Math.round(stats.totalSessionDuration / stats.sessionCount) : 0;
 
           return {
             user_id: u.id,
             user_name: u.name,
-            ...stats,
-            conversion_rate: Math.round(conversionRate * 10) / 10,
+            calls: stats.calls,
+            appointments: stats.appointments,
+            interested: stats.interested,
+            dnc: stats.dnc,
+            followup: stats.followup,
+            avg_session_duration: avgSessionDuration,
+            score,
+            conversion_rate: conversionRate,
           };
-        }) || [];
+        }).sort((a, b) => b.score - a.score);
+
+        // Compute myRank for the logged-in user
+        const myIndex = leaderboard.findIndex(e => e.user_id === userId);
+        let myRank = null;
+        if (myIndex >= 0) {
+          const me = leaderboard[myIndex];
+          const nextUser = myIndex > 0 ? leaderboard[myIndex - 1] : null;
+          myRank = {
+            position: myIndex + 1,
+            calls: me.calls,
+            appointments: me.appointments,
+            interested: me.interested,
+            score: me.score,
+            conversion_rate: me.conversion_rate,
+            nextUser: nextUser ? { name: nextUser.user_name, callsAhead: nextUser.calls - me.calls } : null,
+          };
+        }
 
         return new Response(
-          JSON.stringify({ leaderboard }),
+          JSON.stringify({ leaderboard, myRank }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
+      // ── User Performance (admin) ────────────────────
       case "user-performance": {
         if (userRole !== "admin") {
           return new Response(
@@ -662,7 +741,6 @@ serve(async (req) => {
           );
         }
 
-        // === FIXED: Use real tables instead of activity events ===
         const { data: allUsers } = await supabase
           .from("voip_users")
           .select("id, name, email")
@@ -677,13 +755,11 @@ serve(async (req) => {
 
         const allUserIds = allUsers.map(u => u.id);
 
-        // Get leads requested from worker_lead_history
         const { data: allHistory } = await supabase
           .from("voip_worker_lead_history")
           .select("worker_id")
           .in("worker_id", allUserIds);
 
-        // Get calls and appointments per user
         const { data: allCalls } = await supabase
           .from("voip_calls")
           .select("user_id, outcome, appointment_created")
@@ -702,13 +778,11 @@ serve(async (req) => {
           userPerfMap.set(uid, { leadsRequested: 0, leadsCompleted: 0, totalCalls: 0, appointmentsCreated: 0 });
         });
 
-        // Count leads requested from history table
         allHistory?.forEach(h => {
           const stats = userPerfMap.get(h.worker_id);
           if (stats) stats.leadsRequested++;
         });
 
-        // Count calls and completed leads
         allCalls?.forEach(c => {
           const stats = userPerfMap.get(c.user_id);
           if (!stats) return;
@@ -732,6 +806,58 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ users: perfUsers }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ── Recent Activity Feed ────────────────────────
+      case "recent-activity": {
+        const { data: recentCalls } = await supabase
+          .from("voip_calls")
+          .select("id, user_id, lead_id, outcome, appointment_created, start_time")
+          .order("start_time", { ascending: false })
+          .limit(15);
+
+        if (!recentCalls || recentCalls.length === 0) {
+          return new Response(
+            JSON.stringify({ activities: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const actUserIds = [...new Set(recentCalls.map(c => c.user_id).filter(Boolean))];
+        const actLeadIds = [...new Set(recentCalls.map(c => c.lead_id).filter(Boolean))];
+
+        let userMap = new Map<number, string>();
+        let leadMap = new Map<number, string>();
+
+        if (actUserIds.length > 0) {
+          const { data: users } = await supabase
+            .from("voip_users")
+            .select("id, name, email")
+            .in("id", actUserIds);
+          if (users) userMap = new Map(users.map(u => [u.id, u.name || u.email]));
+        }
+
+        if (actLeadIds.length > 0) {
+          const { data: leads } = await supabase
+            .from("voip_leads")
+            .select("id, name")
+            .in("id", actLeadIds);
+          if (leads) leadMap = new Map(leads.map(l => [l.id, l.name || "Unknown"]));
+        }
+
+        const activities = recentCalls.map(call => ({
+          id: call.id,
+          user_name: userMap.get(call.user_id) || "Unknown",
+          outcome: call.outcome,
+          lead_name: call.lead_id ? leadMap.get(call.lead_id) || "Unknown" : "Unknown",
+          created_at: call.start_time,
+          appointment_created: call.appointment_created || false,
+        }));
+
+        return new Response(
+          JSON.stringify({ activities }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
