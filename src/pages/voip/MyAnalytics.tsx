@@ -35,12 +35,14 @@
    appointment_id?: number;
  }
  
- function formatDuration(seconds: number): string {
-   const hours = Math.floor(seconds / 3600);
-   const mins = Math.floor((seconds % 3600) / 60);
-   if (hours > 0) return `${hours}h ${mins}m`;
-   return `${mins}m`;
- }
+function formatDuration(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
  
  function formatOutcome(outcome: string | null): string {
    if (!outcome) return "—";
