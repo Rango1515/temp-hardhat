@@ -215,8 +215,11 @@ export default function LeadUpload() {
     setIsParsing(true);
     setParsedLeads([]);
     try {
+      console.log("[LeadUpload] Parsing file:", selectedFile.name, "size:", selectedFile.size, "type:", selectedFile.type);
       const text = await selectedFile.text();
+      console.log("[LeadUpload] File text length:", text.length, "first 200 chars:", text.substring(0, 200));
       const lines = text.split(/\r?\n/).filter((line) => line.trim());
+      console.log("[LeadUpload] Total non-empty lines:", lines.length);
       const ext = selectedFile.name.split(".").pop()?.toLowerCase();
       const isCSV = ext === "csv";
       const firstLine = lines[0]?.toLowerCase() || "";
@@ -248,8 +251,13 @@ export default function LeadUpload() {
         }
         return lead;
       });
+      console.log("[LeadUpload] Parsed leads:", leads.length, "valid:", leads.filter(l => l.valid).length, "invalid:", leads.filter(l => !l.valid).length);
+      if (leads.length > 0) {
+        console.log("[LeadUpload] First lead:", JSON.stringify(leads[0]));
+      }
       setParsedLeads(leads);
-    } catch {
+    } catch (err) {
+      console.error("[LeadUpload] Parse error:", err);
       toast({ title: "Parse Error", description: "Failed to parse the file", variant: "destructive" });
     }
     setIsParsing(false);
@@ -258,8 +266,11 @@ export default function LeadUpload() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
+      console.log("[LeadUpload] File selected:", selectedFile.name, "ext:", selectedFile.name.split(".").pop());
       const ext = selectedFile.name.split(".").pop()?.toLowerCase();
-      if (!["txt", "doc", "docx", "csv"].includes(ext || "")) {
+      // If the filename has no dot, treat it as txt
+      const hasExtension = selectedFile.name.includes(".");
+      if (hasExtension && !["txt", "doc", "docx", "csv"].includes(ext || "")) {
         toast({ title: "Invalid File Type", description: "Please upload a .txt, .doc, .docx, or .csv file", variant: "destructive" });
         return;
       }
