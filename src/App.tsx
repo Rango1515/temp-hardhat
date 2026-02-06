@@ -10,6 +10,7 @@ import { Loader2 } from "lucide-react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import DemoSite from "./pages/DemoSite";
+import ServicePage from "./pages/seo/ServicePage";
 
 // VoIP Pages
 import { VoipAuthProvider } from "./contexts/VoipAuthContext";
@@ -60,6 +61,7 @@ const App = () => (
               {/* Public Routes */}
               <Route path="/" element={<Index />} />
               <Route path="/demo/:trade" element={<DemoSite />} />
+              <Route path="/services/:slug" element={<ServicePage />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/privacy" element={<Privacy />} />
 
