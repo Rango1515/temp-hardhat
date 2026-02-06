@@ -1,15 +1,17 @@
 import { useState, useEffect } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { useVoipApi } from "@/hooks/useVoipApi";
+import { useVoipAuth } from "@/contexts/VoipAuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Trophy, Medal, Phone, Calendar, TrendingUp, Loader2, Award, Star, Flame, Target, ShieldBan, Zap, Activity } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Trophy, Medal, Phone, Calendar, TrendingUp, Loader2, Award, Star, Flame, Target, ShieldBan, Zap, Trash2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface LeaderboardEntry {
   user_id: number;
@@ -34,57 +36,55 @@ interface MyRank {
   nextUser: { name: string; callsAhead: number } | null;
 }
 
-interface RecentActivity {
-  id: number;
-  user_name: string;
-  outcome: string;
-  lead_name: string;
-  created_at: string;
-  appointment_created: boolean;
-}
-
 type Period = "today" | "week" | "month" | "all";
 
-const outcomeLabels: Record<string, string> = {
-  interested: "marked Interested",
-  not_interested: "marked Not Interested",
-  no_answer: "logged No Answer",
-  voicemail: "left Voicemail",
-  wrong_number: "logged Wrong Number",
-  dnc: "marked DNC",
-  followup: "set Follow-up",
-};
 
 export default function Leaderboard() {
   const { apiCall } = useVoipApi();
+  const { isAdmin } = useVoipAuth();
+  const { toast } = useToast();
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [myRank, setMyRank] = useState<MyRank | null>(null);
-  const [activities, setActivities] = useState<RecentActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("today");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetText, setResetText] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    const lbResult = await apiCall<{ leaderboard: LeaderboardEntry[]; myRank: MyRank | null }>("voip-analytics", {
+      params: { action: "leaderboard", period },
+    });
+    if (lbResult.data) {
+      setLeaderboard(lbResult.data.leaderboard);
+      setMyRank(lbResult.data.myRank);
+    }
+    setIsLoading(false);
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      const [lbResult, actResult] = await Promise.all([
-        apiCall<{ leaderboard: LeaderboardEntry[]; myRank: MyRank | null }>("voip-analytics", {
-          params: { action: "leaderboard", period },
-        }),
-        apiCall<{ activities: RecentActivity[] }>("voip-analytics", {
-          params: { action: "recent-activity" },
-        }),
-      ]);
-      if (lbResult.data) {
-        setLeaderboard(lbResult.data.leaderboard);
-        setMyRank(lbResult.data.myRank);
-      }
-      if (actResult.data) {
-        setActivities(actResult.data.activities);
-      }
-      setIsLoading(false);
-    };
     fetchData();
   }, [apiCall, period]);
+
+  const handleResetLeaderboard = async () => {
+    if (resetText !== "RESET") return;
+    setResetting(true);
+    const result = await apiCall("voip-analytics", {
+      method: "POST",
+      params: { action: "reset-analytics" },
+      body: { includeCallLogs: true },
+    });
+    if (result.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Leaderboard data has been reset" });
+      setShowResetConfirm(false);
+      setResetText("");
+      fetchData();
+    }
+    setResetting(false);
+  };
 
   const maxCalls = Math.max(...leaderboard.map(e => e.calls), 1);
 
@@ -340,54 +340,57 @@ export default function Leaderboard() {
                 </Card>
               </div>
 
-              {/* Recent Activity Feed */}
-              {activities.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Activity className="w-5 h-5 text-emerald-500" /> Recent Activity
+            </TabsContent>
+          </Tabs>
+
+          {/* Admin Reset Leaderboard */}
+          {isAdmin && (
+            <>
+              {!showResetConfirm ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowResetConfirm(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Reset Leaderboard
+                </Button>
+              ) : (
+                <Card className="border-destructive">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-destructive">
+                      <AlertTriangle className="w-5 h-5" />
+                      Confirm Reset
                     </CardTitle>
+                    <CardDescription>
+                      This will delete all call logs and activity data, resetting the leaderboard to zero. Type "RESET" to confirm.
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
-                      {activities.map((act) => (
-                        <div key={act.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50 text-sm">
-                          <div className="flex items-center gap-2">
-                            {act.appointment_created && <CalendarPlus className="w-4 h-4 text-green-500" />}
-                            <span>
-                              <strong>{act.user_name}</strong>{" "}
-                              {act.appointment_created
-                                ? "booked an appointment"
-                                : outcomeLabels[act.outcome] || `completed a call`}
-                            </span>
-                          </div>
-                          <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                            {act.created_at ? formatDistanceToNow(new Date(act.created_at), { addSuffix: true }) : ""}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  <CardContent className="flex gap-4">
+                    <input
+                      type="text"
+                      value={resetText}
+                      onChange={(e) => setResetText(e.target.value)}
+                      placeholder="Type RESET"
+                      className="flex-1 px-3 py-2 border border-border rounded-md bg-background"
+                    />
+                    <Button
+                      variant="destructive"
+                      disabled={resetText !== "RESET" || resetting}
+                      onClick={handleResetLeaderboard}
+                    >
+                      {resetting ? "Resetting..." : "Confirm Reset"}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setShowResetConfirm(false); setResetText(""); }}>
+                      Cancel
+                    </Button>
                   </CardContent>
                 </Card>
               )}
-            </TabsContent>
-          </Tabs>
+            </>
+          )}
         </div>
       </VoipLayout>
     </TooltipProvider>
-  );
-}
-
-// Small icon for activity — not imported at top to avoid circular
-function CalendarPlus({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M21 13V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8" />
-      <line x1="16" x2="16" y1="2" y2="6" />
-      <line x1="8" x2="8" y1="2" y2="6" />
-      <line x1="3" x2="21" y1="10" y2="10" />
-      <line x1="19" x2="19" y1="16" y2="22" />
-      <line x1="16" x2="22" y1="19" y2="19" />
-    </svg>
   );
 }
