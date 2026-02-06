@@ -1,0 +1,21 @@
+{
+  "name": "Hardhat Hosting",
+  "short_name": "Hardhat",
+  "description": "Affordable Website Design & Hosting for Contractors & Small Businesses",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0f172a",
+  "theme_color": "#f97316",
+  "icons": [
+    {
+      "src": "/hardhat-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/hardhat-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -79,18 +79,20 @@ const Footer = () => {
             </nav>
           </AnimatedSection>
 
-          {/* Industries */}
+          {/* Services */}
           <AnimatedSection animation="fade-up" delay={200}>
             <h4 className="font-display text-lg text-foreground mb-4">
-              Industries We Serve
+              Website Design
             </h4>
             <nav className="flex flex-col gap-3">
-              <Link to="/demo/concrete" className="text-muted-foreground hover:text-primary transition-colors">Construction Trades</Link>
-              <Link to="/demo/ecommerce" className="text-muted-foreground hover:text-primary transition-colors">Retail & E-commerce</Link>
-              <Link to="/demo/professional" className="text-muted-foreground hover:text-primary transition-colors">Professional Services</Link>
-              <Link to="/demo/salon" className="text-muted-foreground hover:text-primary transition-colors">Salons & Spas</Link>
-              <Link to="/demo/portfolio" className="text-muted-foreground hover:text-primary transition-colors">Creatives & Freelancers</Link>
-              <Link to="/demo/general" className="text-muted-foreground hover:text-primary transition-colors">General Contractors</Link>
+              <Link to="/services/electrician-website-design" className="text-muted-foreground hover:text-primary transition-colors">Electrician Websites</Link>
+              <Link to="/services/plumber-website-design" className="text-muted-foreground hover:text-primary transition-colors">Plumber Websites</Link>
+              <Link to="/services/roofing-website-design" className="text-muted-foreground hover:text-primary transition-colors">Roofing Websites</Link>
+              <Link to="/services/hvac-website-design" className="text-muted-foreground hover:text-primary transition-colors">HVAC Websites</Link>
+              <Link to="/services/contractor-website-design" className="text-muted-foreground hover:text-primary transition-colors">Contractor Websites</Link>
+              <Link to="/services/salon-website-design" className="text-muted-foreground hover:text-primary transition-colors">Salon Websites</Link>
+              <Link to="/services/web-design-rancho-cucamonga" className="text-muted-foreground hover:text-primary transition-colors">Rancho Cucamonga</Link>
+              <Link to="/services/web-design-inland-empire" className="text-muted-foreground hover:text-primary transition-colors">Inland Empire</Link>
             </nav>
           </AnimatedSection>
         </div>
