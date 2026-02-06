@@ -34,8 +34,70 @@ const FILLER_WORDS = new Set([
 ]);
 
 /**
- * Extracts a category name from a filename.
+ * Simple Levenshtein distance for fuzzy matching.
+ */
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Tries to match a raw extracted value to the closest known category.
+ * Checks: exact match → prefix/substring → Levenshtein distance ≤ 3.
+ */
+function matchToKnownCategory(raw: string): string | null {
+  const knownKeys = Object.keys(KNOWN_LABELS);
+
+  // Exact match
+  if (KNOWN_LABELS[raw]) return raw;
+
+  // Check if raw is a prefix of a known key (e.g., "electric" → "electricians")
+  for (const key of knownKeys) {
+    if (key.startsWith(raw) || raw.startsWith(key)) return key;
+  }
+
+  // Check if raw is a substring of a known key or vice versa
+  for (const key of knownKeys) {
+    if (key.includes(raw) || raw.includes(key)) return key;
+  }
+
+  // Fuzzy match using Levenshtein distance (threshold ≤ 3)
+  let bestKey: string | null = null;
+  let bestDist = Infinity;
+  for (const key of knownKeys) {
+    const dist = levenshtein(raw, key);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestKey = key;
+    }
+  }
+  if (bestDist <= 3 && bestKey) return bestKey;
+
+  // Also check against labels (lowercased, underscored)
+  for (const [key, label] of Object.entries(KNOWN_LABELS)) {
+    const normalizedLabel = label.toLowerCase().replace(/\s+/g, "_");
+    if (normalizedLabel === raw || normalizedLabel.startsWith(raw) || raw.startsWith(normalizedLabel)) return key;
+    const dist = levenshtein(raw, normalizedLabel);
+    if (dist <= 3) return key;
+  }
+
+  return null;
+}
+
+/**
+ * Extracts a category name from a filename with auto spell-check.
  * Example: "fitness_leads_list.txt" → "fitness"
+ * Example: "electrcians_leads.txt" → "electricians" (fuzzy matched)
  */
 export function extractCategoryFromFilename(filename: string): string {
   // Remove extension
@@ -51,7 +113,21 @@ export function extractCategoryFromFilename(filename: string): string {
   if (words.length === 0) return "uncategorized";
 
   // Join remaining words with underscore for storage
-  return words.join("_");
+  const raw = words.join("_");
+
+  // Try to match to a known category (spell check)
+  const matched = matchToKnownCategory(raw);
+  if (matched) return matched;
+
+  // Also try matching individual words if multi-word
+  if (words.length > 1) {
+    for (const word of words) {
+      const wordMatch = matchToKnownCategory(word);
+      if (wordMatch) return wordMatch;
+    }
+  }
+
+  return raw;
 }
 
 /**
