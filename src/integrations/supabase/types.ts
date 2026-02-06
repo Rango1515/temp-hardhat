@@ -719,6 +719,7 @@ export type Database = {
           assigned_at: string | null
           assigned_to: number | null
           attempt_count: number | null
+          category: string | null
           contact_name: string | null
           created_at: string | null
           deleted_at: string | null
@@ -736,6 +737,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: number | null
           attempt_count?: number | null
+          category?: string | null
           contact_name?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -753,6 +755,7 @@ export type Database = {
           assigned_at?: string | null
           assigned_to?: number | null
           attempt_count?: number | null
+          category?: string | null
           contact_name?: string | null
           created_at?: string | null
           deleted_at?: string | null
@@ -1106,6 +1109,7 @@ export type Database = {
           accent_color: string | null
           created_at: string | null
           id: number
+          lead_category: string | null
           notifications_enabled: boolean | null
           sound_enabled: boolean | null
           theme: string | null
@@ -1116,6 +1120,7 @@ export type Database = {
           accent_color?: string | null
           created_at?: string | null
           id?: number
+          lead_category?: string | null
           notifications_enabled?: boolean | null
           sound_enabled?: boolean | null
           theme?: string | null
@@ -1126,6 +1131,7 @@ export type Database = {
           accent_color?: string | null
           created_at?: string | null
           id?: number
+          lead_category?: string | null
           notifications_enabled?: boolean | null
           sound_enabled?: boolean | null
           theme?: string | null
@@ -1314,17 +1320,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      assign_next_lead: {
-        Args: { p_worker_id: number }
-        Returns: {
-          out_contact_name: string
-          out_email: string
-          out_lead_id: number
-          out_name: string
-          out_phone: string
-          out_website: string
-        }[]
-      }
+      assign_next_lead:
+        | {
+            Args: { p_worker_id: number }
+            Returns: {
+              out_contact_name: string
+              out_email: string
+              out_lead_id: number
+              out_name: string
+              out_phone: string
+              out_website: string
+            }[]
+          }
+        | {
+            Args: { p_category?: string; p_worker_id: number }
+            Returns: {
+              out_contact_name: string
+              out_email: string
+              out_lead_id: number
+              out_name: string
+              out_phone: string
+              out_website: string
+            }[]
+          }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

@@ -1,4 +1,4 @@
- import { useState, useEffect } from "react";
+ import { useState, useEffect, useCallback } from "react";
  import { VoipLayout } from "@/components/voip/layout/VoipLayout";
  import { CallTools } from "@/components/voip/dialer/CallTools";
  import { SessionTimer } from "@/components/voip/dialer/SessionTimer";
@@ -12,10 +12,12 @@
  import { Calendar } from "@/components/ui/calendar";
  import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
  import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
- import { Phone, User, Mail, Globe, Loader2, CalendarIcon, RefreshCw, StickyNote, ChevronDown, Trash2, CalendarPlus, AlertCircle } from "lucide-react";
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+ import { Phone, User, Mail, Globe, Loader2, CalendarIcon, RefreshCw, StickyNote, ChevronDown, Trash2, CalendarPlus, AlertCircle, Tag } from "lucide-react";
  import { useToast } from "@/hooks/use-toast";
  import { format } from "date-fns";
  import { cn } from "@/lib/utils";
+ import { LEAD_CATEGORIES, getCategoryLabel } from "@/lib/leadCategories";
  
  const SCRATCH_PAD_KEY = "voip_dialer_scratchpad";
  
@@ -59,6 +61,10 @@ interface Lead {
    const [showAppointmentModal, setShowAppointmentModal] = useState(false);
    const [appointmentOutcome, setAppointmentOutcome] = useState<string>("manual");
    const [hasStartedSession, setHasStartedSession] = useState(false);
+   const [selectedCategory, setSelectedCategory] = useState<string>(() => {
+     return localStorage.getItem("voip_lead_category") || "electricians";
+   });
+   const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
  
    useEffect(() => {
      const saved = localStorage.getItem(SCRATCH_PAD_KEY);
@@ -79,6 +85,15 @@ interface Lead {
      localStorage.removeItem(SCRATCH_PAD_KEY);
    };
  
+   const fetchCategoryCounts = useCallback(async () => {
+     const result = await apiCall<{ counts: Record<string, number> }>("voip-leads", {
+       params: { action: "category-counts" },
+     });
+     if (result.data?.counts) {
+       setCategoryCounts(result.data.counts);
+     }
+   }, [apiCall]);
+
    useEffect(() => {
      const fetchCurrentLead = async () => {
        const result = await apiCall<{ lead: Lead | null }>("voip-leads", {
@@ -89,7 +104,33 @@ interface Lead {
        }
      };
      fetchCurrentLead();
+     fetchCategoryCounts();
+   }, [apiCall, fetchCategoryCounts]);
+
+   // Load saved category from preferences
+   useEffect(() => {
+     const loadPrefs = async () => {
+       const result = await apiCall<{ preferences: { lead_category?: string } }>("voip-preferences", {
+         params: { action: "get" },
+       });
+       if (result.data?.preferences?.lead_category) {
+         setSelectedCategory(result.data.preferences.lead_category);
+         localStorage.setItem("voip_lead_category", result.data.preferences.lead_category);
+       }
+     };
+     loadPrefs();
    }, [apiCall]);
+
+   const handleCategoryChange = (value: string) => {
+     setSelectedCategory(value);
+     localStorage.setItem("voip_lead_category", value);
+     // Sync to database in background
+     apiCall("voip-preferences", {
+       method: "POST",
+       params: { action: "save" },
+       body: { leadCategory: value },
+     });
+   };
  
    const requestNextLead = async () => {
      if (currentLead && !selectedOutcome && hasStartedSession) {
@@ -115,7 +156,7 @@ interface Lead {
  
      const result = await apiCall<{ lead: Lead | null; message?: string }>("voip-leads", {
        method: "POST",
-       params: { action: "request-next" },
+       params: { action: "request-next", category: selectedCategory },
      });
  
      if (result.error) {
@@ -130,10 +171,13 @@ interface Lead {
          title: "Lead Assigned",
          description: `${result.data.lead.name} - ${result.data.lead.phone}`,
        });
+       // Refresh counts after assigning
+       fetchCategoryCounts();
      } else {
        toast({
          title: "No Leads Available",
-         description: result.data?.message || "Check back later for more leads",
+         description: result.data?.message || "No more leads available in this category.",
+         variant: "destructive",
        });
      }
  
@@ -222,7 +266,8 @@ interface Lead {
        setFollowupTime("09:00");
        setFollowupPriority("medium");
        setFollowupNotes("");
-       setHasStartedSession(false);
+        setHasStartedSession(false);
+        fetchCategoryCounts();
      }
  
      setIsSubmitting(false);
@@ -280,8 +325,26 @@ interface Lead {
                    <div>
                      <h3 className="font-semibold">Ready to Start Calling?</h3>
                      <p className="text-sm text-muted-foreground mt-1">
-                       Request your next lead to begin
+                       Select a lead type and request your next lead
                      </p>
+                   </div>
+                   <div className="space-y-2 text-left">
+                     <Label className="flex items-center gap-2">
+                       <Tag className="w-4 h-4" />
+                       Select Lead Type
+                     </Label>
+                     <Select value={selectedCategory} onValueChange={handleCategoryChange}>
+                       <SelectTrigger className="w-full">
+                         <SelectValue placeholder="Select category" />
+                       </SelectTrigger>
+                       <SelectContent className="bg-popover z-50">
+                         {LEAD_CATEGORIES.map((cat) => (
+                           <SelectItem key={cat.value} value={cat.value}>
+                             {cat.label} ({categoryCounts[cat.value] || 0})
+                           </SelectItem>
+                         ))}
+                       </SelectContent>
+                     </Select>
                    </div>
                    <Button onClick={requestNextLead} disabled={isLoadingLead} size="lg" className="w-full">
                      {isLoadingLead ? (

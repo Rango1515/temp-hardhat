@@ -15,6 +15,7 @@ import { Pagination, PaginationContent, PaginationItem, PaginationLink, Paginati
 import { Users, Loader2, Search, ChevronDown, Phone, Clock, Calendar, AlertTriangle, Trash2, AlertCircle, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { getCategoryLabel } from "@/lib/leadCategories";
 
 interface Lead {
   id: number;
@@ -27,6 +28,7 @@ interface Lead {
   created_at: string;
   assigned_to: number | null;
   assigned_user_name?: string;
+  category?: string | null;
 }
 
 interface CallRecord {
@@ -361,6 +363,7 @@ export default function LeadInfo() {
                         <TableHead className="w-[30px]"></TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Phone</TableHead>
+                        <TableHead>Category</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Attempts</TableHead>
                         <TableHead>Created</TableHead>
@@ -370,7 +373,7 @@ export default function LeadInfo() {
                     <TableBody>
                       {leads.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                             No leads found
                           </TableCell>
                         </TableRow>
@@ -385,6 +388,7 @@ export default function LeadInfo() {
                               </TableCell>
                               <TableCell className="font-medium">{lead.name || "—"}</TableCell>
                               <TableCell className="font-mono">{lead.phone}</TableCell>
+                              <TableCell className="text-sm">{getCategoryLabel(lead.category)}</TableCell>
                               <TableCell>{getStatusBadge(lead.status)}</TableCell>
                               <TableCell>{lead.attempt_count}</TableCell>
                               <TableCell>{format(new Date(lead.created_at), "MMM d, yyyy")}</TableCell>
@@ -396,7 +400,7 @@ export default function LeadInfo() {
                             </TableRow>
                             <CollapsibleContent asChild>
                               <TableRow>
-                                <TableCell colSpan={7} className="bg-muted/30 p-0">
+                                <TableCell colSpan={8} className="bg-muted/30 p-0">
                                   <div className="p-4 space-y-3">
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                       <div>
