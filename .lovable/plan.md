@@ -1,228 +1,200 @@
 
-# VoIP System Enhancement Plan
+
+# VoIP System Major Upgrade Plan
 
 ## Overview
-This plan covers 8 features: dynamic lead categories with search, analytics fixes, admin dashboard improvements, timer reset behavior, TextNow auto-open, and a "How To?" guide page.
+
+This plan covers four major areas: smart auto-categorization on upload, an upgraded interactive leaderboard, a consolidated admin analytics dashboard, and a new category performance card. The changes span 3 edge functions and ~8 frontend files.
 
 ---
 
-## 1. Dynamic Lead Categories with Search + Landscapers
+## Phase 1: Fix Auto-Category on Upload
 
-### What Changes
-- Remove the hard-coded `LEAD_CATEGORIES` array from `src/lib/leadCategories.ts`
-- Update `category-counts` backend action to return ALL distinct categories from the `voip_leads` table (not just known ones), with their available (NEW status) counts
-- Update `src/pages/voip/Dialer.tsx` to:
-  - Fetch categories dynamically from the API instead of using the static list
-  - Replace the `<Select>` dropdown with a searchable `<Command>` (cmdk) popover that filters categories live as the user types
-  - Show "No matches. Request admin to upload leads for: [typed value]" when search has no results
-  - "Landscapers" will automatically appear once an admin uploads leads with that category
-- Add "landscapers" as a default option in the `LeadUpload.tsx` category selector
-- Keep `leadCategories.ts` as a fallback label map, but the dropdown is driven by DB data
+### Problem
+The upload page defaults `uploadCategory` state to `"electricians"` (line 72 of LeadUpload.tsx), so every upload goes into Electricians unless the admin manually changes it.
 
-### Files to Edit
-- `src/lib/leadCategories.ts` -- add "landscapers" to the static label map, add a helper that returns labels for dynamic categories
-- `supabase/functions/voip-leads/index.ts` -- update `category-counts` action to return distinct categories from DB
-- `src/pages/voip/Dialer.tsx` -- replace Select with searchable Command popover, fetch categories dynamically
-- `src/pages/voip/admin/LeadUpload.tsx` -- add "Landscapers" to the upload category selector
+### Solution
+Add filename-based auto-detection and a "Create new category" option.
 
----
+**LeadUpload.tsx changes:**
+- When a file is selected, parse the filename to auto-suggest a category
+- Filename parsing logic:
+  - Remove extension (.txt, .csv, etc.)
+  - Replace `_` and `-` with spaces
+  - Remove filler words: leads, lead, list, import, file, data, contacts, 2026, 2025
+  - Title-case the result
+  - Example: `fitness_leads_list.txt` -> `fitness`
+- Add two modes via toggle: "Auto from filename" (default ON) and "Manual select/enter"
+- In manual mode:
+  - Show existing categories (fetched from `category-counts` endpoint)
+  - Show a text input "Create new category" that lets admin type a custom one
+- Default category when nothing matches: `"uncategorized"` (NOT electricians)
+- Add a "Category" column to the preview table so admin confirms before importing
+- Show the detected/selected category in Upload History entries
 
-## 2. Fix Analytics (Client + Admin) -- Compute from Real Data
+**Backend (voip-leads upload action):**
+- Already stores `category` correctly -- no change needed
+- If category is empty/null, store `"uncategorized"` instead of null
 
-### Current Problem
-Analytics rely on `voip_activity_events` for "leads requested" and "leads completed" counts. These events are tracked separately and can get out of sync. The actual source of truth is:
-- `voip_calls` table (each call outcome = one record)
-- `voip_worker_lead_history` table (each lead assignment = one record)
-- `voip_leads` table (lead status)
-
-### What Changes
-**Backend (`voip-analytics`):**
-- Rewrite `my-stats` action to compute stats directly from `voip_calls` and `voip_worker_lead_history`:
-  - **Leads Requested** = count of rows in `voip_worker_lead_history` for that user
-  - **Leads Completed** = count of `voip_calls` with a final outcome (no_answer, not_interested, voicemail, interested, dnc, wrong_number, followup)
-  - **Completion Rate** = Completed / Requested
-  - **Appointments** = count of `voip_calls` where `appointment_created = true`
-  - **Conversion Rate** = Appointments / Interested outcomes (tooltip: "Appointments / Interested leads")
-  - **Avg Time/Lead** = average `session_duration_seconds` from `voip_calls` where session_duration > 0
-- Rewrite `admin-stats` action using the same logic but across all users
-- Rewrite `user-performance` action to use the same source-of-truth tables
-- Rewrite `leaderboard` action to use `voip_calls` directly (it already does, but ensure appointment counts are correct)
-
-**Ensure call logging is complete:**
-- In the `complete` action of `voip-leads`, verify `session_duration_seconds` is stored (it's already being passed from the frontend but the insert needs to include it -- currently it's missing from the insert!)
-- Add `session_duration_seconds` to the voip_calls insert in the `complete` action
-
-**Frontend pages (no logic changes needed, just verify data flows):**
-- `MyAnalytics.tsx` -- already displays the right fields; data will now be correct
-- `Analytics.tsx` (Admin) -- already wired; data will now be correct
-- `ClientAnalytics.tsx` -- already has the performance table; data will now be correct
-- `Leaderboard.tsx` -- already wired; data will now be correct
-
-### Files to Edit
-- `supabase/functions/voip-analytics/index.ts` -- rewrite `my-stats`, `admin-stats`, `user-performance` to use real tables
-- `supabase/functions/voip-leads/index.ts` -- add `session_duration_seconds` to the `complete` action insert
+**leadCategories.ts changes:**
+- Add `extractCategoryFromFilename(filename: string): string` helper function
+- Add `"uncategorized"` to KNOWN_LABELS
 
 ---
 
-## 3. Fix Admin Dashboard + Add Analytics
+## Phase 2: Upgrade Leaderboard
 
-### Current Problem
-The Admin Dashboard calls `voip-admin-ext?action=analytics` which only returns basic counts (users, calls, numbers). It doesn't show call volume trends, recent activity, or user performance data.
+### Current State
+The leaderboard has Today/Week/Month tabs with podium + Most Calls + Most Appointments + Conversion Rate sections. Data comes from `voip-analytics?action=leaderboard`.
 
-### What Changes
-- Update the `analytics` action in `voip-admin-ext` to also return:
-  - Recent activity from `voip_admin_audit_log` (last 10 entries with user names)
-  - Daily call volume for the last 30 days from `voip_calls`
-  - Available leads count from `voip_leads` where status = 'NEW'
-- Update `AdminDashboard.tsx` to:
-  - Add "Available Leads" stat card
-  - Show call outcomes breakdown (reuse admin-stats data)
-  - Show a mini leaderboard (top 5 users by calls)
-  - Fetch data from both `voip-admin-ext?action=analytics` (for system counts) and `voip-analytics?action=admin-stats` (for call analytics) in parallel
+### Changes
 
-### Files to Edit
-- `supabase/functions/voip-admin-ext/index.ts` -- enhance `analytics` action with recent activity + daily calls + available leads
-- `src/pages/voip/admin/AdminDashboard.tsx` -- add analytics cards, call volume chart, outcomes breakdown, mini leaderboard
+**Backend (voip-analytics leaderboard action):**
+- Add `"all"` period support (no date filter)
+- Include additional per-user metrics: interested count, DNC count, follow-up count, avg session duration
+- Compute a "Top Performer Score": `(calls x 1) + (interested x 3) + (appointments x 6) - (dnc x 2)`
+- Return the logged-in user's own stats separately as `myRank` with their position
 
----
+**Leaderboard.tsx full rewrite:**
+- Add "All Time" tab
+- Podium: Top 3 by "Top Performer Score" instead of just appointments
+- Add hover tooltips on each user showing: Calls, Interested, Appointments, Conversion %, DNC count
+- Add animated progress bars for call counts
+- Add 5 ranking sections:
+  1. Most Calls (existing)
+  2. Most Appointments (existing)
+  3. Best Conversion Rate (existing, fix min call threshold per period)
+  4. Most Interested Leads (new)
+  5. Lowest DNC Rate (new, min 10 calls)
+- Add "My Rank" panel at top showing:
+  - Current rank position
+  - Calls, appointments, conversion rate
+  - Distance to next rank: "You are X calls away from passing [name]"
+- Add "Recent Activity Feed" section:
+  - Fetch from `voip_calls` (last 10 calls with user names and outcomes)
+  - Display: "[User] booked an appointment (2m ago)", "[User] completed 3 calls", etc.
 
-## 4. Call Timer: Reset on Each New Lead
-
-### Current Behavior
-Timer persists across lead requests (by design per previous requirement). Now the user wants it to reset each time.
-
-### What Changes
-- In `Dialer.tsx`, when `requestNextLead` is called and a lead is successfully assigned:
-  - Reset `sessionStartTime` to `Date.now()` immediately
-  - Set `hasStartedSession` to `true`
-  - This makes the timer auto-start at 00:00 when a new lead arrives
-- Remove the dependency on "Open TextNow" to start the timer -- timer starts on lead assignment
-- Timer stops when outcome is submitted (already works)
-
-### Files to Edit
-- `src/pages/voip/Dialer.tsx` -- modify `requestNextLead` success handler to set sessionStartTime = Date.now()
+**Backend (voip-analytics, new action `recent-activity`):**
+- Return last 15 call records with user names and timestamps
+- Include outcome type for display formatting
 
 ---
 
-## 5. TextNow: Auto-Open on Every New Lead
+## Phase 3: Admin Dashboard + Integrated Analytics
 
-### What Changes
-- In `Dialer.tsx`, after a lead is successfully assigned in `requestNextLead`:
-  - Programmatically trigger TextNow open/focus
-  - Pass a ref or callback to `CallTools` to trigger the open
-- In `CallTools.tsx`:
-  - Expose an `openTextNow` method via `useImperativeHandle` or accept a trigger prop
-  - If popup is blocked, show a persistent warning banner at the top of the Call Tools card
-- Track popup blocked state and show a small banner: "Popup blocked -- allow popups for this site to auto-open TextNow"
+### Current State
+Admin Dashboard shows basic stats (users, calls, available leads) + call volume chart + outcomes + mini leaderboard + recent activity.
+Separate Analytics page has: overview stats, calls per day, outcomes, leaderboard, lead status, reset button.
 
-### Files to Edit
-- `src/components/voip/dialer/CallTools.tsx` -- expose open method via ref, add popup-blocked banner
-- `src/pages/voip/Dialer.tsx` -- call CallTools open on lead assignment
+### Changes
+
+**Admin Dashboard (AdminDashboard.tsx) -- consolidate everything:**
+- Add global date filter at the top: Today / 7D / 30D / All Time
+- Add category filter dropdown (populated from DB)
+- Stat cards remain but become period-aware
+- Add the full leaderboard (top 10 with calls + appointments + conversion)
+- Add "User Performance" table (from Client Analytics) inline
+- Add "Category Performance" card (new):
+  - For each category: total calls, interested rate, appointment rate, conversion %
+  - Sorted by conversion rate
+- Keep the reset analytics button (move from Analytics page)
+- Keep recent activity feed
+
+**Backend (voip-analytics admin-stats):**
+- Accept optional `period` param (today/week/month/all) and `category` param
+- Filter calls by date range and optionally by lead category
+- Return category performance breakdown:
+  - Join calls with leads on lead_id to get category
+  - Group by category: total calls, interested count, appointment count, conversion rate
+
+**Backend (voip-admin-ext analytics):**
+- No major changes needed -- dashboard will call both endpoints in parallel
+
+**Analytics.tsx page:**
+- Keep it as-is but make the sidebar still link to it as an alternative view
+- It becomes a secondary page; the Admin Dashboard is primary
 
 ---
 
-## 6. Add "How To?" Client Tab
+## Phase 4: Category Performance Card
 
-### What Changes
-- Create a new page `src/pages/voip/HowTo.tsx` with:
-  - A clean card layout with the cold call script
-  - Sections: Intro, Reason, Value, Hook Question, Offer, Close
-  - Objections handling section
-  - "Copy Script" button that copies the full script to clipboard
-  - DNC compliance note
-- Add route `/voip/how-to` in `App.tsx`
-- Add "How To?" nav item in `VoipSidebar.tsx` under the CLIENT section (after "Support", before "Leaderboard")
-
-### Files to Create/Edit
-- `src/pages/voip/HowTo.tsx` -- new page
-- `src/App.tsx` -- add route
-- `src/components/voip/layout/VoipSidebar.tsx` -- add nav item
+**New section in AdminDashboard.tsx:**
+- Card titled "Best Performing Lead Categories"
+- Table/list showing for each category:
+  - Category name
+  - Total Calls
+  - Interested Rate (interested / total calls)
+  - Appointment Rate (appointments / total calls)
+  - Conversion % (appointments / interested)
+- Color-coded: green for high conversion, red for low
+- Example: "Electricians: 6% | Fitness: 2% | Roofing: 9%"
 
 ---
 
 ## Technical Details
 
-### Backend Changes Summary
+### Files to Create/Edit
 
-**`voip-leads/index.ts` (complete action):**
-```text
-// Add session_duration_seconds to the voip_calls insert:
-await supabase.from("voip_calls").insert({
-  ...existing fields...,
-  session_duration_seconds: sessionDurationSeconds || 0,
-});
-```
-
-**`voip-leads/index.ts` (category-counts action):**
-```text
-// Query all distinct categories from voip_leads where status = 'NEW'
-// Return: { counts: { electricians: 24, landscapers: 10, ... } }
-// Also return the full list of distinct categories (including those with 0 NEW leads)
-```
-
-**`voip-analytics/index.ts` (my-stats):**
-```text
-// Leads Requested = COUNT from voip_worker_lead_history WHERE worker_id = userId
-// Leads Completed = COUNT from voip_calls WHERE user_id = userId AND outcome IS NOT NULL
-// Completion Rate = Completed / Requested
-// Appointments = COUNT from voip_calls WHERE appointment_created = true
-// Conversion Rate = Appointments / COUNT(outcome = 'interested')
-// Avg Time/Lead = AVG(session_duration_seconds) WHERE session_duration_seconds > 0
-```
-
-**`voip-admin-ext/index.ts` (analytics):**
-```text
-// Add: available leads count, recent audit log entries (last 10), daily call volume (30 days)
-```
-
-### Frontend Changes Summary
-
-**Dialer.tsx -- Searchable Category Selector:**
-- Replace `<Select>` with a `<Popover>` + `<Command>` (from cmdk, already installed)
-- Command input filters categories dynamically
-- Empty state: "No matches. Request admin to upload leads for: [search term]"
-
-**Dialer.tsx -- Timer + TextNow on lead request:**
-- On successful lead assignment: set `sessionStartTime = Date.now()`, call `callToolsRef.current?.openTextNow()`
-- Remove the "click Open TextNow to start timer" instruction
-
-**AdminDashboard.tsx:**
-- Fetch both admin-ext analytics and voip-analytics admin-stats in parallel
-- Display: system stats + call volume chart + outcomes breakdown + recent activity + mini leaderboard
-
-### Data Flow for Analytics
-
-```text
-Worker clicks "Request Next Lead"
-  -> voip_worker_lead_history gets a row (already exists)
-  -> voip_leads status = ASSIGNED
-
-Worker submits outcome
-  -> voip_calls gets a row with outcome + session_duration_seconds
-  -> voip_leads status updated
-
-Analytics queries:
-  Leads Requested = COUNT(voip_worker_lead_history WHERE worker_id = X)
-  Leads Completed = COUNT(voip_calls WHERE user_id = X)
-  Appointments = COUNT(voip_calls WHERE appointment_created = true)
-```
+| File | Action | Description |
+|------|--------|-------------|
+| `src/lib/leadCategories.ts` | Edit | Add `extractCategoryFromFilename()`, add "uncategorized" label |
+| `src/pages/voip/admin/LeadUpload.tsx` | Edit | Auto-detect category from filename, add "create new" input, add category column to preview, fetch existing categories, default to uncategorized |
+| `supabase/functions/voip-leads/index.ts` | Edit | Default null category to "uncategorized" in upload action |
+| `src/pages/voip/Leaderboard.tsx` | Rewrite | Add All Time tab, My Rank panel, extra ranking sections, hover tooltips, recent activity feed |
+| `supabase/functions/voip-analytics/index.ts` | Edit | Add "all" period to leaderboard, add per-user detailed metrics (interested/DNC/score), add `recent-activity` action, add `period` + `category` filters to admin-stats, add category performance data |
+| `src/pages/voip/admin/AdminDashboard.tsx` | Rewrite | Add date/category filters, add user performance table, add category performance card, add full leaderboard, consolidate analytics |
 
 ### Edge Functions to Deploy
-- `voip-leads` (session_duration_seconds fix + dynamic category-counts)
-- `voip-analytics` (rewritten stats computation)
-- `voip-admin-ext` (enhanced analytics action)
+- `voip-leads`
+- `voip-analytics`
 
-### New Files
-- `src/pages/voip/HowTo.tsx`
+### Data Sources (no new tables needed)
+- `voip_calls` -- call outcomes, durations, appointments
+- `voip_worker_lead_history` -- lead assignments (leads requested)
+- `voip_leads` -- categories, statuses
+- `voip_users` -- names
+- `voip_admin_audit_log` -- recent admin activity
 
-### Modified Files
-- `src/lib/leadCategories.ts`
-- `src/pages/voip/Dialer.tsx`
-- `src/components/voip/dialer/CallTools.tsx`
-- `src/pages/voip/admin/AdminDashboard.tsx`
-- `src/pages/voip/admin/LeadUpload.tsx`
-- `src/components/voip/layout/VoipSidebar.tsx`
-- `src/App.tsx`
-- `supabase/functions/voip-leads/index.ts`
-- `supabase/functions/voip-analytics/index.ts`
-- `supabase/functions/voip-admin-ext/index.ts`
+### Key Backend Logic
+
+**Filename auto-detection:**
+```text
+Input: "fitness_leads_list.txt"
+1. Remove extension: "fitness_leads_list"
+2. Replace _ with space: "fitness leads list"
+3. Remove filler words: "fitness"
+4. Lowercase for storage: "fitness"
+5. Title case for display: "Fitness"
+```
+
+**Top Performer Score:**
+```text
+score = (calls * 1) + (interested * 3) + (appointments * 6) - (dnc * 2)
+```
+
+**Category Performance query logic:**
+```text
+For each call, join with voip_leads on lead_id to get category
+Group by category:
+  - totalCalls = count
+  - interested = count where outcome = 'interested'
+  - appointments = count where appointment_created = true
+  - interestedRate = interested / totalCalls
+  - conversionRate = appointments / interested
+```
+
+**Admin-stats period filtering:**
+```text
+period = "today" -> start_time >= today midnight
+period = "week" -> start_time >= 7 days ago
+period = "month" -> start_time >= 30 days ago
+period = "all" -> no date filter
+```
+
+### Upload History Enhancement
+The `voip_lead_uploads` table does not currently store category. Two options:
+1. Store it in the `details` field of the audit log (already done -- `category` is in the audit log details)
+2. Show category by looking at the leads linked to that upload_id
+
+We will use approach 2: when fetching upload history, also return the category of leads associated with that upload.
+
