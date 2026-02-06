@@ -3,10 +3,10 @@
  import { useVoipAuth } from "@/contexts/VoipAuthContext";
  import { Button } from "@/components/ui/button";
  
- interface SuspendedModalProps {
-   reason?: string;
-   status: "suspended" | "pending" | "disabled";
- }
+interface SuspendedModalProps {
+  reason?: string;
+  status: "suspended" | "pending" | "disabled" | "token_expired";
+}
  
  const AUTO_LOGOUT_SECONDS = 30;
  
@@ -30,34 +30,45 @@
      return () => clearInterval(timer);
    }, [logout]);
  
-   const getTitle = () => {
-     switch (status) {
-       case "suspended":
-         return "Account Suspended";
-       case "pending":
-         return "Account Pending Approval";
-       case "disabled":
-         return "Account Disabled";
-       default:
-         return "Account Unavailable";
-     }
-   };
- 
-   const getMessage = () => {
-     // If reason is provided, show it. Otherwise show default message.
-     if (reason && reason.trim()) {
-       return (
-         <div className="space-y-2">
-           <p className="font-medium">Reason:</p>
-           <p className="bg-muted/50 p-3 rounded-lg">{reason}</p>
-         </div>
-       );
-     }
- 
-     return (
-       <p>Your account is currently not active. Please contact support.</p>
-     );
-   };
+  const getTitle = () => {
+    switch (status) {
+      case "suspended":
+        return "Account Suspended";
+      case "pending":
+        return "Account Pending Approval";
+      case "disabled":
+        return "Account Disabled";
+      case "token_expired":
+        return "Invite Token Expired";
+      default:
+        return "Account Unavailable";
+    }
+  };
+
+  const getMessage = () => {
+    if (status === "token_expired") {
+      return (
+        <div className="space-y-2">
+          <p>Your invite token has expired. You no longer have access to this system.</p>
+          <p className="text-sm">Please contact an admin to get a new invite token.</p>
+        </div>
+      );
+    }
+
+    // If reason is provided, show it. Otherwise show default message.
+    if (reason && reason.trim()) {
+      return (
+        <div className="space-y-2">
+          <p className="font-medium">Reason:</p>
+          <p className="bg-muted/50 p-3 rounded-lg">{reason}</p>
+        </div>
+      );
+    }
+
+    return (
+      <p>Your account is currently not active. Please contact support.</p>
+    );
+  };
  
    return (
      <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-sm flex items-center justify-center p-4">

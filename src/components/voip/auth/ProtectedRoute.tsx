@@ -27,7 +27,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   if (userStatus && userStatus !== "active") {
     return (
        <SuspendedModal 
-         status={userStatus as "suspended" | "pending" | "disabled"} 
+         status={userStatus as "suspended" | "pending" | "disabled" | "token_expired"} 
          reason={suspensionReason || undefined} 
        />
     );
