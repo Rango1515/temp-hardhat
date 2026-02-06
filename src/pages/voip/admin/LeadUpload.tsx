@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,10 +18,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2, ChevronDown, Phone, Clock, User } from "lucide-react";
+import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2, ChevronDown, Phone, Clock, User, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { LEAD_CATEGORIES, getCategoryLabel } from "@/lib/leadCategories";
 
 interface ParsedLead {
   name: string;
@@ -67,6 +69,7 @@ export default function LeadUpload() {
   const [expandedUploads, setExpandedUploads] = useState<Set<number>>(new Set());
   const [uploadCalls, setUploadCalls] = useState<Map<number, CallRecord[]>>(new Map());
   const [loadingCalls, setLoadingCalls] = useState<Set<number>>(new Set());
+  const [uploadCategory, setUploadCategory] = useState<string>("electricians");
 
   const fetchHistory = useCallback(async () => {
     const result = await apiCall<{ uploads: UploadHistory[] }>("voip-leads", {
@@ -267,6 +270,15 @@ export default function LeadUpload() {
       return;
     }
 
+    if (!uploadCategory) {
+      toast({
+        title: "Category Required",
+        description: "Please select a lead category before importing",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsImporting(true);
 
     const result = await apiCall<{
@@ -278,6 +290,7 @@ export default function LeadUpload() {
       params: { action: "upload" },
       body: {
         filename: file.name,
+        category: uploadCategory,
         leads: validLeads.map((l) => ({
           name: l.name === "—" ? null : l.name,
           phone: l.phone,
@@ -329,6 +342,25 @@ export default function LeadUpload() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Tag className="w-4 h-4" />
+                Lead Category <span className="text-destructive">*</span>
+              </Label>
+              <Select value={uploadCategory} onValueChange={setUploadCategory}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover z-50">
+                  {LEAD_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="file">Select File</Label>
               <Input

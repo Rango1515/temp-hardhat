@@ -49,6 +49,7 @@ serve(async (req) => {
         accent_color: "orange",
         notifications_enabled: true,
         sound_enabled: true,
+        lead_category: "electricians",
       };
 
       return new Response(JSON.stringify({ preferences }), {
@@ -59,7 +60,7 @@ serve(async (req) => {
     // SAVE preferences
     if (req.method === "POST" && action === "save") {
       const body = await req.json();
-      const { theme, accentColor, notificationsEnabled, soundEnabled } = body;
+      const { theme, accentColor, notificationsEnabled, soundEnabled, leadCategory } = body;
 
       const { data: existing } = await supabase
         .from("voip_user_preferences")
@@ -72,6 +73,7 @@ serve(async (req) => {
         accent_color: accentColor || "orange",
         notifications_enabled: notificationsEnabled ?? true,
         sound_enabled: soundEnabled ?? true,
+        lead_category: leadCategory || "electricians",
         updated_at: new Date().toISOString(),
       };
 

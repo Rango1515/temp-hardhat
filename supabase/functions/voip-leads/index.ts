@@ -109,7 +109,7 @@ serve(async (req) => {
           );
         }
 
-        const { filename, leads } = await req.json();
+        const { filename, leads, category } = await req.json();
 
         if (!leads || !Array.isArray(leads)) {
           return new Response(
@@ -196,6 +196,7 @@ serve(async (req) => {
                 contact_name: lead.contact_name || null,
                 status: "NEW",
                 upload_id: upload.id,
+                category: category || null,
               });
 
             if (insertError) {
@@ -253,14 +254,24 @@ serve(async (req) => {
         }
         rateLimitStore.set(userId, now);
 
+        const category = url.searchParams.get("category") || null;
+
+        const rpcParams: Record<string, unknown> = { p_worker_id: userId };
+        if (category) {
+          rpcParams.p_category = category;
+        }
+
         const { data: leads, error } = await supabase
-          .rpc("assign_next_lead", { p_worker_id: userId });
+          .rpc("assign_next_lead", rpcParams);
 
         if (error) throw error;
 
         if (!leads || leads.length === 0) {
+          const message = category
+            ? "No more leads available in this category."
+            : "No leads available";
           return new Response(
-            JSON.stringify({ lead: null, message: "No leads available" }),
+            JSON.stringify({ lead: null, message }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -558,7 +569,7 @@ serve(async (req) => {
         // Fetch paginated leads - order by status priority then created_at
         let leadsQuery = supabase
           .from("voip_leads")
-          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to, contact_name");
+          .select("id, name, phone, email, website, status, attempt_count, created_at, assigned_to, contact_name, category");
 
         if (search) {
           leadsQuery = leadsQuery.or(`name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
@@ -825,6 +836,26 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "category-counts": {
+        const { data: leads, error } = await supabase
+          .from("voip_leads")
+          .select("category")
+          .eq("status", "NEW");
+
+        if (error) throw error;
+
+        const counts: Record<string, number> = {};
+        for (const lead of (leads || [])) {
+          const cat = lead.category || "uncategorized";
+          counts[cat] = (counts[cat] || 0) + 1;
+        }
+
+        return new Response(
+          JSON.stringify({ counts }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
