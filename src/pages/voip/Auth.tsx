@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Phone, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { HardHat, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function VoipAuth() {
@@ -114,13 +114,10 @@ export default function VoipAuth() {
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-4">
             <div className="bg-primary p-3 rounded-xl">
-              <Phone className="w-6 h-6 text-primary-foreground" />
+              <HardHat className="w-6 h-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-foreground">HardhatHosting Client Login</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your calls and leads
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">Client Login</h1>
         </div>
 
         <Card className="border-border/50">
