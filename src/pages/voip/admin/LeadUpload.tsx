@@ -506,21 +506,34 @@ export default function LeadUpload() {
                     </div>
                   )}
                 </div>
-
-                <Button onClick={handleImport} disabled={isImporting || validCount === 0} size="lg" className="w-full">
-                  {isImporting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 mr-2" />
-                      Import {validCount} Leads as "{getCategoryLabel(uploadCategory)}"
-                    </>
-                  )}
-                </Button>
               </>
+            )}
+
+            {/* Upload button — always visible when a file is selected */}
+            {file && (
+              <Button onClick={handleImport} disabled={isImporting || validCount === 0 || isParsing} size="lg" className="w-full">
+                {isImporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Importing...
+                  </>
+                ) : isParsing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Parsing file...
+                  </>
+                ) : validCount > 0 ? (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Import {validCount} Leads as "{getCategoryLabel(uploadCategory)}"
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload Leads
+                  </>
+                )}
+              </Button>
             )}
           </CardContent>
         </Card>
