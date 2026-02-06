@@ -266,7 +266,7 @@ export default function Dialer() {
         description: `${outcomeLabel} - Lead ${result.data?.newStatus === "COMPLETED" ? "completed" : "updated"}`,
       });
 
-      if (selectedOutcome === "interested" || selectedOutcome === "followup") {
+      if (selectedOutcome === "interested") {
         setAppointmentOutcome(selectedOutcome);
         setShowAppointmentModal(true);
       }

@@ -704,10 +704,10 @@ serve(async (req) => {
         const leadIds = [...new Set(calls.map(c => c.lead_id).filter(Boolean))];
         const { data: leads } = await supabase
           .from("voip_leads")
-          .select("id, name, phone")
+          .select("id, name, phone, email, website, contact_name")
           .in("id", leadIds);
 
-        const leadMap = new Map((leads || []).map(l => [l.id, { name: l.name, phone: l.phone }]));
+        const leadMap = new Map((leads || []).map(l => [l.id, { name: l.contact_name || l.name, phone: l.phone, company: l.name, email: l.email, website: l.website }]));
 
         const userIds = [...new Set(calls.map(c => c.user_id).filter(Boolean))];
         const { data: users } = await supabase
@@ -722,6 +722,9 @@ serve(async (req) => {
           lead_id: call.lead_id,
           lead_name: leadMap.get(call.lead_id)?.name || "Unknown",
           lead_phone: leadMap.get(call.lead_id)?.phone || "Unknown",
+          lead_company: leadMap.get(call.lead_id)?.company || "Unknown",
+          lead_email: leadMap.get(call.lead_id)?.email || "Unknown",
+          lead_website: leadMap.get(call.lead_id)?.website || "Unknown",
           caller_name: userMap.get(call.user_id) || "Unknown",
           followup_at: call.followup_at,
           followup_priority: call.followup_priority,
@@ -730,6 +733,51 @@ serve(async (req) => {
 
         return new Response(
           JSON.stringify({ followups }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      case "clear-all-followups": {
+        if (userRole !== "admin") {
+          return new Response(
+            JSON.stringify({ error: "Admin access required" }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: affectedCalls } = await supabase
+          .from("voip_calls")
+          .select("id")
+          .not("followup_at", "is", null)
+          .gte("followup_at", new Date().toISOString());
+
+        const affectedCount = affectedCalls?.length || 0;
+
+        if (affectedCount > 0) {
+          const ids = affectedCalls!.map(c => c.id);
+          const { error: updateError } = await supabase
+            .from("voip_calls")
+            .update({
+              followup_at: null,
+              followup_priority: null,
+              followup_notes: null,
+            })
+            .in("id", ids);
+
+          if (updateError) throw updateError;
+        }
+
+        await supabase.from("voip_admin_audit_log").insert({
+          admin_id: userId,
+          action: "clear_all_followups",
+          entity_type: "calls",
+          details: { clearedCount: affectedCount },
+        });
+
+        console.log(`Admin ${userId} cleared all ${affectedCount} follow-ups`);
+
+        return new Response(
+          JSON.stringify({ success: true, clearedCount: affectedCount }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }

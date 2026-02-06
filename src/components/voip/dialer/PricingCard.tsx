@@ -6,9 +6,9 @@ import { DollarSign, Info, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PRICING = [
-  { service: "Standard Hosting / Landing Page", price: "$25/mo" },
-  { service: "Advanced Website + Hosting", price: "$30/mo" },
-  { service: "Full Custom Website + Hosting", price: "$50/mo" },
+  { service: "Standard Landing Page", build: "$300", hosting: "$25/mo" },
+  { service: "Advanced Website", build: "$500", hosting: "$30/mo" },
+  { service: "Full Custom Website", build: "$1,500", hosting: "$50/mo" },
 ];
 
 export function PricingCard() {
@@ -29,7 +29,7 @@ export function PricingCard() {
                   </TooltipTrigger>
                   <TooltipContent side="top" className="max-w-[240px]">
                     <p className="text-xs">
-                      These prices include hosting, updates, and support — competitive with industry averages.
+                      Build cost is one-time. Hosting includes updates and support — competitive with industry averages.
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -52,12 +52,16 @@ export function PricingCard() {
                   className="flex items-center justify-between gap-2 text-sm py-1.5 px-2 rounded bg-muted/50"
                 >
                   <span className="text-muted-foreground truncate">{item.service}</span>
-                  <span className="font-semibold text-foreground whitespace-nowrap">{item.price}</span>
+                  <div className="flex items-center gap-3 whitespace-nowrap">
+                    <span className="font-semibold text-foreground">{item.build}</span>
+                    <span className="text-muted-foreground">+</span>
+                    <span className="font-semibold text-foreground">{item.hosting}</span>
+                  </div>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Includes hosting, updates, and support
+            <p className="text-xs text-muted-foreground mt-2 italic">
+              Prices are negotiable — use your discretion based on the client's needs.
             </p>
           </CardContent>
         </CollapsibleContent>

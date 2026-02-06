@@ -205,13 +205,16 @@ export default function HowTo() {
               <p className="text-sm font-medium">Key Talking Points</p>
               <div className="space-y-1.5">
                 <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
-                  "Our basic plan is $25/mo — includes hosting + support"
+                  "A basic landing page is a one-time $300 build — then just $25/mo for hosting + support"
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
-                  "If you want more pages or functionality, we offer $30/mo"
+                  "If you want more pages or functionality, it's $500 for the build + $30/mo hosting"
                 </div>
                 <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
-                  "For fully custom sites with ongoing support it's $50/mo"
+                  "For a fully custom site with ongoing support, it's $1,500 build + $50/mo"
+                </div>
+                <div className="p-3 rounded-lg bg-muted/50 text-sm italic">
+                  "These prices are flexible — we can work with your budget"
                 </div>
               </div>
             </div>
@@ -227,14 +230,14 @@ export default function HowTo() {
               <div className="p-3 rounded-lg border">
                 <p className="text-sm font-medium text-destructive">"Too expensive?"</p>
                 <p className="text-sm text-muted-foreground mt-1 italic">
-                  → "Compare to average $79/mo retainers — ours is cheaper with same support."
+                  → "Compare to average $79/mo retainers — ours is cheaper with same support. We can also negotiate pricing."
                 </p>
               </div>
             </div>
 
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
               <p className="text-sm">
-                <strong>Market Context:</strong> Industry average for monthly website maintenance is $29–$79/mo. Our pricing is at the low end with full support included.
+                <strong>Market Context:</strong> Average website builds cost $800–$2,500. Monthly maintenance retainers run $29–$79/mo. Our pricing is competitive with room to negotiate.
               </p>
             </div>
           </CardContent>

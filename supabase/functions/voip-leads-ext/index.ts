@@ -33,7 +33,7 @@ serve(async (req) => {
     switch (action) {
       // ── Appointments ────────────────────────────────────
       case "create-appointment": {
-        const { leadId, leadName, leadPhone, scheduledAt, notes, outcome } = await req.json();
+        const { leadId, leadName, leadPhone, scheduledAt, notes, outcome, selectedPlan, negotiatedPrice } = await req.json();
 
         if (!leadPhone || !scheduledAt) {
           return new Response(
@@ -60,6 +60,8 @@ serve(async (req) => {
           created_by_name: creatorName,
           outcome: outcome || "manual",
           status: "scheduled",
+          selected_plan: selectedPlan || null,
+          negotiated_price: negotiatedPrice || null,
         });
 
         if (error) throw error;

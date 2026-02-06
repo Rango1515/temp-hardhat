@@ -288,46 +288,7 @@ export default function LeadInfo() {
           </Button>
         </div>
 
-        {/* Scheduled Follow-ups */}
-        {followups.length > 0 && (
-          <Card className="border-orange-500/50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-orange-600">
-                <Calendar className="w-5 h-5" />
-                Scheduled Follow-ups ({followups.length})
-              </CardTitle>
-              <CardDescription>Calls that need to be made</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {followups.slice(0, 5).map((fu) => (
-                  <div key={fu.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                    <div className="flex items-center gap-3">
-                      <Phone className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">{fu.lead_name || "None"}</p>
-                        <p className="text-sm text-muted-foreground">Assigned by {fu.caller_name}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {getPriorityBadge(fu.followup_priority)}
-                      <div className="text-right">
-                        <p className="text-sm font-medium">{format(new Date(fu.followup_at), "MMM d, yyyy")}</p>
-                        <p className="text-xs text-muted-foreground">{format(new Date(fu.followup_at), "h:mm a")}</p>
-                      </div>
-                      <Button variant="ghost" size="sm" onClick={() => handleDeleteFollowup(fu.id)} disabled={deletingFollowupId === fu.id} className="text-destructive hover:text-destructive ml-2">
-                        {deletingFollowupId === fu.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                {followups.length > 5 && (
-                  <p className="text-sm text-muted-foreground text-center pt-2">+{followups.length - 5} more follow-ups</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Follow-ups have been moved to the Appointments page */}
 
         {/* Leads Table with Pagination */}
         <Card>
