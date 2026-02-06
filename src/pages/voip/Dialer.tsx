@@ -291,7 +291,7 @@ export default function Dialer() {
 
   // Build dynamic category list from counts
   const dynamicCategories = Object.keys(categoryCounts)
-    .filter(cat => cat !== "uncategorized")
+    .filter(cat => cat !== "uncategorized" && (categoryCounts[cat] || 0) > 0)
     .sort((a, b) => getCategoryLabel(a).localeCompare(getCategoryLabel(b)));
 
   return (
