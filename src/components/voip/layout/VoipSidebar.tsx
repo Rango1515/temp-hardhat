@@ -53,23 +53,40 @@
    const { apiCall } = useVoipApi();
    const [ticketCount, setTicketCount] = useState(0);
  
-   // Check for open tickets (for badge)
-   const checkTickets = useCallback(async () => {
-     const result = await apiCall<{ count: number }>("voip-support", {
-       params: { action: "ticket-count" },
-     });
- 
-     if (result.data) {
-       setTicketCount(result.data.count);
-     }
-   }, [apiCall]);
- 
-   useEffect(() => {
-     checkTickets();
-     // Poll every 15 seconds for more responsive notifications
-     const interval = setInterval(checkTickets, 15000);
-     return () => clearInterval(interval);
-   }, [checkTickets]);
+  const [followupCount, setFollowupCount] = useState(0);
+
+  // Check for open tickets (for badge)
+  const checkTickets = useCallback(async () => {
+    const result = await apiCall<{ count: number }>("voip-support", {
+      params: { action: "ticket-count" },
+    });
+
+    if (result.data) {
+      setTicketCount(result.data.count);
+    }
+  }, [apiCall]);
+
+  // Check for pending follow-ups (for badge)
+  const checkFollowups = useCallback(async () => {
+    if (!isAdmin) return;
+    const result = await apiCall<{ followups: unknown[] }>("voip-leads", {
+      params: { action: "followups" },
+    });
+    if (result.data?.followups) {
+      setFollowupCount(result.data.followups.length);
+    }
+  }, [apiCall, isAdmin]);
+
+  useEffect(() => {
+    checkTickets();
+    checkFollowups();
+    // Poll every 15 seconds for more responsive notifications
+    const interval = setInterval(() => {
+      checkTickets();
+      checkFollowups();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [checkTickets, checkFollowups]);
  
    const navItems = isAdmin ? [...adminNavItems, ...clientNavItems.slice(1)] : clientNavItems;
  
@@ -100,12 +117,21 @@
            // Add separator before client items when admin
            const isFirstClientItem = isAdmin && item.href === "/voip/dialer";
  
-             // Check for badge indicator
-             const showBadge =
-               ((item.href === "/voip/support" && !isAdmin) ||
-                 (item.href === "/voip/admin/tickets" && isAdmin)) &&
-               ticketCount > 0 &&
-               !isActive;
+              // Check for badge indicator
+              const isTicketBadge =
+                ((item.href === "/voip/support" && !isAdmin) ||
+                  (item.href === "/voip/admin/tickets" && isAdmin)) &&
+                ticketCount > 0 &&
+                !isActive;
+
+              const isAppointmentBadge =
+                item.href === "/voip/admin/appointments" &&
+                isAdmin &&
+                followupCount > 0 &&
+                !isActive;
+
+              const badgeCount = isTicketBadge ? ticketCount : isAppointmentBadge ? followupCount : 0;
+              const showBadge = badgeCount > 0;
  
            return (
              <div key={item.href}>
@@ -128,10 +154,10 @@
                  <Icon className="w-5 h-5" />
                  {item.label}
                    {/* Badge indicator */}
-                   {showBadge && (
-                     <span className="absolute right-3 top-1/2 -translate-y-1/2 min-w-5 h-5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-medium px-1.5">
-                       {ticketCount > 99 ? "99+" : ticketCount}
-                     </span>
+                    {showBadge && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 min-w-5 h-5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-medium px-1.5">
+                        {badgeCount > 99 ? "99+" : badgeCount}
+                      </span>
                  )}
                </Link>
              </div>

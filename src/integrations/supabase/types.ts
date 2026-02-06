@@ -291,9 +291,11 @@ export type Database = {
           lead_id: number | null
           lead_name: string | null
           lead_phone: string
+          negotiated_price: string | null
           notes: string | null
           outcome: string | null
           scheduled_at: string
+          selected_plan: string | null
           status: string
           updated_at: string | null
         }
@@ -306,9 +308,11 @@ export type Database = {
           lead_id?: number | null
           lead_name?: string | null
           lead_phone: string
+          negotiated_price?: string | null
           notes?: string | null
           outcome?: string | null
           scheduled_at: string
+          selected_plan?: string | null
           status?: string
           updated_at?: string | null
         }
@@ -321,9 +325,11 @@ export type Database = {
           lead_id?: number | null
           lead_name?: string | null
           lead_phone?: string
+          negotiated_price?: string | null
           notes?: string | null
           outcome?: string | null
           scheduled_at?: string
+          selected_plan?: string | null
           status?: string
           updated_at?: string | null
         }
