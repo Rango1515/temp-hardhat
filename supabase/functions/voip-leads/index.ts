@@ -415,6 +415,47 @@ serve(async (req) => {
         );
       }
 
+      case "skip": {
+        const { leadId } = await req.json();
+
+        if (!leadId) {
+          return new Response(
+            JSON.stringify({ error: "leadId is required" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { data: lead } = await supabase
+          .from("voip_leads")
+          .select("id, assigned_to")
+          .eq("id", leadId)
+          .single();
+
+        if (!lead || lead.assigned_to !== userId) {
+          return new Response(
+            JSON.stringify({ error: "Lead not found or not assigned to you" }),
+            { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Reset lead back to NEW so it re-enters the pool
+        await supabase
+          .from("voip_leads")
+          .update({
+            status: "NEW",
+            assigned_to: null,
+            assigned_at: null,
+            locked_until: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", leadId);
+
+        return new Response(
+          JSON.stringify({ success: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       case "stats": {
         if (userRole !== "admin") {
           return new Response(

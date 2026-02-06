@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { CallTools, CallToolsRef } from "@/components/voip/dialer/CallTools";
 import { SessionTimer } from "@/components/voip/dialer/SessionTimer";
@@ -72,6 +73,8 @@ export default function Dialer() {
   const [scratchPadNotes, setScratchPadNotes] = useState("");
   const [scratchPadOpen, setScratchPadOpen] = useState(true);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
+  const [showSkipDialog, setShowSkipDialog] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
   const [appointmentOutcome, setAppointmentOutcome] = useState<string>("manual");
   const [hasStartedSession, setHasStartedSession] = useState(() => {
     try {
@@ -236,6 +239,51 @@ export default function Dialer() {
       setSessionStartTime(Date.now());
       setHasStartedSession(true);
     }
+  };
+
+  const handleSkipLead = async (didCall: boolean) => {
+    if (!currentLead) return;
+
+    if (didCall) {
+      // They called but want to skip — tell them to log an outcome first
+      setShowSkipDialog(false);
+      toast({
+        title: "Log Outcome First",
+        description: "Since you called this lead, please log the outcome before moving on.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // They didn't call — return lead to pool
+    setIsSkipping(true);
+    const result = await apiCall<{ success: boolean }>("voip-leads", {
+      method: "POST",
+      params: { action: "skip" },
+      body: { leadId: currentLead.id },
+    });
+
+    if (result.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({
+        title: "Lead Returned",
+        description: "Lead has been returned to the pool and will be available for others.",
+      });
+      setCurrentLead(null);
+      setSessionStartTime(null);
+      setSessionDuration(0);
+      setSelectedOutcome("");
+      setNotes("");
+      setFollowupDate(undefined);
+      setFollowupTime("09:00");
+      setFollowupPriority("medium");
+      setFollowupNotes("");
+      setHasStartedSession(false);
+      fetchCategoryCounts();
+    }
+    setIsSkipping(false);
+    setShowSkipDialog(false);
   };
 
   const handleSubmitOutcome = async () => {
@@ -474,15 +522,15 @@ export default function Dialer() {
 
                   <div className="flex gap-2 mt-4">
                     <Button
-                      onClick={requestNextLead}
-                      disabled={isLoadingLead || (hasStartedSession && !selectedOutcome)}
+                      onClick={() => setShowSkipDialog(true)}
+                      disabled={isLoadingLead || isSkipping}
                       variant="outline"
                       className="flex-1"
                     >
-                      {isLoadingLead ? (
+                      {isSkipping ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Getting Lead...
+                          Skipping...
                         </>
                       ) : (
                         <>
@@ -718,6 +766,32 @@ export default function Dialer() {
         leadPhone={currentLead?.phone || ""}
         outcome={appointmentOutcome}
       />
+
+      <AlertDialog open={showSkipDialog} onOpenChange={setShowSkipDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Did you call this lead?</AlertDialogTitle>
+            <AlertDialogDescription>
+              If you didn't call them, the lead will be returned to the pool for others to contact. If you did call them, you'll need to log an outcome first.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleSkipLead(false)}
+              className="bg-primary hover:bg-primary/90"
+            >
+              No, I didn't call
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => handleSkipLead(true)}
+              className="border border-destructive text-destructive bg-transparent hover:bg-destructive/10"
+            >
+              Yes, I called
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </VoipLayout>
   );
 }
