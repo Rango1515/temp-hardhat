@@ -122,6 +122,7 @@ export default function MailInbox() {
   const [showReadingPane, setShowReadingPane] = useState(false);
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const readAbortRef = useRef<AbortController | null>(null);
 
   // ─── Data Loading ───────────────────────────────────────────────────────────
   const loadFolders = useCallback(async () => {
@@ -154,34 +155,73 @@ export default function MailInbox() {
   }, [apiCall, toast]);
 
   const loadMessage = useCallback(async (folder: string, uid: number) => {
+    // Ignore if already loading this message
+    if (selectedUid === uid && loadingMessage) return;
+
+    // Cancel any in-flight read request
+    if (readAbortRef.current) {
+      readAbortRef.current.abort();
+    }
+    const abortController = new AbortController();
+    readAbortRef.current = abortController;
+
     setLoadingMessage(true);
     setSelectedUid(uid);
     setShowReadingPane(true);
     setSelectedMessage(null);
 
-    const result = await apiCall<{ message: FullMessage }>("voip-mail", {
-      params: { action: "read", folder, uid: uid.toString() },
-    });
-    if (result.data?.message) {
-      setSelectedMessage(result.data.message);
-      // Update the message list to show as read
-      setMessages((prev) =>
-        prev.map((m) => (m.uid === uid ? { ...m, read: true } : m))
+    try {
+      const currentToken = localStorage.getItem("voip_token");
+      const url = new URL(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-mail`
       );
-    } else if (result.error) {
-      const isTimeout = result.error.includes("Failed to fetch") || result.error.includes("timed out");
+      url.searchParams.set("action", "read");
+      url.searchParams.set("folder", folder);
+      url.searchParams.set("uid", uid.toString());
+
+      const response = await fetch(url.href, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentToken}`,
+        },
+        signal: abortController.signal,
+      });
+
+      // Check if this request was cancelled
+      if (abortController.signal.aborted) return;
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Request failed (${response.status})`);
+      }
+
+      const data = await response.json();
+      if (abortController.signal.aborted) return;
+
+      if (data?.message) {
+        setSelectedMessage(data.message);
+        setMessages((prev) =>
+          prev.map((m) => (m.uid === uid ? { ...m, read: true } : m))
+        );
+      }
+    } catch (err: any) {
+      if (err?.name === "AbortError") return; // Cancelled — ignore
+      const isTimeout = err?.message?.includes("Failed to fetch") || err?.message?.includes("timed out");
       toast({
         title: "Failed to load message",
         description: isTimeout
-          ? "The server took too long to respond. Please try again."
-          : result.error,
+          ? "The server took too long. Please try again."
+          : err?.message || "Unknown error",
         variant: "destructive",
       });
       setShowReadingPane(false);
       setSelectedUid(null);
+    } finally {
+      if (!abortController.signal.aborted) {
+        setLoadingMessage(false);
+      }
     }
-    setLoadingMessage(false);
-  }, [apiCall, toast]);
+  }, [selectedUid, loadingMessage, toast]);
 
   const searchMessages = useCallback(async (folder: string, query: string) => {
     setLoadingMessages(true);
