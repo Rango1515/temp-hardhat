@@ -152,6 +152,7 @@ serve(async (req) => {
               max_uses: 1,
               expires_at: null,
               created_by: adminId,
+              purpose: "partner_signup",
             })
             .select("id")
             .single();
@@ -300,7 +301,8 @@ serve(async (req) => {
 
           let query = supabase
             .from("voip_partner_tokens")
-            .select("id, token_code, partner_id, max_uses, uses_count, expires_at, status, created_at", { count: "exact" });
+            .select("id, token_code, partner_id, max_uses, uses_count, expires_at, status, created_at, purpose", { count: "exact" })
+            .eq("purpose", "client_referral");
 
           if (filterPartnerId) query = query.eq("partner_id", parseInt(filterPartnerId));
 
@@ -321,11 +323,39 @@ serve(async (req) => {
             for (const p of partners || []) partnerMap[p.id] = p.name;
           }
 
+          // Get signup client details for each token
+          const tokenIds = (tokens || []).map(t => t.id);
+          let tokenClientsMap: Record<number, { name: string; email: string }[]> = {};
+          if (tokenIds.length > 0) {
+            const { data: usageRecords } = await supabase
+              .from("voip_partner_token_usage")
+              .select("token_id, client_user_id")
+              .in("token_id", tokenIds);
+
+            const clientIds = [...new Set((usageRecords || []).map(u => u.client_user_id))];
+            let clientMap: Record<number, { name: string; email: string }> = {};
+            if (clientIds.length > 0) {
+              const { data: clients } = await supabase
+                .from("voip_users")
+                .select("id, name, email")
+                .in("id", clientIds);
+              for (const c of clients || []) {
+                clientMap[c.id] = { name: c.name, email: c.email };
+              }
+            }
+
+            for (const u of usageRecords || []) {
+              if (!tokenClientsMap[u.token_id]) tokenClientsMap[u.token_id] = [];
+              const client = clientMap[u.client_user_id];
+              if (client) tokenClientsMap[u.token_id].push(client);
+            }
+          }
+
           const enriched = (tokens || []).map(t => ({
             ...t,
-            // Mask token: show first 12 chars
             token_display: t.token_code.substring(0, 12) + "...",
             partner_name: partnerMap[t.partner_id] || "Unknown",
+            signups: tokenClientsMap[t.id] || [],
           }));
 
           return new Response(JSON.stringify({

@@ -10,10 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, ChevronLeft, ChevronRight, Copy, X, Eye, Trash2, Link } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight, Copy, X, Eye, Trash2, Link, Users } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+
+interface SignupClient {
+  name: string;
+  email: string;
+}
 
 interface TokenItem {
   id: number;
@@ -26,6 +31,7 @@ interface TokenItem {
   expires_at: string | null;
   status: string;
   created_at: string;
+  signups: SignupClient[];
 }
 
 interface Partner {
@@ -247,39 +253,63 @@ export default function PartnerTokens() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Referral Link</TableHead>
-                    <TableHead>Partner</TableHead>
-                    <TableHead>Uses</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Expires</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tokens.map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Link className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">
-                            ...?token={t.token_display}
-                          </span>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyLink(t.token_code)}>
-                            <Copy className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{t.partner_name}</TableCell>
-                      <TableCell>{t.uses_count}{t.max_uses ? `/${t.max_uses}` : "/∞"}</TableCell>
-                      <TableCell>
-                        <Badge variant={t.status === "active" ? "default" : t.status === "used" ? "secondary" : "destructive"}>
-                          {t.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{t.expires_at ? format(new Date(t.expires_at), "MMM d, yyyy") : "Never"}</TableCell>
-                      <TableCell>{format(new Date(t.created_at), "MMM d, yyyy")}</TableCell>
+                   <TableRow>
+                     <TableHead>Referral Link</TableHead>
+                     <TableHead>Partner</TableHead>
+                     <TableHead>Signups</TableHead>
+                     <TableHead>Status</TableHead>
+                     <TableHead>Expires</TableHead>
+                     <TableHead>Created</TableHead>
+                     <TableHead></TableHead>
+                   </TableRow>
+                 </TableHeader>
+                 <TableBody>
+                   {tokens.map((t) => (
+                     <TableRow key={t.id}>
+                       <TableCell>
+                         <div className="flex items-center gap-2">
+                           <Link className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                           <span className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">
+                             ...?token={t.token_display}
+                           </span>
+                           <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyLink(t.token_code)}>
+                             <Copy className="w-3 h-3" />
+                           </Button>
+                         </div>
+                       </TableCell>
+                       <TableCell className="font-medium">{t.partner_name}</TableCell>
+                       <TableCell>
+                         <div className="flex items-center gap-2">
+                           <span className="font-medium">{t.signups.length}{t.max_uses ? `/${t.max_uses}` : ""}</span>
+                           {t.signups.length > 0 && (
+                             <Button size="sm" variant="ghost" className="h-6 gap-1 px-2 text-xs" onClick={() => viewUsage(t.id)}>
+                               <Users className="w-3 h-3" />
+                               View
+                             </Button>
+                           )}
+                         </div>
+                         {t.signups.length > 0 && (
+                           <div className="mt-1 flex flex-wrap gap-1">
+                             {t.signups.slice(0, 3).map((s, i) => (
+                               <Badge key={i} variant="outline" className="text-xs font-normal">
+                                 {s.name}
+                               </Badge>
+                             ))}
+                             {t.signups.length > 3 && (
+                               <Badge variant="outline" className="text-xs font-normal">
+                                 +{t.signups.length - 3} more
+                               </Badge>
+                             )}
+                           </div>
+                         )}
+                       </TableCell>
+                       <TableCell>
+                         <Badge variant={t.status === "active" ? "default" : t.status === "used" ? "secondary" : "destructive"}>
+                           {t.status}
+                         </Badge>
+                       </TableCell>
+                       <TableCell>{t.expires_at ? format(new Date(t.expires_at), "MMM d, yyyy") : "Never"}</TableCell>
+                       <TableCell>{format(new Date(t.created_at), "MMM d, yyyy")}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
                           <Button size="sm" variant="ghost" onClick={() => viewUsage(t.id)}>

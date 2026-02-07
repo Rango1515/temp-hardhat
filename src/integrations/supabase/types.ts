@@ -1023,6 +1023,7 @@ export type Database = {
           id: number
           max_uses: number | null
           partner_id: number
+          purpose: string
           status: string
           token_code: string
           uses_count: number
@@ -1034,6 +1035,7 @@ export type Database = {
           id?: number
           max_uses?: number | null
           partner_id: number
+          purpose?: string
           status?: string
           token_code: string
           uses_count?: number
@@ -1045,6 +1047,7 @@ export type Database = {
           id?: number
           max_uses?: number | null
           partner_id?: number
+          purpose?: string
           status?: string
           token_code?: string
           uses_count?: number
