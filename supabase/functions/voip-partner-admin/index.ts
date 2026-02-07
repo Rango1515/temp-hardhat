@@ -456,23 +456,52 @@ serve(async (req) => {
 
         if (error) throw error;
 
-        // Get client names
+        // Get full client details
         const clientIds = (usage || []).map(u => u.client_user_id);
-        let clientMap: Record<number, string> = {};
+        let clientMap: Record<number, { name: string; email: string; status: string; role: string; created_at: string }> = {};
         if (clientIds.length > 0) {
           const { data: clients } = await supabase
             .from("voip_users")
-            .select("id, name, email")
+            .select("id, name, email, status, role, created_at")
             .in("id", clientIds);
-          for (const c of clients || []) clientMap[c.id] = c.name;
+          for (const c of clients || []) {
+            clientMap[c.id] = { name: c.name, email: c.email, status: c.status, role: c.role, created_at: c.created_at };
+          }
         }
 
         const enriched = (usage || []).map(u => ({
           ...u,
-          client_name: clientMap[u.client_user_id] || "Unknown",
+          client_name: clientMap[u.client_user_id]?.name || "Unknown",
+          client_email: clientMap[u.client_user_id]?.email || "",
+          client_status: clientMap[u.client_user_id]?.status || "unknown",
+          client_role: clientMap[u.client_user_id]?.role || "client",
+          client_created_at: clientMap[u.client_user_id]?.created_at || u.created_at,
         }));
 
         return new Response(JSON.stringify({ usage: enriched }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // ── Partner Clients ──
+      case "partner-clients": {
+        const clientPartnerId = url.searchParams.get("partnerId");
+        if (!clientPartnerId) {
+          return new Response(JSON.stringify({ error: "partnerId required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const { data: clients, error: clientsErr } = await supabase
+          .from("voip_users")
+          .select("id, name, email, status, role, created_at")
+          .eq("partner_id", parseInt(clientPartnerId))
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false });
+
+        if (clientsErr) throw clientsErr;
+
+        return new Response(JSON.stringify({ clients: clients || [] }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }

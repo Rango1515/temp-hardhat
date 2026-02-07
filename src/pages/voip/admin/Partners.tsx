@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, ChevronLeft, ChevronRight, Search, Trash2, Copy, Check } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight, Search, Trash2, Copy, Check, Users } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +26,15 @@ interface Partner {
   profile: { phone: string | null; payout_method: string | null; status: string } | null;
 }
 
+interface PartnerClient {
+  id: number;
+  name: string;
+  email: string;
+  status: string;
+  role: string;
+  created_at: string;
+}
+
 export default function Partners() {
   const { apiCall } = useVoipApi();
   const { toast } = useToast();
@@ -37,7 +46,7 @@ export default function Partners() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Create form state (simplified)
+  // Create form state
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newPayoutMethod, setNewPayoutMethod] = useState("");
@@ -45,6 +54,12 @@ export default function Partners() {
   // Token result state
   const [generatedToken, setGeneratedToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Clients dialog
+  const [clientsOpen, setClientsOpen] = useState<number | null>(null);
+  const [clientsPartnerName, setClientsPartnerName] = useState("");
+  const [clients, setClients] = useState<PartnerClient[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
 
   const fetchPartners = useCallback(async () => {
     setLoading(true);
@@ -126,6 +141,17 @@ export default function Partners() {
   };
 
   const totalPages = Math.ceil(total / 20);
+
+  const viewClients = async (partnerId: number, partnerName: string) => {
+    setClientsOpen(partnerId);
+    setClientsPartnerName(partnerName);
+    setClientsLoading(true);
+    const result = await apiCall<{ clients: PartnerClient[] }>("voip-partner-admin", {
+      params: { action: "partner-clients", partnerId: String(partnerId) },
+    });
+    if (result.data) setClients(result.data.clients);
+    setClientsLoading(false);
+  };
 
   return (
     <VoipLayout>
@@ -242,7 +268,17 @@ export default function Partners() {
                           {p.profile?.status || p.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{p.clientCount}</TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1"
+                          onClick={() => viewClients(p.id, p.name)}
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          {p.clientCount}
+                        </Button>
+                      </TableCell>
                       <TableCell className="font-medium">${p.totalCommission.toFixed(2)}</TableCell>
                       <TableCell className="text-muted-foreground">{p.profile?.payout_method || "—"}</TableCell>
                       <TableCell>{format(new Date(p.created_at), "MMM d, yyyy")}</TableCell>
@@ -303,6 +339,48 @@ export default function Partners() {
 
         {/* Partner Settings */}
         <PartnerSettingsCard />
+
+        {/* Clients Dialog */}
+        <Dialog open={clientsOpen !== null} onOpenChange={() => setClientsOpen(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Clients — {clientsPartnerName}</DialogTitle>
+            </DialogHeader>
+            {clientsLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+            ) : clients.length === 0 ? (
+              <p className="text-center py-4 text-muted-foreground">No clients have signed up under this partner yet</p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">{clients.length} client{clients.length !== 1 ? "s" : ""}</p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Joined</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {clients.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.name}</TableCell>
+                        <TableCell className="text-muted-foreground">{c.email}</TableCell>
+                        <TableCell>
+                          <Badge variant={c.status === "active" ? "default" : "secondary"}>
+                            {c.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{format(new Date(c.created_at), "MMM d, yyyy")}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </VoipLayout>
   );

@@ -37,6 +37,10 @@ interface TokenUsage {
   id: number;
   client_user_id: number;
   client_name: string;
+  client_email: string;
+  client_status: string;
+  client_role: string;
+  client_created_at: string;
   created_at: string;
 }
 
@@ -334,31 +338,46 @@ export default function PartnerTokens() {
 
         {/* Usage History Dialog */}
         <Dialog open={usageOpen !== null} onOpenChange={() => setUsageOpen(null)}>
-          <DialogContent>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Referral Link Usage</DialogTitle>
+              <DialogTitle>Clients Signed Up via This Link</DialogTitle>
             </DialogHeader>
             {usageLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
             ) : usageData.length === 0 ? (
-              <p className="text-center py-4 text-muted-foreground">No usage yet</p>
+              <p className="text-center py-4 text-muted-foreground">No clients have signed up with this link yet</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {usageData.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.client_name}</TableCell>
-                      <TableCell>{format(new Date(u.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">{usageData.length} client{usageData.length !== 1 ? "s" : ""} signed up</p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Signed Up</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {usageData.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.client_name}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.client_email}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{u.client_role}</Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={u.client_status === "active" ? "default" : "secondary"}>
+                            {u.client_status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{format(new Date(u.created_at), "MMM d, yyyy HH:mm")}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             )}
           </DialogContent>
         </Dialog>
