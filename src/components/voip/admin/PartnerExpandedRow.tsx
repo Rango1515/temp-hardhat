@@ -2,8 +2,10 @@ import { useState, useEffect } from "react";
 import { useVoipApi } from "@/hooks/useVoipApi";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Link2, Users, UserPlus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, Link2, Users, UserPlus, Copy, Check } from "lucide-react";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface ReferralClient {
   id: number;
@@ -39,8 +41,17 @@ interface PartnerExpandedRowProps {
 
 export function PartnerExpandedRow({ partnerId, colSpan }: PartnerExpandedRowProps) {
   const { apiCall } = useVoipApi();
+  const { toast } = useToast();
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+
+  const copyClientId = (clientId: number) => {
+    navigator.clipboard.writeText(String(clientId));
+    setCopiedId(clientId);
+    toast({ title: "Copied!", description: `Client ID ${clientId} copied to clipboard` });
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -133,7 +144,20 @@ export function PartnerExpandedRow({ partnerId, colSpan }: PartnerExpandedRowPro
                         {/* Show clients who signed up with this token */}
                         {token.clients.map((client) => (
                           <TableRow key={`client-${client.id}`} className="bg-muted/20">
-                            <TableCell colSpan={2} className="pl-8 text-xs">
+                            <TableCell className="pl-8 text-xs">
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono text-muted-foreground">ID: {client.id}</span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0"
+                                  onClick={(e) => { e.stopPropagation(); copyClientId(client.id); }}
+                                >
+                                  {copiedId === client.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                                </Button>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs">
                               <span className="font-medium">{client.name}</span>
                               <span className="text-muted-foreground ml-2">{client.email}</span>
                             </TableCell>
@@ -166,6 +190,7 @@ export function PartnerExpandedRow({ partnerId, colSpan }: PartnerExpandedRowPro
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50">
+                      <TableHead className="text-xs">ID</TableHead>
                       <TableHead className="text-xs">Name</TableHead>
                       <TableHead className="text-xs">Email</TableHead>
                       <TableHead className="text-xs">Status</TableHead>
@@ -175,6 +200,19 @@ export function PartnerExpandedRow({ partnerId, colSpan }: PartnerExpandedRowPro
                   <TableBody>
                     {stats.clients.map((c) => (
                       <TableRow key={c.id}>
+                        <TableCell className="text-xs">
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono">{c.id}</span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 w-5 p-0"
+                              onClick={(e) => { e.stopPropagation(); copyClientId(c.id); }}
+                            >
+                              {copiedId === c.id ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                            </Button>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-xs font-medium">{c.name}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{c.email}</TableCell>
                         <TableCell>
