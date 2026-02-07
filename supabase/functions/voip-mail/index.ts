@@ -384,19 +384,23 @@ async function handleAttachment(folder: string, uid: number, index: number): Pro
 async function handleSend(body: any, adminId: number): Promise<Response> {
   const relayUrl = Deno.env.get("MAIL_RELAY_URL");
   const relayKey = Deno.env.get("MAIL_RELAY_KEY");
+  const mailFrom = Deno.env.get("MAIL_USERNAME") || "admin@hardhathosting.work";
 
   if (!relayUrl || !relayKey) {
     console.error("[voip-mail] MAIL_RELAY_URL or MAIL_RELAY_KEY not configured");
     return errorResponse("Mail relay not configured. Please set MAIL_RELAY_URL and MAIL_RELAY_KEY.", 500);
   }
 
-  console.log(`[voip-mail] Sending email via HTTP relay to ${body.to}`);
+  console.log(`[voip-mail] Sending email via HTTP relay from ${mailFrom} to ${body.to}`);
+
+  const htmlContent = body.body || body.text || "";
 
   try {
     const relayBody = {
       to: body.to,
+      from: `"Admin" <${mailFrom}>`,
       subject: body.subject,
-      html: body.body || body.text || "",
+      html: htmlContent,
       cc: body.cc || undefined,
       bcc: body.bcc || undefined,
       inReplyTo: body.inReplyTo || undefined,
@@ -420,6 +424,37 @@ async function handleSend(body: any, adminId: number): Promise<Response> {
 
     console.log(`[voip-mail] ✅ Email sent via relay, messageId: ${relayResult.messageId}`);
 
+    // Copy to Sent folder via IMAP so Sent tab shows the message
+    try {
+      const sentRfc822 = buildRfc822Message({
+        from: `"Admin" <${mailFrom}>`,
+        to: body.to,
+        cc: body.cc,
+        subject: body.subject,
+        html: htmlContent,
+        messageId: relayResult.messageId,
+        inReplyTo: body.inReplyTo,
+      });
+
+      const client = await createImapClient();
+      try {
+        // Find the Sent folder
+        const mailboxes = await client.list();
+        const sentFolder = mailboxes.find((mb: any) =>
+          mb.specialUse === "\\Sent" || mb.name.toLowerCase() === "sent"
+        );
+        const sentPath = sentFolder?.path || "Sent";
+        
+        await client.append(sentPath, sentRfc822, ["\\Seen"], new Date());
+        console.log(`[voip-mail] ✅ Copied to ${sentPath} folder`);
+      } finally {
+        try { await client.logout(); } catch { /* ignore */ }
+      }
+    } catch (e: any) {
+      console.warn(`[voip-mail] ⚠️ Failed to copy to Sent folder: ${e?.message}`);
+      // Don't fail the send — email was already delivered
+    }
+
     // Audit log (non-blocking)
     auditLog(adminId, "mail_message_sent", {
       to: body.to,
@@ -432,6 +467,60 @@ async function handleSend(body: any, adminId: number): Promise<Response> {
     const errMsg = err?.message || String(err);
     console.error(`[voip-mail] ❌ HTTP relay failed: ${errMsg}`);
     return errorResponse(`Failed to send email via relay: ${errMsg}`, 500);
+  }
+}
+
+// ─── RFC822 Message Builder ─────────────────────────────────────────────────────
+function buildRfc822Message(opts: {
+  from: string; to: string; cc?: string; subject: string;
+  html: string; messageId?: string; inReplyTo?: string;
+}): string {
+  const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  const date = new Date().toUTCString();
+  
+  let headers = `From: ${opts.from}\r\n`;
+  headers += `To: ${opts.to}\r\n`;
+  if (opts.cc) headers += `Cc: ${opts.cc}\r\n`;
+  headers += `Subject: ${opts.subject}\r\n`;
+  headers += `Date: ${date}\r\n`;
+  if (opts.messageId) headers += `Message-ID: ${opts.messageId}\r\n`;
+  if (opts.inReplyTo) headers += `In-Reply-To: ${opts.inReplyTo}\r\n`;
+  headers += `MIME-Version: 1.0\r\n`;
+  headers += `Content-Type: text/html; charset=utf-8\r\n`;
+  headers += `Content-Transfer-Encoding: 7bit\r\n`;
+  headers += `\r\n`;
+  headers += opts.html || "";
+  
+  return headers;
+}
+
+// ─── Action: Save Draft ─────────────────────────────────────────────────────────
+async function handleSaveDraft(body: any): Promise<Response> {
+  const mailFrom = Deno.env.get("MAIL_USERNAME") || "admin@hardhathosting.work";
+  
+  const draftRfc822 = buildRfc822Message({
+    from: `"Admin" <${mailFrom}>`,
+    to: body.to || "",
+    cc: body.cc,
+    subject: body.subject || "(No Subject)",
+    html: body.body || "",
+    inReplyTo: body.inReplyTo,
+  });
+
+  const client = await createImapClient();
+  try {
+    // Find the Drafts folder
+    const mailboxes = await client.list();
+    const draftsFolder = mailboxes.find((mb: any) =>
+      mb.specialUse === "\\Drafts" || mb.name.toLowerCase() === "drafts"
+    );
+    const draftsPath = draftsFolder?.path || "Drafts";
+
+    await client.append(draftsPath, draftRfc822, ["\\Draft", "\\Seen"], new Date());
+    console.log(`[voip-mail] ✅ Draft saved to ${draftsPath}`);
+    return json({ success: true });
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
   }
 }
 
@@ -682,6 +771,12 @@ Deno.serve(async (req) => {
         const body = await req.json();
         if (!body.folder) return errorResponse("folder required");
         return await handleClear(body.folder, parseInt(payload.sub));
+      }
+
+      case "save-draft": {
+        if (req.method !== "POST") return errorResponse("POST required", 405);
+        const body = await req.json();
+        return await handleSaveDraft(body);
       }
 
       default:

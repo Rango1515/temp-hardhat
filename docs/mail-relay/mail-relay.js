@@ -89,7 +89,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     const data = JSON.parse(body);
-    const { to, subject, html, cc, bcc, inReplyTo } = data;
+    const { to, from, subject, html, cc, bcc, inReplyTo } = data;
 
     if (!to || !subject) {
       res.writeHead(400, { "Content-Type": "application/json" });
@@ -98,7 +98,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const mailOptions = {
-      from: `"Admin" <${MAIL_FROM}>`,
+      from: from || `"Admin" <${MAIL_FROM}>`,
       to,
       subject,
       html: html || "",

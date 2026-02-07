@@ -343,8 +343,46 @@ export default function MailInbox() {
       toast({ title: "Email sent successfully" });
       setIsComposing(false);
       setCompose({ to: "", cc: "", subject: "", body: "", inReplyTo: "" });
+      // Refresh folders to update Sent count
+      loadFolders();
+      if (activeFolder.toLowerCase().includes("sent")) {
+        loadMessages(activeFolder, page);
+      }
     }
     setSendingEmail(false);
+  };
+
+  const [savingDraft, setSavingDraft] = useState(false);
+
+  const handleSaveDraft = async () => {
+    if (!compose.subject && !compose.body && !compose.to) {
+      toast({ title: "Nothing to save", description: "Add content before saving", variant: "destructive" });
+      return;
+    }
+    setSavingDraft(true);
+    const result = await apiCall("voip-mail", {
+      method: "POST",
+      params: { action: "save-draft" },
+      body: {
+        to: compose.to || "",
+        cc: compose.cc || undefined,
+        subject: compose.subject || "(No Subject)",
+        body: compose.body || "",
+        inReplyTo: compose.inReplyTo || undefined,
+      },
+    });
+    if (result.error) {
+      toast({ title: "Failed to save draft", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Draft saved" });
+      setIsComposing(false);
+      setCompose({ to: "", cc: "", subject: "", body: "", inReplyTo: "" });
+      loadFolders();
+      if (activeFolder.toLowerCase().includes("draft")) {
+        loadMessages(activeFolder, page);
+      }
+    }
+    setSavingDraft(false);
   };
 
   const handleMarkUnread = async (uid: number) => {
@@ -823,6 +861,14 @@ export default function MailInbox() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
+              <label className="text-sm font-medium text-foreground">From</label>
+              <Input
+                value="admin@hardhathosting.work"
+                disabled
+                className="bg-muted text-muted-foreground"
+              />
+            </div>
+            <div>
               <label className="text-sm font-medium text-foreground">To</label>
               <Input
                 placeholder="recipient@example.com"
@@ -856,11 +902,18 @@ export default function MailInbox() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsComposing(false)} disabled={sendingEmail}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsComposing(false)} disabled={sendingEmail || savingDraft}>
               Cancel
             </Button>
-            <Button onClick={handleSend} disabled={sendingEmail}>
+            <Button variant="secondary" onClick={handleSaveDraft} disabled={sendingEmail || savingDraft}>
+              {savingDraft ? (
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving...</>
+              ) : (
+                <><PenSquare className="w-4 h-4 mr-1" /> Save Draft</>
+              )}
+            </Button>
+            <Button onClick={handleSend} disabled={sendingEmail || savingDraft}>
               {sendingEmail ? (
                 <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Sending...</>
               ) : (
