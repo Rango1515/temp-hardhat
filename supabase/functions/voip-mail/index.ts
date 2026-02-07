@@ -69,26 +69,57 @@ async function auditLog(adminId: number, action: string, details: Record<string,
 }
 
 // ─── IMAP Connection Helper ─────────────────────────────────────────────────────
-async function createImapClient(opts?: { socketTimeout?: number }) {
+async function createImapClient(opts?: { socketTimeout?: number; retries?: number }) {
+  const maxRetries = opts?.retries ?? 2;
+  const host = Deno.env.get("IMAP_HOST");
   const port = parseInt(Deno.env.get("IMAP_PORT") || "993");
-  const client = new ImapFlow({
-    host: Deno.env.get("IMAP_HOST")!,
-    port,
-    secure: port === 993,
-    auth: {
-      user: Deno.env.get("MAIL_USERNAME")!,
-      pass: Deno.env.get("MAIL_PASSWORD")!,
-    },
-    logger: false,
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 20000,
-    greetingTimeout: 15000,
-    socketTimeout: opts?.socketTimeout || 45000,
-  });
+  const user = Deno.env.get("MAIL_USERNAME");
+  const pass = Deno.env.get("MAIL_PASSWORD");
 
-  await client.connect();
-  console.log("[voip-mail] IMAP connected");
-  return client;
+  if (!host || !user || !pass) {
+    throw new Error("Mail server configuration missing (IMAP_HOST, MAIL_USERNAME, or MAIL_PASSWORD)");
+  }
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delay = 1000 * attempt;
+      console.log(`[voip-mail] IMAP retry ${attempt}/${maxRetries} after ${delay}ms...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+
+    const client = new ImapFlow({
+      host,
+      port,
+      secure: port === 993,
+      auth: { user, pass },
+      logger: false,
+      tls: { rejectUnauthorized: false },
+      connectionTimeout: 15000,
+      greetingTimeout: 10000,
+      socketTimeout: opts?.socketTimeout || 45000,
+      emitLogs: false,
+    });
+
+    // Prevent unhandled error events from crashing the worker
+    client.on("error", (err: Error) => {
+      console.warn(`[voip-mail] IMAP client error event: ${err?.message}`);
+    });
+
+    try {
+      await withTimeout(client.connect(), 20000, "IMAP connect");
+      console.log("[voip-mail] IMAP connected");
+      return client;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[voip-mail] IMAP connect attempt ${attempt + 1} failed: ${err?.message}`);
+      try { await client.logout(); } catch { /* ignore */ }
+      try { client.close(); } catch { /* ignore */ }
+    }
+  }
+
+  throw new Error(`Mail server unreachable after ${maxRetries + 1} attempts: ${lastError?.message || "unknown error"}`);
 }
 
 // ─── Content Size Constants ─────────────────────────────────────────────────────
