@@ -121,6 +121,53 @@ function bufferToBase64(buffer: Uint8Array | ArrayBuffer): string {
   return btoa(binary);
 }
 
+// ─── Structure Parsing Helpers ──────────────────────────────────────────────────
+interface TextPartInfo {
+  part: string;
+  type: string;
+  charset: string;
+}
+
+interface AttachmentMeta {
+  index: number;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
+function extractPartsFromStructure(structure: any): { textParts: TextPartInfo[]; attachments: AttachmentMeta[] } {
+  const textParts: TextPartInfo[] = [];
+  const attachments: AttachmentMeta[] = [];
+  let attIdx = 0;
+
+  function walk(node: any) {
+    if (!node) return;
+    const type = (node.type || "").toLowerCase();
+
+    if ((type === "text/plain" || type === "text/html") && node.disposition !== "attachment") {
+      textParts.push({
+        part: node.part || "1",
+        type,
+        charset: (node.parameters?.charset || "utf-8").toLowerCase(),
+      });
+    } else if (node.disposition === "attachment") {
+      attachments.push({
+        index: attIdx++,
+        filename: node.dispositionParameters?.filename || node.parameters?.name || `attachment-${attIdx}`,
+        contentType: type || "application/octet-stream",
+        size: node.size || 0,
+      });
+    }
+
+    if (node.childNodes) {
+      node.childNodes.forEach(walk);
+    }
+  }
+
+  walk(structure);
+  return { textParts, attachments };
+}
+
 // ─── Action: List Folders ───────────────────────────────────────────────────────
 async function handleFolders(): Promise<Response> {
   const client = await createImapClient();
@@ -205,66 +252,98 @@ async function handleList(folder: string, page: number): Promise<Response> {
 
 // ─── Action: Read Message ───────────────────────────────────────────────────────
 async function handleRead(folder: string, uid: number, adminId: number): Promise<Response> {
-
-  const doRead = async () => {
-    const client = await createImapClient();
+  const client = await createImapClient();
+  try {
+    const lock = await client.getMailboxLock(folder);
     try {
-      const lock = await client.getMailboxLock(folder);
-      try {
-        const downloadResult = await client.download(uid.toString(), undefined, { uid: true });
-        if (!downloadResult?.content) {
-          return errorResponse("Message not found", 404);
+      // Step 1: Fetch metadata only — fast, no content download
+      const msg = await client.fetchOne(uid.toString(), {
+        envelope: true,
+        flags: true,
+        bodyStructure: true,
+      }, { uid: true });
+
+      if (!msg) return errorResponse("Message not found", 404);
+
+      let html = "";
+      let text = "";
+      let attachments: AttachmentMeta[] = [];
+      const structure = msg.bodyStructure;
+      const isMultipart = structure?.childNodes?.length > 0;
+
+      if (isMultipart) {
+        // Optimized: download only text parts, skip large inline images/attachments
+        const parts = extractPartsFromStructure(structure);
+        attachments = parts.attachments;
+
+        for (const tp of parts.textParts) {
+          try {
+            const dl = await client.download(uid.toString(), tp.part, { uid: true });
+            if (dl?.content) {
+              const raw = await new Response(dl.content).arrayBuffer();
+              const decoded = new TextDecoder(tp.charset, { fatal: false }).decode(raw);
+              if (tp.type === "text/html" && !html) html = decoded;
+              else if (tp.type === "text/plain" && !text) text = decoded;
+            }
+          } catch (e: any) {
+            console.warn(`[voip-mail] Part ${tp.part} download failed:`, e?.message);
+          }
         }
-
-        const parsed = await simpleParser(downloadResult.content);
-
-        // Mark as read (non-blocking)
-        client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true }).catch((e: any) => {
-          console.warn("[voip-mail] Could not mark as read:", e);
-        });
-
-        const attachments = (parsed.attachments || []).map((att: any, index: number) => ({
-          index,
-          filename: att.filename || `attachment-${index}`,
+      } else {
+        // Simple non-multipart message: download full and parse
+        const dl = await client.download(uid.toString(), undefined, { uid: true });
+        if (!dl?.content) return errorResponse("Message not found", 404);
+        const parsed = await simpleParser(dl.content);
+        html = parsed.html || "";
+        text = parsed.text || "";
+        attachments = (parsed.attachments || []).map((att: any, i: number) => ({
+          index: i,
+          filename: att.filename || `attachment-${i}`,
           contentType: att.contentType || "application/octet-stream",
           size: att.size || 0,
         }));
-
-        // Audit log (non-blocking)
-        auditLog(adminId, "mail_message_opened", {
-          subject: parsed.subject,
-          from: parsed.from?.text,
-          folder,
-          uid,
-        });
-
-        console.log(`[voip-mail] Read message UID ${uid} from ${folder}`);
-        return json({
-          message: {
-            uid,
-            from: parsed.from?.text || "Unknown",
-            fromAddress: parsed.from?.value?.[0]?.address || "",
-            to: parsed.to?.text || "",
-            cc: parsed.cc?.text || "",
-            subject: parsed.subject || "(No Subject)",
-            date: parsed.date?.toISOString() || new Date().toISOString(),
-            html: parsed.html || "",
-            text: parsed.text || "",
-            read: true,
-            attachments,
-            messageId: parsed.messageId || "",
-            inReplyTo: parsed.inReplyTo || "",
-          },
-        });
-      } finally {
-        lock.release();
       }
-    } finally {
-      try { await client.logout(); } catch { /* ignore */ }
-    }
-  };
 
-  return withTimeout(doRead(), 45000, "Mail read");
+      // Mark as read (non-blocking)
+      client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true }).catch(() => {});
+
+      // Audit log (non-blocking)
+      auditLog(adminId, "mail_message_opened", {
+        subject: msg.envelope?.subject,
+        from: msg.envelope?.from?.[0]?.address,
+        folder,
+        uid,
+      });
+
+      const from = msg.envelope?.from?.[0];
+      const toList = msg.envelope?.to || [];
+      const ccList = msg.envelope?.cc || [];
+
+      console.log(`[voip-mail] Read UID ${uid} from ${folder} (${isMultipart ? "multipart-optimized" : "simple"})`);
+
+      return json({
+        message: {
+          uid,
+          from: from ? (from.name ? `"${from.name}" <${from.address}>` : from.address || "Unknown") : "Unknown",
+          fromAddress: from?.address || "",
+          to: toList.map((a: any) => a.name ? `${a.name} <${a.address}>` : a.address || "").join(", "),
+          cc: ccList.map((a: any) => a.name ? `${a.name} <${a.address}>` : a.address || "").join(", "),
+          subject: msg.envelope?.subject || "(No Subject)",
+          date: msg.envelope?.date?.toISOString() || new Date().toISOString(),
+          html,
+          text,
+          read: true,
+          attachments,
+          messageId: msg.envelope?.messageId || "",
+          inReplyTo: msg.envelope?.inReplyTo || "",
+        },
+      });
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
 }
 
 // ─── Action: Download Attachment ────────────────────────────────────────────────
