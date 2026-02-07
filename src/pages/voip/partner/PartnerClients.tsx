@@ -1,16 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { useVoipApi } from "@/hooks/useVoipApi";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Loader2, ChevronLeft, ChevronRight, Eye, Phone, Clock, Target, CalendarDays, TrendingUp, BarChart3, Link2, Plus, Copy, Trash2, Check } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Eye, Phone, Clock, Target, CalendarDays, TrendingUp, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
-import { toast } from "sonner";
 
 interface Client {
   id: number;
@@ -38,16 +35,6 @@ interface ClientDetail {
   recentCalls: Array<{ id: number; to_number: string; outcome: string; duration_seconds: number; start_time: string; notes: string }>;
   revenue: Array<{ id: number; amount: number; type: string; created_at: string }>;
   analytics: ClientAnalytics;
-}
-
-interface ReferralToken {
-  id: number;
-  token_code: string;
-  referral_link: string;
-  max_uses: number | null;
-  uses_count: number;
-  status: string;
-  created_at: string;
 }
 
 function formatDuration(seconds: number): string {
@@ -80,14 +67,6 @@ export default function PartnerClients() {
   const [selectedClient, setSelectedClient] = useState<ClientDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Referral tokens state
-  const [tokens, setTokens] = useState<ReferralToken[]>([]);
-  const [tokensLoading, setTokensLoading] = useState(true);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [maxUses, setMaxUses] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [copiedId, setCopiedId] = useState<number | null>(null);
-
   const fetchClients = useCallback(async () => {
     setLoading(true);
     const result = await apiCall<{ clients: Client[]; pagination: { total: number } }>("voip-partner", {
@@ -100,19 +79,7 @@ export default function PartnerClients() {
     setLoading(false);
   }, [apiCall, page]);
 
-  const fetchTokens = useCallback(async () => {
-    setTokensLoading(true);
-    const result = await apiCall<{ tokens: ReferralToken[] }>("voip-partner", {
-      params: { action: "my-tokens" },
-    });
-    if (result.data) {
-      setTokens(result.data.tokens);
-    }
-    setTokensLoading(false);
-  }, [apiCall]);
-
   useEffect(() => { fetchClients(); }, [fetchClients]);
-  useEffect(() => { fetchTokens(); }, [fetchTokens]);
 
   const viewClient = async (clientId: number) => {
     setDetailLoading(true);
@@ -123,131 +90,11 @@ export default function PartnerClients() {
     setDetailLoading(false);
   };
 
-  const createToken = async () => {
-    setCreating(true);
-    const result = await apiCall<{ token: ReferralToken }>("voip-partner", {
-      method: "POST",
-      params: { action: "my-tokens" },
-      body: { maxUses: maxUses ? parseInt(maxUses) : null },
-    });
-    if (result.data) {
-      setTokens(prev => [result.data!.token, ...prev]);
-      toast.success("Referral link created!");
-      setCreateOpen(false);
-      setMaxUses("");
-    } else {
-      toast.error(result.error || "Failed to create referral link");
-    }
-    setCreating(false);
-  };
-
-  const deleteToken = async (tokenId: number) => {
-    const result = await apiCall("voip-partner", {
-      method: "DELETE",
-      params: { action: "my-tokens", tokenId: String(tokenId) },
-    });
-    if (!result.error) {
-      setTokens(prev => prev.filter(t => t.id !== tokenId));
-      toast.success("Referral link deleted");
-    } else {
-      toast.error(result.error || "Failed to delete");
-    }
-  };
-
-  const copyLink = (token: ReferralToken) => {
-    navigator.clipboard.writeText(token.referral_link);
-    setCopiedId(token.id);
-    toast.success("Referral link copied!");
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
   const totalPages = Math.ceil(total / 20);
 
   return (
     <VoipLayout>
       <div className="space-y-6">
-        {/* Referral Links Section */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div className="flex items-center gap-2">
-              <Link2 className="w-5 h-5 text-primary" />
-              <CardTitle className="text-lg">My Referral Links</CardTitle>
-            </div>
-            <Button size="sm" onClick={() => setCreateOpen(true)}>
-              <Plus className="w-4 h-4 mr-1" /> New Link
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {tokensLoading ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              </div>
-            ) : tokens.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                No referral links yet. Create one to start referring clients!
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {tokens.map((token) => (
-                  <div
-                    key={token.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-mono text-foreground truncate">
-                        {token.referral_link}
-                      </p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        <span>Uses: {token.uses_count}{token.max_uses ? ` / ${token.max_uses}` : " (unlimited)"}</span>
-                        <Badge variant={token.status === "active" ? "default" : "secondary"} className="text-xs">
-                          {token.status}
-                        </Badge>
-                        <span>Created {format(new Date(token.created_at), "MMM d, yyyy")}</span>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => copyLink(token)}>
-                      {copiedId === token.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => deleteToken(token.id)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Create Token Dialog */}
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Create Referral Link</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="maxUses">Max Uses (optional)</Label>
-                <Input
-                  id="maxUses"
-                  type="number"
-                  min="1"
-                  placeholder="Unlimited"
-                  value={maxUses}
-                  onChange={(e) => setMaxUses(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Leave empty for unlimited signups
-                </p>
-              </div>
-              <Button className="w-full" onClick={createToken} disabled={creating}>
-                {creating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Generate Referral Link
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Clients Section */}
         <div>
           <h1 className="text-2xl font-bold text-foreground">My Clients</h1>
           <p className="text-muted-foreground">Clients who signed up through your referral links</p>
@@ -261,7 +108,7 @@ export default function PartnerClients() {
               </div>
             ) : clients.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                No clients yet. Share your referral link to get started!
+                No clients yet. Share your invite token to get started!
               </div>
             ) : (
               <Table>
@@ -326,7 +173,6 @@ export default function PartnerClients() {
               </div>
             ) : selectedClient && (
               <div className="space-y-6">
-                {/* Client Info */}
                 <div className="grid grid-cols-3 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Email</p>
@@ -344,7 +190,6 @@ export default function PartnerClients() {
                   </div>
                 </div>
 
-                {/* Analytics Grid */}
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2">
                     <BarChart3 className="w-4 h-4 text-primary" />
@@ -370,7 +215,6 @@ export default function PartnerClients() {
                   </div>
                 </div>
 
-                {/* Recent Calls */}
                 {selectedClient.recentCalls.length > 0 && (
                   <div>
                     <h3 className="font-semibold mb-2 flex items-center gap-2">
@@ -406,7 +250,6 @@ export default function PartnerClients() {
                   </div>
                 )}
 
-                {/* Revenue Events */}
                 {selectedClient.revenue.length > 0 && (
                   <div>
                     <h3 className="font-semibold mb-2">Revenue Events</h3>
