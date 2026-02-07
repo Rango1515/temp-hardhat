@@ -25,6 +25,26 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error("[ErrorBoundary] Caught error:", error, errorInfo);
     this.setState({ errorInfo });
+
+    // Auto-reload once for dynamic import failures (stale chunks after deploy)
+    const isDynamicImportError =
+      error.message.includes("Failed to fetch dynamically imported module") ||
+      error.message.includes("Importing a module script failed") ||
+      error.message.includes("error loading dynamically imported module");
+
+    if (isDynamicImportError) {
+      const reloadKey = "chunk_reload_" + window.location.pathname;
+      const lastReload = sessionStorage.getItem(reloadKey);
+      const now = Date.now();
+
+      // Only auto-reload if we haven't reloaded in the last 10 seconds (prevent loop)
+      if (!lastReload || now - parseInt(lastReload) > 10000) {
+        sessionStorage.setItem(reloadKey, now.toString());
+        console.log("[ErrorBoundary] Stale chunk detected, reloading page...");
+        window.location.reload();
+        return;
+      }
+    }
   }
 
   handleReset = () => {
