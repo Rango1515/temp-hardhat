@@ -69,7 +69,7 @@ async function auditLog(adminId: number, action: string, details: Record<string,
 }
 
 // ─── IMAP Connection Helper ─────────────────────────────────────────────────────
-async function createImapClient() {
+async function createImapClient(opts?: { socketTimeout?: number }) {
   const port = parseInt(Deno.env.get("IMAP_PORT") || "993");
   const client = new ImapFlow({
     host: Deno.env.get("IMAP_HOST")!,
@@ -81,15 +81,19 @@ async function createImapClient() {
     },
     logger: false,
     tls: { rejectUnauthorized: false },
-    connectionTimeout: 15000,
-    greetingTimeout: 10000,
-    socketTimeout: 30000,
+    connectionTimeout: 20000,
+    greetingTimeout: 15000,
+    socketTimeout: opts?.socketTimeout || 45000,
   });
 
   await client.connect();
   console.log("[voip-mail] IMAP connected");
   return client;
 }
+
+// ─── Content Size Constants ─────────────────────────────────────────────────────
+const MAX_HTML_SIZE = 500_000; // 500KB max HTML content
+const MAX_TEXT_PART_SIZE = 300_000; // 300KB max per text part download
 
 // ─── Timeout Helper ─────────────────────────────────────────────────────────────
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -252,7 +256,8 @@ async function handleList(folder: string, page: number): Promise<Response> {
 
 // ─── Action: Read Message ───────────────────────────────────────────────────────
 async function handleRead(folder: string, uid: number, adminId: number): Promise<Response> {
-  const client = await createImapClient();
+  // Use longer socket timeout for reading full messages
+  const client = await createImapClient({ socketTimeout: 60000 });
   try {
     const lock = await client.getMailboxLock(folder);
     try {
@@ -267,6 +272,7 @@ async function handleRead(folder: string, uid: number, adminId: number): Promise
 
       let html = "";
       let text = "";
+      let truncated = false;
       let attachments: AttachmentMeta[] = [];
       const structure = msg.bodyStructure;
       const isMultipart = structure?.childNodes?.length > 0;
@@ -276,40 +282,83 @@ async function handleRead(folder: string, uid: number, adminId: number): Promise
         const parts = extractPartsFromStructure(structure);
         attachments = parts.attachments;
 
+        // Only download text parts that are reasonably sized
         for (const tp of parts.textParts) {
+          // Skip if we already have content of this type
+          if (tp.type === "text/html" && html) continue;
+          if (tp.type === "text/plain" && text) continue;
+
           try {
-            const dl = await client.download(uid.toString(), tp.part, { uid: true });
+            const dl = await withTimeout(
+              client.download(uid.toString(), tp.part, { uid: true }),
+              20000,
+              `Part ${tp.part} download`
+            );
             if (dl?.content) {
               const raw = await new Response(dl.content).arrayBuffer();
-              const decoded = new TextDecoder(tp.charset, { fatal: false }).decode(raw);
-              if (tp.type === "text/html" && !html) html = decoded;
-              else if (tp.type === "text/plain" && !text) text = decoded;
+              
+              // Truncate very large content
+              if (raw.byteLength > MAX_TEXT_PART_SIZE) {
+                const truncatedBuf = raw.slice(0, MAX_TEXT_PART_SIZE);
+                const decoded = new TextDecoder(tp.charset, { fatal: false }).decode(truncatedBuf);
+                if (tp.type === "text/html") {
+                  html = decoded + '\n<!-- Content truncated: email too large -->';
+                  truncated = true;
+                } else if (tp.type === "text/plain") {
+                  text = decoded + '\n\n[Content truncated: email too large]';
+                  truncated = true;
+                }
+              } else {
+                const decoded = new TextDecoder(tp.charset, { fatal: false }).decode(raw);
+                if (tp.type === "text/html") html = decoded;
+                else if (tp.type === "text/plain") text = decoded;
+              }
             }
           } catch (e: any) {
             console.warn(`[voip-mail] Part ${tp.part} download failed:`, e?.message);
+            // If HTML part failed, try to continue with text
           }
         }
+        
+        // If we got no content at all, provide a fallback
+        if (!html && !text) {
+          text = "[Unable to load message content. The email may be too large or in an unsupported format.]";
+        }
       } else {
-        // Simple non-multipart message: download full and parse
-        const dl = await client.download(uid.toString(), undefined, { uid: true });
-        if (!dl?.content) return errorResponse("Message not found", 404);
-        const parsed = await simpleParser(dl.content);
-        html = parsed.html || "";
-        text = parsed.text || "";
-        attachments = (parsed.attachments || []).map((att: any, i: number) => ({
-          index: i,
-          filename: att.filename || `attachment-${i}`,
-          contentType: att.contentType || "application/octet-stream",
-          size: att.size || 0,
-        }));
+        // Simple non-multipart message: download full and parse with timeout
+        try {
+          const dl = await withTimeout(
+            client.download(uid.toString(), undefined, { uid: true }),
+            25000,
+            "Simple message download"
+          );
+          if (!dl?.content) return errorResponse("Message not found", 404);
+          const parsed = await simpleParser(dl.content, { maxHtmlLengthToParse: MAX_HTML_SIZE });
+          html = parsed.html || "";
+          text = parsed.text || "";
+          
+          // Truncate if still too large
+          if (html.length > MAX_HTML_SIZE) {
+            html = html.substring(0, MAX_HTML_SIZE) + '\n<!-- Content truncated: email too large -->';
+            truncated = true;
+          }
+          
+          attachments = (parsed.attachments || []).map((att: any, i: number) => ({
+            index: i,
+            filename: att.filename || `attachment-${i}`,
+            contentType: att.contentType || "application/octet-stream",
+            size: att.size || 0,
+          }));
+        } catch (e: any) {
+          console.warn("[voip-mail] Full message download/parse failed:", e?.message);
+          text = "[Unable to load message content. The email may be too large.]";
+        }
       }
 
-      // Mark as read — await to ensure the flag persists on the IMAP server
-      try {
-        await client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true });
-      } catch (e: any) {
+      // Mark as read — fire and forget to avoid delays
+      client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true }).catch((e: any) => {
         console.warn("[voip-mail] Failed to mark as seen:", e?.message);
-      }
+      });
 
       // Audit log (non-blocking)
       auditLog(adminId, "mail_message_opened", {
@@ -323,7 +372,8 @@ async function handleRead(folder: string, uid: number, adminId: number): Promise
       const toList = msg.envelope?.to || [];
       const ccList = msg.envelope?.cc || [];
 
-      console.log(`[voip-mail] Read UID ${uid} from ${folder} (${isMultipart ? "multipart-optimized" : "simple"})`);
+      const contentSize = (html?.length || 0) + (text?.length || 0);
+      console.log(`[voip-mail] Read UID ${uid} from ${folder} (${isMultipart ? "multipart" : "simple"}, ${contentSize} chars${truncated ? ", truncated" : ""})`);
 
       return json({
         message: {
@@ -337,6 +387,7 @@ async function handleRead(folder: string, uid: number, adminId: number): Promise
           html,
           text,
           read: true,
+          truncated,
           attachments,
           messageId: msg.envelope?.messageId || "",
           inReplyTo: msg.envelope?.inReplyTo || "",
