@@ -3,24 +3,27 @@
  import { cn } from "@/lib/utils";
  import { useVoipAuth } from "@/contexts/VoipAuthContext";
  import { useVoipApi } from "@/hooks/useVoipApi";
- import {
-   LayoutDashboard,
-   Phone,
-   History,
-   Settings,
-   Users,
-   BarChart3,
-   FileText,
-   Ticket,
-   Upload,
-   CalendarDays,
-   TrendingUp,
-   Activity,
-   ScrollText,
-   Trophy,
-    HelpCircle,
-    BookOpen,
-  } from "lucide-react";
+import {
+  LayoutDashboard,
+  Phone,
+  History,
+  Settings,
+  Users,
+  BarChart3,
+  FileText,
+  Ticket,
+  Upload,
+  CalendarDays,
+  TrendingUp,
+  Activity,
+  ScrollText,
+  Trophy,
+  HelpCircle,
+  BookOpen,
+  Handshake,
+  KeyRound,
+  DollarSign,
+} from "lucide-react";
  
  const clientNavItems = [
    { href: "/voip/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -33,23 +36,32 @@
     { href: "/voip/settings", label: "Settings", icon: Settings },
  ];
  
- const adminNavItems = [
-   { href: "/voip/admin", label: "Admin Dashboard", icon: LayoutDashboard },
-   { href: "/voip/admin/users", label: "Users", icon: Users },
-   { href: "/voip/admin/leads", label: "Lead Upload", icon: Upload },
-   { href: "/voip/admin/lead-info", label: "Lead Info", icon: FileText },
-   { href: "/voip/admin/appointments", label: "Appointments", icon: CalendarDays },
-   { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
-   
-   { href: "/voip/admin/client-analytics", label: "Client Analytics", icon: Activity },
-   { href: "/voip/admin/tickets", label: "Tickets", icon: Ticket },
-   { href: "/voip/admin/audit-log", label: "Audit Log", icon: ScrollText },
-   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: FileText },
- ];
+const adminNavItems = [
+  { href: "/voip/admin", label: "Admin Dashboard", icon: LayoutDashboard },
+  { href: "/voip/admin/users", label: "Users", icon: Users },
+  { href: "/voip/admin/leads", label: "Lead Upload", icon: Upload },
+  { href: "/voip/admin/lead-info", label: "Lead Info", icon: FileText },
+  { href: "/voip/admin/appointments", label: "Appointments", icon: CalendarDays },
+  { href: "/voip/admin/duplicates", label: "Duplicate Review", icon: Users },
+  
+  { href: "/voip/admin/client-analytics", label: "Client Analytics", icon: Activity },
+  { href: "/voip/admin/tickets", label: "Tickets", icon: Ticket },
+  { href: "/voip/admin/audit-log", label: "Audit Log", icon: ScrollText },
+  { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: FileText },
+  { href: "/voip/admin/partners", label: "Partners", icon: Handshake },
+  { href: "/voip/admin/partner-tokens", label: "Partner Tokens", icon: KeyRound },
+  { href: "/voip/admin/partner-payouts", label: "Partner Payouts", icon: DollarSign },
+];
+
+const partnerNavItems = [
+  { href: "/voip/partner/dashboard", label: "Partner Dashboard", icon: Handshake },
+  { href: "/voip/partner/clients", label: "My Clients", icon: Users },
+  { href: "/voip/partner/earnings", label: "Earnings", icon: DollarSign },
+];
  
  export function VoipSidebar() {
    const location = useLocation();
-   const { isAdmin } = useVoipAuth();
+   const { isAdmin, isPartner } = useVoipAuth();
    const { apiCall } = useVoipApi();
    const [ticketCount, setTicketCount] = useState(0);
  
@@ -88,7 +100,11 @@
     return () => clearInterval(interval);
   }, [checkTickets, checkFollowups]);
  
-   const navItems = isAdmin ? [...adminNavItems, ...clientNavItems.slice(1)] : clientNavItems;
+  const navItems = isAdmin
+    ? [...adminNavItems, ...clientNavItems.slice(1)]
+    : isPartner
+      ? [...partnerNavItems, ...clientNavItems.slice(1)]
+      : clientNavItems;
  
    return (
      <aside className="hidden md:flex md:flex-col md:w-64 bg-card border-r border-border">
@@ -115,7 +131,7 @@
            const isActive = location.pathname === item.href;
  
            // Add separator before client items when admin
-           const isFirstClientItem = isAdmin && item.href === "/voip/dialer";
+           const isFirstClientItem = (isAdmin || isPartner) && item.href === "/voip/dialer";
  
               // Check for badge indicator
               const isTicketBadge =

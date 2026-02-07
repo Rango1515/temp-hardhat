@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.voip-preferences]
 verify_jwt = false
+
+[functions.voip-partner]
+verify_jwt = false
+
+[functions.voip-partner-admin]
+verify_jwt = false
