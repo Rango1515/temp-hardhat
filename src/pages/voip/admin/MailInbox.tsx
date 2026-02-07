@@ -157,6 +157,8 @@ export default function MailInbox() {
     setLoadingMessage(true);
     setSelectedUid(uid);
     setShowReadingPane(true);
+    setSelectedMessage(null);
+
     const result = await apiCall<{ message: FullMessage }>("voip-mail", {
       params: { action: "read", folder, uid: uid.toString() },
     });
@@ -167,7 +169,16 @@ export default function MailInbox() {
         prev.map((m) => (m.uid === uid ? { ...m, read: true } : m))
       );
     } else if (result.error) {
-      toast({ title: "Failed to load message", description: result.error, variant: "destructive" });
+      const isTimeout = result.error.includes("Failed to fetch") || result.error.includes("timed out");
+      toast({
+        title: "Failed to load message",
+        description: isTimeout
+          ? "The server took too long to respond. Please try again."
+          : result.error,
+        variant: "destructive",
+      });
+      setShowReadingPane(false);
+      setSelectedUid(null);
     }
     setLoadingMessage(false);
   }, [apiCall, toast]);
