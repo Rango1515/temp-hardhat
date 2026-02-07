@@ -104,34 +104,26 @@ serve(async (req) => {
 
         if (req.method === "POST") {
           const body = await req.json();
-          const { name, email, password, phone, payoutMethod } = body;
+          const { name, phone, payoutMethod } = body;
 
-          if (!name || !email || !password) {
-            return new Response(JSON.stringify({ error: "Name, email, and password are required" }), {
+          if (!name) {
+            return new Response(JSON.stringify({ error: "Name is required" }), {
               status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
 
-          // Check for existing email
-          const { data: existing } = await supabase
-            .from("voip_users")
-            .select("id")
-            .eq("email", email.toLowerCase().trim());
-
-          if (existing && existing.length > 0) {
-            return new Response(JSON.stringify({ error: "Email already in use" }), {
-              status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-
-          const passwordHash = await hashPassword(password);
+          // Create a placeholder partner user with a random temp email and password
+          // The partner will set their real email/password during signup
+          const tempId = crypto.getRandomValues(new Uint8Array(8));
+          const tempEmail = `partner-pending-${Array.from(tempId).map(b => b.toString(16).padStart(2, '0')).join('')}@placeholder.local`;
+          const tempPasswordHash = await hashPassword(crypto.randomUUID());
 
           const { data: newPartner, error: createErr } = await supabase
             .from("voip_users")
             .insert({
               name: name.trim(),
-              email: email.toLowerCase().trim(),
-              password_hash: passwordHash,
+              email: tempEmail,
+              password_hash: tempPasswordHash,
               role: "partner",
               status: "active",
             })
@@ -148,16 +140,39 @@ serve(async (req) => {
             status: "active",
           });
 
+          // Auto-generate a partner token for signup
+          const tokenCode = generateTokenCode(20);
+          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+
+          const { data: newToken } = await supabase
+            .from("voip_partner_tokens")
+            .insert({
+              token_code: tokenCode,
+              partner_id: newPartner.id,
+              max_uses: 1,
+              expires_at: expiresAt,
+              created_by: adminId,
+            })
+            .select("id")
+            .single();
+
           // Audit log
           await supabase.from("voip_admin_audit_log").insert({
             admin_id: adminId,
             action: "partner_created",
             entity_type: "partner",
             entity_id: newPartner.id,
-            details: { name, email },
+            details: { name, phone, payoutMethod },
           });
 
-          return new Response(JSON.stringify({ id: newPartner.id, message: "Partner created" }), {
+          console.log(`[voip-partner-admin] Partner ${newPartner.id} created with token ${tokenCode}`);
+
+          return new Response(JSON.stringify({
+            id: newPartner.id,
+            tokenCode,
+            tokenId: newToken?.id,
+            message: "Partner created with signup token",
+          }), {
             status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
