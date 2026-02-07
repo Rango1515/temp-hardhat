@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, ChevronLeft, ChevronRight, Copy, X, Eye, Trash2 } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight, Copy, X, Eye, Trash2, Link } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -119,7 +119,7 @@ export default function PartnerTokens() {
       method: "DELETE",
       params: { action: "partner-tokens", tokenId: String(tokenId) },
     });
-    toast({ title: "Token revoked" });
+    toast({ title: "Referral link revoked" });
     fetchTokens();
   };
 
@@ -128,7 +128,7 @@ export default function PartnerTokens() {
       method: "DELETE",
       params: { action: "partner-tokens", tokenId: String(tokenId), permanent: "true" },
     });
-    toast({ title: "Token deleted permanently" });
+    toast({ title: "Referral link deleted permanently" });
     fetchTokens();
   };
 
@@ -142,9 +142,13 @@ export default function PartnerTokens() {
     setUsageLoading(false);
   };
 
-  const copyToken = (tokenCode: string) => {
-    navigator.clipboard.writeText(tokenCode);
-    toast({ title: "Copied!", description: "Token copied to clipboard" });
+  const REFERRAL_BASE = "https://hardhathosting.work/voip/partner-signup?token=";
+
+  const buildLink = (tokenCode: string) => `${REFERRAL_BASE}${tokenCode}`;
+
+  const copyLink = (tokenCode: string) => {
+    navigator.clipboard.writeText(buildLink(tokenCode));
+    toast({ title: "Copied!", description: "Referral link copied to clipboard" });
   };
 
   const totalPages = Math.ceil(total / 20);
@@ -154,27 +158,27 @@ export default function PartnerTokens() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Partner Tokens</h1>
-            <p className="text-muted-foreground">Manage invite tokens for partners</p>
+            <h1 className="text-2xl font-bold text-foreground">Referral Links</h1>
+            <p className="text-muted-foreground">Manage referral links for partners</p>
           </div>
           <Dialog open={createOpen || !!createdToken} onOpenChange={(open) => { if (!open) { setCreateOpen(false); setCreatedToken(null); } }}>
             <DialogTrigger asChild>
               <Button onClick={() => { setCreateOpen(true); setCreatedToken(null); }}>
-                <Plus className="w-4 h-4 mr-2" /> Generate Token
+                <Plus className="w-4 h-4 mr-2" /> Generate Referral Link
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>{createdToken ? "Token Created!" : "Generate Partner Token"}</DialogTitle>
+                <DialogTitle>{createdToken ? "Referral Link Created!" : "Generate Referral Link"}</DialogTitle>
               </DialogHeader>
               {createdToken ? (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Copy this token now — it won't be shown again in full.
+                    Copy this referral link now — it won't be shown again in full.
                   </p>
                   <div className="flex items-center gap-2">
-                    <Input value={createdToken} readOnly className="font-mono" />
-                    <Button size="sm" variant="outline" onClick={() => copyToken(createdToken)}>
+                    <Input value={buildLink(createdToken)} readOnly className="font-mono text-xs" />
+                    <Button size="sm" variant="outline" onClick={() => copyLink(createdToken)}>
                       <Copy className="w-4 h-4" />
                     </Button>
                   </div>
@@ -195,7 +199,7 @@ export default function PartnerTokens() {
                   </div>
                   <div className="flex items-center gap-3">
                     <Switch checked={isMultiUse} onCheckedChange={setIsMultiUse} />
-                    <Label>Multi-use token</Label>
+                    <Label>Multi-use link</Label>
                   </div>
                   {isMultiUse && (
                     <div className="space-y-2">
@@ -207,9 +211,9 @@ export default function PartnerTokens() {
                     <Label>Expires At (optional)</Label>
                     <Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
                   </div>
-                  <Button onClick={handleCreate} disabled={creating} className="w-full">
+                   <Button onClick={handleCreate} disabled={creating} className="w-full">
                     {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                    Generate Token
+                    Generate Referral Link
                   </Button>
                 </div>
               )}
@@ -235,12 +239,12 @@ export default function PartnerTokens() {
             {loading ? (
               <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
             ) : tokens.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">No tokens found</div>
+              <div className="text-center py-12 text-muted-foreground">No referral links found</div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Token</TableHead>
+                    <TableHead>Referral Link</TableHead>
                     <TableHead>Partner</TableHead>
                     <TableHead>Uses</TableHead>
                     <TableHead>Status</TableHead>
@@ -252,7 +256,17 @@ export default function PartnerTokens() {
                 <TableBody>
                   {tokens.map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell className="font-mono text-sm">{t.token_display}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Link className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="font-mono text-xs text-muted-foreground truncate max-w-[200px]">
+                            ...?token={t.token_display}
+                          </span>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => copyLink(t.token_code)}>
+                            <Copy className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
                       <TableCell className="font-medium">{t.partner_name}</TableCell>
                       <TableCell>{t.uses_count}{t.max_uses ? `/${t.max_uses}` : "/∞"}</TableCell>
                       <TableCell>
@@ -280,9 +294,9 @@ export default function PartnerTokens() {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Token</AlertDialogTitle>
+                                <AlertDialogTitle>Delete Referral Link</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  This will permanently delete this token and its usage history. This cannot be undone.
+                                  This will permanently delete this referral link and its usage history. This cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -322,7 +336,7 @@ export default function PartnerTokens() {
         <Dialog open={usageOpen !== null} onOpenChange={() => setUsageOpen(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Token Usage History</DialogTitle>
+              <DialogTitle>Referral Link Usage</DialogTitle>
             </DialogHeader>
             {usageLoading ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
