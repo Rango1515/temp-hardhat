@@ -49,7 +49,7 @@ const adminNavItems = [
   { href: "/voip/admin/audit-log", label: "Audit Log", icon: ScrollText },
   { href: "/voip/admin/invite-tokens", label: "Invite Tokens", icon: FileText },
   { href: "/voip/admin/partners", label: "Partners", icon: Handshake },
-  { href: "/voip/admin/partner-tokens", label: "Partner Tokens", icon: KeyRound },
+  { href: "/voip/admin/partner-tokens", label: "Referral Links", icon: KeyRound },
   { href: "/voip/admin/partner-payouts", label: "Partner Payouts", icon: DollarSign },
 ];
 
