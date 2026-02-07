@@ -304,8 +304,12 @@ async function handleRead(folder: string, uid: number, adminId: number): Promise
         }));
       }
 
-      // Mark as read (non-blocking)
-      client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true }).catch(() => {});
+      // Mark as read — await to ensure the flag persists on the IMAP server
+      try {
+        await client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true });
+      } catch (e: any) {
+        console.warn("[voip-mail] Failed to mark as seen:", e?.message);
+      }
 
       // Audit log (non-blocking)
       auditLog(adminId, "mail_message_opened", {
