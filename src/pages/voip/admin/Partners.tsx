@@ -86,7 +86,8 @@ export default function Partners() {
 
   const handleCopyToken = async () => {
     if (!generatedToken) return;
-    const signupUrl = `${window.location.origin}/voip/partner-signup?token=${generatedToken}`;
+    const baseUrl = "https://handy-homesite.lovable.app";
+    const signupUrl = `${baseUrl}/voip/partner-signup?token=${generatedToken}`;
     await navigator.clipboard.writeText(signupUrl);
     setCopied(true);
     toast({ title: "Copied!", description: "Signup link copied to clipboard" });
@@ -151,7 +152,7 @@ export default function Partners() {
                   <div className="flex items-center gap-2">
                     <Input
                       readOnly
-                      value={`${window.location.origin}/voip/partner-signup?token=${generatedToken}`}
+                      value={`https://handy-homesite.lovable.app/voip/partner-signup?token=${generatedToken}`}
                       className="text-xs font-mono"
                     />
                     <Button size="sm" variant="outline" onClick={handleCopyToken}>
