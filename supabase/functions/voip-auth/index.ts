@@ -280,8 +280,69 @@ serve(async (req) => {
             );
           }
 
-          // Hash password and create user linked to partner
           const passwordHash = await hashPassword(password);
+
+          // Check if this is a partner self-signup token
+          // (the partner_id user still has a placeholder email)
+          const { data: partnerUser } = await supabase
+            .from("voip_users")
+            .select("id, email, role")
+            .eq("id", pToken.partner_id)
+            .maybeSingle();
+
+          const isPartnerSelfSignup = partnerUser
+            && partnerUser.role === "partner"
+            && partnerUser.email.endsWith("@placeholder.local");
+
+          if (isPartnerSelfSignup) {
+            // Update the existing placeholder partner account with real info
+            const { error: updateError } = await supabase
+              .from("voip_users")
+              .update({
+                name: name.trim(),
+                email: email.toLowerCase().trim(),
+                password_hash: passwordHash,
+                tos_accepted: true,
+                privacy_accepted: true,
+                consent_accepted_at: new Date().toISOString(),
+              })
+              .eq("id", partnerUser.id);
+
+            if (updateError) throw updateError;
+
+            // Increment uses_count and revoke token (one-time use for self-signup)
+            await supabase
+              .from("voip_partner_tokens")
+              .update({ uses_count: pToken.uses_count + 1, status: "revoked" })
+              .eq("id", pToken.id);
+
+            // Record usage
+            await supabase.from("voip_partner_token_usage").insert({
+              token_id: pToken.id,
+              client_user_id: partnerUser.id,
+            });
+
+            console.log(`[voip-auth] Partner ${partnerUser.id} completed self-signup with token`);
+
+            const token = await createJWT(partnerUser.id, email, "partner", name);
+            const refreshToken = await createRefreshToken(partnerUser.id);
+
+            return new Response(
+              JSON.stringify({
+                token,
+                refreshToken,
+                user: {
+                  id: partnerUser.id,
+                  name: name.trim(),
+                  email: email.toLowerCase().trim(),
+                  role: "partner",
+                },
+              }),
+              { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          // Otherwise it's a client signing up via a partner referral token
           const { data: newUser, error: createError } = await supabase
             .from("voip_users")
             .insert({
