@@ -288,10 +288,15 @@ async function handleSend(body: any, adminId: number): Promise<Response> {
   const nodemailer = (await import("npm:nodemailer@6.9.16")).default;
 
   const port = parseInt(Deno.env.get("SMTP_PORT") || "587");
+  const secure = port === 465;
   const transporter = nodemailer.createTransport({
     host: Deno.env.get("SMTP_HOST")!,
     port,
-    secure: port === 465,
+    secure,
+    // Deno's TLS doesn't respect rejectUnauthorized for STARTTLS upgrades,
+    // so we skip STARTTLS on non-implicit-TLS ports to avoid UnknownIssuer errors
+    // with self-signed VPS certificates.
+    ...(secure ? {} : { ignoreTLS: true }),
     auth: {
       user: Deno.env.get("MAIL_USERNAME")!,
       pass: Deno.env.get("MAIL_PASSWORD")!,
