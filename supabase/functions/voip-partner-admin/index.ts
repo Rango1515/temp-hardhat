@@ -53,7 +53,8 @@ serve(async (req) => {
           let query = supabase
             .from("voip_users")
             .select("id, name, email, status, created_at", { count: "exact" })
-            .eq("role", "partner");
+            .eq("role", "partner")
+            .is("deleted_at", null);
 
           if (search) {
             const s = sanitizeSearchPattern(search);

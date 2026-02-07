@@ -84,6 +84,9 @@ export default function PartnerTokens() {
 
   useEffect(() => { fetchTokens(); fetchPartners(); }, [fetchTokens, fetchPartners]);
 
+  // Refetch partners when the create dialog opens to ensure deleted partners are excluded
+  useEffect(() => { if (createOpen) fetchPartners(); }, [createOpen, fetchPartners]);
+
   const handleCreate = async () => {
     if (!selectedPartner) {
       toast({ title: "Error", description: "Select a partner", variant: "destructive" });
