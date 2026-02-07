@@ -13,17 +13,19 @@ import { ProtectedRoute } from "./components/voip/auth/ProtectedRoute";
 import { AdminRoute } from "./components/voip/auth/AdminRoute";
 import { PartnerRoute } from "./components/voip/auth/PartnerRoute";
 
-// ALL pages lazy-loaded for smaller initial bundle
-const Index = lazy(() => import("./pages/Index"));
-const DemoSite = lazy(() => import("./pages/DemoSite"));
-const ServicePage = lazy(() => import("./pages/seo/ServicePage"));
-const ErrorPage = lazy(() => import("./pages/ErrorPage"));
-const Terms = lazy(() => import("./pages/Terms"));
-const Privacy = lazy(() => import("./pages/Privacy"));
-const VoipAuth = lazy(() => import("./pages/voip/Auth"));
+// Critical pages — eagerly loaded (needed for initial render / entry points)
+import Index from "./pages/Index";
+import DemoSite from "./pages/DemoSite";
+import ServicePage from "./pages/seo/ServicePage";
+import ErrorPage from "./pages/ErrorPage";
+import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
+import VoipAuth from "./pages/voip/Auth";
+import ClientDashboard from "./pages/voip/ClientDashboard";
+import Dialer from "./pages/voip/Dialer";
+
+// Heavy / infrequently-visited pages — lazy-loaded
 const PartnerSignup = lazy(() => import("./pages/voip/PartnerSignup"));
-const ClientDashboard = lazy(() => import("./pages/voip/ClientDashboard"));
-const Dialer = lazy(() => import("./pages/voip/Dialer"));
 const Settings = lazy(() => import("./pages/voip/Settings"));
 const Support = lazy(() => import("./pages/voip/Support"));
 const HowTo = lazy(() => import("./pages/voip/HowTo"));
