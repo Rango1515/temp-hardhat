@@ -536,6 +536,88 @@ serve(async (req) => {
         });
       }
 
+      // ── Partner Referral Stats (expandable row data) ──
+      case "partner-referral-stats": {
+        const statsPartnerId = url.searchParams.get("partnerId");
+        if (!statsPartnerId) {
+          return new Response(JSON.stringify({ error: "partnerId required" }), {
+            status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const pid = parseInt(statsPartnerId);
+
+        // Get all client_referral tokens for this partner
+        const { data: tokens } = await supabase
+          .from("voip_partner_tokens")
+          .select("id, token_code, max_uses, uses_count, status, created_at, purpose")
+          .eq("partner_id", pid)
+          .eq("purpose", "client_referral")
+          .order("created_at", { ascending: false });
+
+        // Get usage records for all tokens
+        const tokenIds = (tokens || []).map(t => t.id);
+        let tokenClientsMap: Record<number, { id: number; name: string; email: string; status: string; created_at: string }[]> = {};
+        let totalSignups = 0;
+
+        if (tokenIds.length > 0) {
+          const { data: usageRecords } = await supabase
+            .from("voip_partner_token_usage")
+            .select("token_id, client_user_id, created_at")
+            .in("token_id", tokenIds);
+
+          const clientIds = [...new Set((usageRecords || []).map(u => u.client_user_id))];
+          let clientMap: Record<number, { id: number; name: string; email: string; status: string; created_at: string }> = {};
+          if (clientIds.length > 0) {
+            const { data: clients } = await supabase
+              .from("voip_users")
+              .select("id, name, email, status, created_at")
+              .in("id", clientIds);
+            for (const c of clients || []) {
+              clientMap[c.id] = { id: c.id, name: c.name, email: c.email, status: c.status, created_at: c.created_at };
+            }
+          }
+
+          for (const u of usageRecords || []) {
+            if (!tokenClientsMap[u.token_id]) tokenClientsMap[u.token_id] = [];
+            const client = clientMap[u.client_user_id];
+            if (client) {
+              tokenClientsMap[u.token_id].push(client);
+              totalSignups++;
+            }
+          }
+        }
+
+        // Also get direct partner_id clients (may have signed up without a token or via partner_signup token)
+        const { data: directClients, count: directCount } = await supabase
+          .from("voip_users")
+          .select("id, name, email, status, created_at", { count: "exact" })
+          .eq("partner_id", pid)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false });
+
+        const enrichedTokens = (tokens || []).map(t => ({
+          id: t.id,
+          token_code_display: t.token_code.substring(0, 12) + "...",
+          token_code: t.token_code,
+          max_uses: t.max_uses,
+          uses_count: t.uses_count,
+          status: t.status,
+          created_at: t.created_at,
+          clients: tokenClientsMap[t.id] || [],
+        }));
+
+        return new Response(JSON.stringify({
+          totalReferralLinks: (tokens || []).length,
+          totalSignups,
+          totalClients: directCount || 0,
+          tokens: enrichedTokens,
+          clients: directClients || [],
+        }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // ── Revenue Events ──
       case "revenue-events": {
         if (req.method === "GET") {
