@@ -80,13 +80,25 @@ async function createImapClient() {
     },
     logger: false,
     tls: { rejectUnauthorized: false },
-    connectionTimeout: 20000,
-    greetingTimeout: 15000,
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 30000,
   });
 
   await client.connect();
   console.log("[voip-mail] IMAP connected");
   return client;
+}
+
+// ─── Timeout Helper ─────────────────────────────────────────────────────────────
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -193,63 +205,66 @@ async function handleList(folder: string, page: number): Promise<Response> {
 // ─── Action: Read Message ───────────────────────────────────────────────────────
 async function handleRead(folder: string, uid: number, adminId: number): Promise<Response> {
   const { simpleParser } = await import("npm:mailparser@3.7.1");
-  const client = await createImapClient();
-  try {
-    const lock = await client.getMailboxLock(folder);
+
+  const doRead = async () => {
+    const client = await createImapClient();
     try {
-      const downloadResult = await client.download(uid.toString(), undefined, { uid: true });
-      if (!downloadResult?.content) {
-        return errorResponse("Message not found", 404);
-      }
-
-      const parsed = await simpleParser(downloadResult.content);
-
-      // Mark as read
+      const lock = await client.getMailboxLock(folder);
       try {
-        await client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true });
-      } catch (e) {
-        console.warn("[voip-mail] Could not mark as read:", e);
-      }
+        const downloadResult = await client.download(uid.toString(), undefined, { uid: true });
+        if (!downloadResult?.content) {
+          return errorResponse("Message not found", 404);
+        }
 
-      const attachments = (parsed.attachments || []).map((att: any, index: number) => ({
-        index,
-        filename: att.filename || `attachment-${index}`,
-        contentType: att.contentType || "application/octet-stream",
-        size: att.size || 0,
-      }));
+        const parsed = await simpleParser(downloadResult.content);
 
-      // Audit log
-      await auditLog(adminId, "mail_message_opened", {
-        subject: parsed.subject,
-        from: parsed.from?.text,
-        folder,
-        uid,
-      });
+        // Mark as read (non-blocking)
+        client.messageFlagsAdd(uid.toString(), ["\\Seen"], { uid: true }).catch((e: any) => {
+          console.warn("[voip-mail] Could not mark as read:", e);
+        });
 
-      console.log(`[voip-mail] Read message UID ${uid} from ${folder}`);
-      return json({
-        message: {
+        const attachments = (parsed.attachments || []).map((att: any, index: number) => ({
+          index,
+          filename: att.filename || `attachment-${index}`,
+          contentType: att.contentType || "application/octet-stream",
+          size: att.size || 0,
+        }));
+
+        // Audit log (non-blocking)
+        auditLog(adminId, "mail_message_opened", {
+          subject: parsed.subject,
+          from: parsed.from?.text,
+          folder,
           uid,
-          from: parsed.from?.text || "Unknown",
-          fromAddress: parsed.from?.value?.[0]?.address || "",
-          to: parsed.to?.text || "",
-          cc: parsed.cc?.text || "",
-          subject: parsed.subject || "(No Subject)",
-          date: parsed.date?.toISOString() || new Date().toISOString(),
-          html: parsed.html || "",
-          text: parsed.text || "",
-          read: true,
-          attachments,
-          messageId: parsed.messageId || "",
-          inReplyTo: parsed.inReplyTo || "",
-        },
-      });
+        });
+
+        console.log(`[voip-mail] Read message UID ${uid} from ${folder}`);
+        return json({
+          message: {
+            uid,
+            from: parsed.from?.text || "Unknown",
+            fromAddress: parsed.from?.value?.[0]?.address || "",
+            to: parsed.to?.text || "",
+            cc: parsed.cc?.text || "",
+            subject: parsed.subject || "(No Subject)",
+            date: parsed.date?.toISOString() || new Date().toISOString(),
+            html: parsed.html || "",
+            text: parsed.text || "",
+            read: true,
+            attachments,
+            messageId: parsed.messageId || "",
+            inReplyTo: parsed.inReplyTo || "",
+          },
+        });
+      } finally {
+        lock.release();
+      }
     } finally {
-      lock.release();
+      try { await client.logout(); } catch { /* ignore */ }
     }
-  } finally {
-    try { await client.logout(); } catch { /* ignore */ }
-  }
+  };
+
+  return withTimeout(doRead(), 45000, "Mail read");
 }
 
 // ─── Action: Download Attachment ────────────────────────────────────────────────
