@@ -44,6 +44,7 @@ const AdminTickets = lazy(() => import("./pages/voip/admin/Tickets"));
 const Partners = lazy(() => import("./pages/voip/admin/Partners"));
 const PartnerTokens = lazy(() => import("./pages/voip/admin/PartnerTokens"));
 const PartnerPayouts = lazy(() => import("./pages/voip/admin/PartnerPayouts"));
+const MailInbox = lazy(() => import("./pages/voip/admin/MailInbox"));
 const PartnerDashboard = lazy(() => import("./pages/voip/partner/PartnerDashboard"));
 const PartnerClients = lazy(() => import("./pages/voip/partner/PartnerClients"));
 const PartnerEarnings = lazy(() => import("./pages/voip/partner/PartnerEarnings"));
@@ -101,6 +102,7 @@ const App = () => (
               <Route path="/voip/admin/partners" element={<AdminRoute><Partners /></AdminRoute>} />
               <Route path="/voip/admin/partner-tokens" element={<AdminRoute><PartnerTokens /></AdminRoute>} />
               <Route path="/voip/admin/partner-payouts" element={<AdminRoute><PartnerPayouts /></AdminRoute>} />
+              <Route path="/voip/admin/mail" element={<AdminRoute><MailInbox /></AdminRoute>} />
 
               {/* Partner Routes */}
               <Route path="/voip/partner/dashboard" element={<PartnerRoute><PartnerDashboard /></PartnerRoute>} />
