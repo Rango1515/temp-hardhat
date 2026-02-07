@@ -90,6 +90,7 @@ export default function MailInbox() {
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
   const initialLoadDone = useRef(false);
+  const prevFolderPage = useRef({ folder: "INBOX", page: 1 });
 
   // ─── Data Loading ───────────────────────────────────────────────────────────
   const refreshFolders = useCallback(async () => {
@@ -141,6 +142,7 @@ export default function MailInbox() {
   }, [selectedUid, loadingMessage, loadMessage, activeFolder]);
 
   // ─── Effects ────────────────────────────────────────────────────────────────
+  // Initial load - runs once
   useEffect(() => {
     if (!initialLoadDone.current) {
       initialLoadDone.current = true;
@@ -150,9 +152,12 @@ export default function MailInbox() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Only re-fetch when folder/page actually changes (not on initial mount)
+  // Re-fetch only when folder/page ACTUALLY changes (skip initial values)
   useEffect(() => {
     if (!initialLoadDone.current) return;
+    // Skip if folder+page haven't actually changed
+    if (prevFolderPage.current.folder === activeFolder && prevFolderPage.current.page === page) return;
+    prevFolderPage.current = { folder: activeFolder, page };
     if (!isSearchActive) {
       refreshMessages(activeFolder, page);
     }
@@ -162,6 +167,7 @@ export default function MailInbox() {
   const handleSelectFolder = (folderPath: string) => {
     setActiveFolder(folderPath);
     setPage(1);
+    prevFolderPage.current = { folder: folderPath, page: 1 };
     setSelectedMessage(null);
     setSelectedUid(null);
     setSearchQuery("");
@@ -169,6 +175,8 @@ export default function MailInbox() {
     setShowReadingPane(false);
     setListError(null);
     setMessageLoadError(null);
+    // Fetch immediately for the new folder
+    refreshMessages(folderPath, 1);
   };
 
   const handleSearch = (query: string) => {
