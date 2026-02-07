@@ -37,16 +37,31 @@ const actionLabels: Record<string, string> = {
   lead_upload: "Lead Upload",
   lead_upload_deleted: "Upload Deleted",
   reset_analytics: "Analytics Reset",
+  api_error: "API Error",
+  mail_message_sent: "Email Sent",
+  mail_message_opened: "Email Opened",
+  mail_message_moved: "Email Moved",
+  mail_message_deleted: "Email Deleted",
+  mail_inbox_cleared: "Inbox Cleared",
+  mail_draft_saved: "Draft Saved",
+  partner_created: "Partner Created",
+  partner_updated: "Partner Updated",
 };
 
 const actionColors: Record<string, "default" | "destructive" | "secondary" | "outline"> = {
   user_delete: "destructive",
   user_suspended: "destructive",
   reset_analytics: "destructive",
+  api_error: "destructive",
+  mail_message_deleted: "destructive",
+  mail_inbox_cleared: "destructive",
   user_reactivated: "default",
   password_reset: "secondary",
   lead_upload: "default",
   lead_upload_deleted: "secondary",
+  mail_message_sent: "default",
+  mail_message_opened: "outline",
+  mail_draft_saved: "outline",
 };
 
 export default function AuditLog() {
