@@ -12,7 +12,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Users, Phone, PhoneCall, FileText, TrendingUp, Loader2, Target, CalendarCheck, BarChart3, RotateCcw } from "lucide-react";
+import { Users, Phone, PhoneCall, FileText, TrendingUp, Loader2, Target, CalendarCheck, BarChart3, RotateCcw, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { getCategoryLabel } from "@/lib/leadCategories";
 import { useToast } from "@/hooks/use-toast";
@@ -88,6 +88,9 @@ export default function AdminDashboard() {
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [masterResetDialogOpen, setMasterResetDialogOpen] = useState(false);
+  const [isMasterResetting, setIsMasterResetting] = useState(false);
+  const [masterResetConfirm, setMasterResetConfirm] = useState("");
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -154,6 +157,25 @@ export default function AdminDashboard() {
     setResetDialogOpen(false);
   };
 
+  const handleMasterReset = async () => {
+    if (masterResetConfirm !== "RESET") return;
+    setIsMasterResetting(true);
+    const result = await apiCall<{ message: string }>("voip-admin-ext", {
+      method: "POST",
+      params: { action: "master-reset" },
+    });
+    if (result.error) {
+      toast({ title: "Master Reset Failed", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Master Reset Complete", description: "All data has been cleared except admin accounts." });
+      fetchData();
+      fetchUserPerf();
+    }
+    setIsMasterResetting(false);
+    setMasterResetDialogOpen(false);
+    setMasterResetConfirm("");
+  };
+
   const formatAction = (action: string) =>
     action.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
@@ -185,9 +207,14 @@ export default function AdminDashboard() {
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Admin Dashboard</h1>
             <p className="text-muted-foreground">System overview and analytics</p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => setResetDialogOpen(true)}>
-            <RotateCcw className="w-4 h-4 mr-1" /> Reset Sessions
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setResetDialogOpen(true)}>
+              <RotateCcw className="w-4 h-4 mr-1" /> Reset Sessions
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => setMasterResetDialogOpen(true)}>
+              <AlertTriangle className="w-4 h-4 mr-1" /> Master Reset
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -360,6 +387,45 @@ export default function AdminDashboard() {
             <AlertDialogCancel disabled={isResetting}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleResetAnalytics} disabled={isResetting} className="bg-destructive text-destructive-foreground">
               {isResetting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Resetting...</> : "Reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Master Reset Dialog */}
+      <AlertDialog open={masterResetDialogOpen} onOpenChange={(open) => { setMasterResetDialogOpen(open); if (!open) setMasterResetConfirm(""); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" /> Master Reset — Danger Zone
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <span className="block">This will <strong>permanently delete ALL data</strong> including:</span>
+              <span className="block text-sm">• All clients / non-admin users</span>
+              <span className="block text-sm">• All leads, calls, appointments</span>
+              <span className="block text-sm">• All analytics, sessions, audit logs</span>
+              <span className="block text-sm">• All partner data, tokens, commissions</span>
+              <span className="block text-sm">• All support tickets, chat messages</span>
+              <span className="block text-sm">• All phone numbers and API keys</span>
+              <span className="block font-semibold mt-2">Admin accounts will be preserved.</span>
+              <span className="block mt-3">Type <strong>RESET</strong> to confirm:</span>
+              <input
+                type="text"
+                value={masterResetConfirm}
+                onChange={(e) => setMasterResetConfirm(e.target.value)}
+                placeholder="Type RESET"
+                className="w-full px-3 py-2 border rounded-md bg-background text-foreground text-sm"
+              />
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isMasterResetting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleMasterReset}
+              disabled={isMasterResetting || masterResetConfirm !== "RESET"}
+              className="bg-destructive text-destructive-foreground"
+            >
+              {isMasterResetting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Resetting...</> : "Master Reset"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

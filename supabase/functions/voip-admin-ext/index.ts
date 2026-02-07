@@ -405,6 +405,20 @@ serve(async (req) => {
 
       // ── Audit log ───────────────────────────────────────
       case "audit-log": {
+        if (req.method === "DELETE") {
+          const { error } = await supabase
+            .from("voip_admin_audit_log")
+            .delete()
+            .gte("id", 0);
+
+          if (error) throw error;
+
+          return new Response(
+            JSON.stringify({ message: "All audit logs cleared" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         const page = parseInt(url.searchParams.get("page") || "1");
         const limit = parseInt(url.searchParams.get("limit") || "50");
         const offset = (page - 1) * limit;
@@ -443,6 +457,81 @@ serve(async (req) => {
             logs: enrichedLogs,
             pagination: { page, limit, total: count || 0 },
           }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // ── Master reset ───────────────────────────────────
+      case "master-reset": {
+        if (req.method !== "POST") {
+          return new Response(
+            JSON.stringify({ error: "Method not allowed" }),
+            { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(`Master reset initiated by admin ${adminId}`);
+
+        // Delete in dependency order
+        // 1. Commissions (depends on revenue_events & partners)
+        await supabase.from("voip_commissions").delete().gte("id", 0);
+        // 2. Revenue events
+        await supabase.from("voip_revenue_events").delete().gte("id", 0);
+        // 3. Partner token usage
+        await supabase.from("voip_partner_token_usage").delete().gte("id", 0);
+        // 4. Partner tokens
+        await supabase.from("voip_partner_tokens").delete().gte("id", 0);
+        // 5. Partner profiles
+        await supabase.from("voip_partner_profiles").delete().gte("id", 0);
+        // 6. Appointments (depends on leads & users)
+        await supabase.from("voip_appointments").delete().gte("id", 0);
+        // 7. Calls (depends on leads & users)
+        await supabase.from("voip_calls").delete().gte("id", 0);
+        // 8. Activity events
+        await supabase.from("voip_activity_events").delete().gte("id", 0);
+        // 9. Worker lead history
+        await supabase.from("voip_worker_lead_history").delete().gte("id", 0);
+        // 10. Duplicate leads
+        await supabase.from("voip_duplicate_leads").delete().gte("id", 0);
+        // 11. Leads
+        await supabase.from("voip_leads").delete().gte("id", 0);
+        // 12. Lead uploads
+        await supabase.from("voip_lead_uploads").delete().gte("id", 0);
+        // 13. User sessions
+        await supabase.from("voip_user_sessions").delete().gte("id", 0);
+        // 14. User preferences
+        await supabase.from("voip_user_preferences").delete().gte("id", 0);
+        // 15. Support ticket messages
+        await supabase.from("voip_support_ticket_messages").delete().gte("id", 0);
+        // 16. Support tickets
+        await supabase.from("voip_support_tickets").delete().gte("id", 0);
+        // 17. Chat messages
+        await supabase.from("voip_chat_messages").delete().gte("id", 0);
+        // 18. Chat channel reads
+        await supabase.from("voip_chat_channel_reads").delete().gte("id", 0);
+        // 19. Chat user status
+        await supabase.from("voip_chat_user_status").delete().gte("id", 0);
+        // 20. Chat channels
+        await supabase.from("voip_chat_channels").delete().gte("id", 0);
+        // 21. Signup tokens
+        await supabase.from("voip_signup_tokens").delete().gte("id", 0);
+        // 22. Refresh tokens
+        await supabase.from("voip_refresh_tokens").delete().gte("id", 0);
+        // 23. API keys
+        await supabase.from("voip_api_keys").delete().gte("id", 0);
+        // 24. Number requests
+        await supabase.from("voip_number_requests").delete().gte("id", 0);
+        // 25. Phone numbers
+        await supabase.from("voip_phone_numbers").delete().gte("id", 0);
+        // 26. Audit log
+        await supabase.from("voip_admin_audit_log").delete().gte("id", 0);
+        // 27. Delete all non-admin users (keep admin accounts)
+        await supabase.from("voip_users").delete().neq("role", "admin");
+
+        console.log("Master reset completed");
+
+        return new Response(
+          JSON.stringify({ message: "Master reset completed. All data cleared except admin accounts." }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
