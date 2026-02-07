@@ -49,6 +49,16 @@ export default function Partners() {
 
   // Expanded rows
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  // Copy partner ID
+  const [copiedPartnerId, setCopiedPartnerId] = useState<number | null>(null);
+
+  const copyPartnerId = (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(String(id));
+    setCopiedPartnerId(id);
+    toast({ title: "Copied!", description: `Partner ID ${id} copied to clipboard` });
+    setTimeout(() => setCopiedPartnerId(null), 2000);
+  };
 
   const toggleExpand = (id: number) => {
     setExpandedRows(prev => {
@@ -232,8 +242,9 @@ export default function Partners() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10"></TableHead>
-                    <TableHead>Name</TableHead>
+                     <TableHead className="w-10"></TableHead>
+                     <TableHead>ID</TableHead>
+                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Clients</TableHead>
@@ -257,6 +268,19 @@ export default function Partners() {
                           ) : (
                             <ChevronDown className="w-4 h-4 text-muted-foreground" />
                           )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <span className="font-mono text-xs text-muted-foreground">{p.id}</span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-5 w-5 p-0"
+                              onClick={(e) => copyPartnerId(p.id, e)}
+                            >
+                              {copiedPartnerId === p.id ? <Check className="w-3 h-3 text-primary" /> : <Copy className="w-3 h-3 text-muted-foreground" />}
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="font-medium">{p.name}</TableCell>
                         <TableCell className="text-muted-foreground">
@@ -315,7 +339,7 @@ export default function Partners() {
                         </TableCell>
                       </TableRow>
                       {expandedRows.has(p.id) && (
-                        <PartnerExpandedRow partnerId={p.id} colSpan={9} />
+                        <PartnerExpandedRow partnerId={p.id} colSpan={10} />
                       )}
                     </>
                   ))}
