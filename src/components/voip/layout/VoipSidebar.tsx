@@ -94,11 +94,11 @@ const partnerNavItems = [
   useEffect(() => {
     checkTickets();
     checkFollowups();
-    // Poll every 15 seconds for more responsive notifications
+    // Poll every 60 seconds (was 15s — reduced 75% fewer API calls)
     const interval = setInterval(() => {
       checkTickets();
       checkFollowups();
-    }, 15000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [checkTickets, checkFollowups]);
  
