@@ -23,6 +23,7 @@ import {
   Handshake,
   KeyRound,
   DollarSign,
+  Mail,
 } from "lucide-react";
  
  const clientNavItems = [
@@ -51,6 +52,7 @@ const adminNavItems = [
   { href: "/voip/admin/partners", label: "Partners", icon: Handshake },
   { href: "/voip/admin/partner-tokens", label: "Referral Links", icon: KeyRound },
   { href: "/voip/admin/partner-payouts", label: "Partner Payouts", icon: DollarSign },
+  { href: "/voip/admin/mail", label: "Mail", icon: Mail },
 ];
 
 const partnerNavItems = [
