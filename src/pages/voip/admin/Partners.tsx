@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, ChevronLeft, ChevronRight, Search, Trash2 } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight, Search, Trash2, Copy, Check } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -36,12 +37,14 @@ export default function Partners() {
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
-  // Create form state
+  // Create form state (simplified)
   const [newName, setNewName] = useState("");
-  const [newEmail, setNewEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newPayoutMethod, setNewPayoutMethod] = useState("");
+
+  // Token result state
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fetchPartners = useCallback(async () => {
     setLoading(true);
@@ -59,27 +62,43 @@ export default function Partners() {
   useEffect(() => { fetchPartners(); }, [fetchPartners]);
 
   const handleCreate = async () => {
-    if (!newName || !newEmail || !newPassword) {
-      toast({ title: "Error", description: "Name, email, and password are required", variant: "destructive" });
+    if (!newName) {
+      toast({ title: "Error", description: "Name is required", variant: "destructive" });
       return;
     }
 
     setCreating(true);
-    const result = await apiCall("voip-partner-admin", {
+    const result = await apiCall<{ id: number; tokenCode: string }>("voip-partner-admin", {
       method: "POST",
       params: { action: "partners" },
-      body: { name: newName, email: newEmail, password: newPassword, phone: newPhone || null, payoutMethod: newPayoutMethod || null },
+      body: { name: newName, phone: newPhone || null, payoutMethod: newPayoutMethod || null },
     });
 
     if (result.error) {
       toast({ title: "Error", description: result.error, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Partner created successfully" });
-      setCreateOpen(false);
-      setNewName(""); setNewEmail(""); setNewPassword(""); setNewPhone(""); setNewPayoutMethod("");
+    } else if (result.data) {
+      toast({ title: "Partner Created", description: "Signup token generated — share it with the partner." });
+      setGeneratedToken(result.data.tokenCode);
       fetchPartners();
     }
     setCreating(false);
+  };
+
+  const handleCopyToken = async () => {
+    if (!generatedToken) return;
+    const signupUrl = `${window.location.origin}/voip/auth?token=${generatedToken}`;
+    await navigator.clipboard.writeText(signupUrl);
+    setCopied(true);
+    toast({ title: "Copied!", description: "Signup link copied to clipboard" });
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCloseCreate = (open: boolean) => {
+    setCreateOpen(open);
+    if (!open) {
+      setNewName(""); setNewPhone(""); setNewPayoutMethod("");
+      setGeneratedToken(null); setCopied(false);
+    }
   };
 
   const toggleStatus = async (partnerId: number, currentStatus: string) => {
@@ -115,40 +134,64 @@ export default function Partners() {
             <h1 className="text-2xl font-bold text-foreground">Partners</h1>
             <p className="text-muted-foreground">Manage partner accounts</p>
           </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog open={createOpen} onOpenChange={handleCloseCreate}>
             <DialogTrigger asChild>
               <Button><Plus className="w-4 h-4 mr-2" /> Create Partner</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Create New Partner</DialogTitle>
+                <DialogTitle>{generatedToken ? "Partner Created!" : "Create New Partner"}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Name *</Label>
-                  <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Partner name" />
+
+              {generatedToken ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Share this signup link with the partner. They'll use it to create their account with their own email and password.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={`${window.location.origin}/voip/auth?token=${generatedToken}`}
+                      className="text-xs font-mono"
+                    />
+                    <Button size="sm" variant="outline" onClick={handleCopyToken}>
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">This token expires in 30 days and can only be used once.</p>
+                  <Button variant="outline" className="w-full" onClick={() => handleCloseCreate(false)}>Done</Button>
                 </div>
-                <div className="space-y-2">
-                  <Label>Email *</Label>
-                  <Input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="partner@example.com" />
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Name *</Label>
+                    <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Partner name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phone</Label>
+                    <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+1..." />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Payout Method</Label>
+                    <Select value={newPayoutMethod} onValueChange={setNewPayoutMethod}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select payout method" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paypal">PayPal</SelectItem>
+                        <SelectItem value="zelle">Zelle</SelectItem>
+                        <SelectItem value="check">Check</SelectItem>
+                        <SelectItem value="wire">Wire Transfer</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={handleCreate} disabled={creating} className="w-full">
+                    {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                    Create Partner & Generate Token
+                  </Button>
                 </div>
-                <div className="space-y-2">
-                  <Label>Password *</Label>
-                  <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 8 chars, 1 uppercase, 1 number" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Phone (optional)</Label>
-                  <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="+1..." />
-                </div>
-                <div className="space-y-2">
-                  <Label>Payout Method (optional)</Label>
-                  <Input value={newPayoutMethod} onChange={(e) => setNewPayoutMethod(e.target.value)} placeholder="PayPal, Zelle, Check..." />
-                </div>
-                <Button onClick={handleCreate} disabled={creating} className="w-full">
-                  {creating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Create Partner
-                </Button>
-              </div>
+              )}
             </DialogContent>
           </Dialog>
         </div>
@@ -188,7 +231,11 @@ export default function Partners() {
                   {partners.map((p) => (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">{p.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{p.email}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {p.email.includes("@placeholder.local") ? (
+                          <Badge variant="outline" className="text-xs">Pending signup</Badge>
+                        ) : p.email}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={p.status === "active" ? "default" : "secondary"}>
                           {p.profile?.status || p.status}
