@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight, Search, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PartnerSettingsCard } from "@/components/voip/admin/PartnerSettingsCard";
@@ -89,6 +90,19 @@ export default function Partners() {
       body: { partnerId, status: newStatus },
     });
     fetchPartners();
+  };
+
+  const deletePartner = async (partnerId: number, partnerName: string) => {
+    const result = await apiCall("voip-partner-admin", {
+      method: "DELETE",
+      params: { action: "partners", partnerId: String(partnerId) },
+    });
+    if (result.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Partner removed", description: `${partnerName} has been deleted` });
+      fetchPartners();
+    }
   };
 
   const totalPages = Math.ceil(total / 20);
@@ -185,13 +199,39 @@ export default function Partners() {
                       <TableCell className="text-muted-foreground">{p.profile?.payout_method || "—"}</TableCell>
                       <TableCell>{format(new Date(p.created_at), "MMM d, yyyy")}</TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => toggleStatus(p.id, p.profile?.status || p.status)}
-                        >
-                          {(p.profile?.status || p.status) === "active" ? "Pause" : "Activate"}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => toggleStatus(p.id, p.profile?.status || p.status)}
+                          >
+                            {(p.profile?.status || p.status) === "active" ? "Pause" : "Activate"}
+                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Partner</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently remove <strong>{p.name}</strong>, their tokens, and audit log entries. This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => deletePartner(p.id, p.name)}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
