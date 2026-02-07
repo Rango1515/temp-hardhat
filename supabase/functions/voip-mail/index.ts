@@ -1,6 +1,9 @@
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { supabase } from "../_shared/db.ts";
+import { ImapFlow } from "npm:imapflow@1.0.171";
+import { simpleParser } from "npm:mailparser@3.7.1";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
 interface MailFolder {
@@ -67,8 +70,6 @@ async function auditLog(adminId: number, action: string, details: Record<string,
 
 // ─── IMAP Connection Helper ─────────────────────────────────────────────────────
 async function createImapClient() {
-  const { ImapFlow } = await import("npm:imapflow@1.0.171");
-
   const port = parseInt(Deno.env.get("IMAP_PORT") || "993");
   const client = new ImapFlow({
     host: Deno.env.get("IMAP_HOST")!,
@@ -204,7 +205,6 @@ async function handleList(folder: string, page: number): Promise<Response> {
 
 // ─── Action: Read Message ───────────────────────────────────────────────────────
 async function handleRead(folder: string, uid: number, adminId: number): Promise<Response> {
-  const { simpleParser } = await import("npm:mailparser@3.7.1");
 
   const doRead = async () => {
     const client = await createImapClient();
@@ -269,7 +269,6 @@ async function handleRead(folder: string, uid: number, adminId: number): Promise
 
 // ─── Action: Download Attachment ────────────────────────────────────────────────
 async function handleAttachment(folder: string, uid: number, index: number): Promise<Response> {
-  const { simpleParser } = await import("npm:mailparser@3.7.1");
   const client = await createImapClient();
   try {
     const lock = await client.getMailboxLock(folder);
@@ -300,7 +299,6 @@ async function handleAttachment(folder: string, uid: number, index: number): Pro
 
 // ─── Action: Send Email ─────────────────────────────────────────────────────────
 async function handleSend(body: any, adminId: number): Promise<Response> {
-  const nodemailer = (await import("npm:nodemailer@6.9.16")).default;
 
   const port = parseInt(Deno.env.get("SMTP_PORT") || "587");
   const secure = port === 465;
