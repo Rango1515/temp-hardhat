@@ -86,7 +86,7 @@ export default function Partners() {
 
   const handleCopyToken = async () => {
     if (!generatedToken) return;
-    const signupUrl = `${window.location.origin}/voip/auth?token=${generatedToken}`;
+    const signupUrl = `${window.location.origin}/voip/partner-signup?token=${generatedToken}`;
     await navigator.clipboard.writeText(signupUrl);
     setCopied(true);
     toast({ title: "Copied!", description: "Signup link copied to clipboard" });
@@ -151,14 +151,14 @@ export default function Partners() {
                   <div className="flex items-center gap-2">
                     <Input
                       readOnly
-                      value={`${window.location.origin}/voip/auth?token=${generatedToken}`}
+                      value={`${window.location.origin}/voip/partner-signup?token=${generatedToken}`}
                       className="text-xs font-mono"
                     />
                     <Button size="sm" variant="outline" onClick={handleCopyToken}>
                       {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">This token expires in 30 days and can only be used once.</p>
+                  <p className="text-xs text-muted-foreground">This token can only be used once.</p>
                   <Button variant="outline" className="w-full" onClick={() => handleCloseCreate(false)}>Done</Button>
                 </div>
               ) : (

@@ -18,6 +18,7 @@ import { ProtectedRoute } from "./components/voip/auth/ProtectedRoute";
 import { AdminRoute } from "./components/voip/auth/AdminRoute";
 import { PartnerRoute } from "./components/voip/auth/PartnerRoute";
 import VoipAuth from "./pages/voip/Auth";
+const PartnerSignup = lazy(() => import("./pages/voip/PartnerSignup"));
 import ClientDashboard from "./pages/voip/ClientDashboard";
 import Dialer from "./pages/voip/Dialer";
 import Settings from "./pages/voip/Settings";
@@ -74,6 +75,7 @@ const App = () => (
 
               {/* VoIP Auth */}
               <Route path="/voip/auth" element={<VoipAuth />} />
+              <Route path="/voip/partner-signup" element={<PartnerSignup />} />
 
               {/* VoIP Client Routes */}
               <Route path="/voip/dashboard" element={<ProtectedRoute><ClientDashboard /></ProtectedRoute>} />
