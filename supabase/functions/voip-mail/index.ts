@@ -382,46 +382,69 @@ async function handleAttachment(folder: string, uid: number, index: number): Pro
 
 // ─── Action: Send Email ─────────────────────────────────────────────────────────
 async function handleSend(body: any, adminId: number): Promise<Response> {
+  const host = Deno.env.get("SMTP_HOST")!;
+  const configuredPort = parseInt(Deno.env.get("SMTP_PORT") || "587");
+  const username = Deno.env.get("MAIL_USERNAME")!;
+  const password = Deno.env.get("MAIL_PASSWORD")!;
 
-  const port = parseInt(Deno.env.get("SMTP_PORT") || "587");
-  const secure = port === 465;
-  const transporter = nodemailer.createTransport({
-    host: Deno.env.get("SMTP_HOST")!,
-    port,
-    secure,
-    // Deno edge runtime cannot perform STARTTLS upgrades reliably,
-    // so skip TLS negotiation on non-implicit-TLS ports (587).
-    // Mail is still authenticated; the VPS connection is internal.
-    ...(secure ? {} : { ignoreTLS: true }),
-    auth: {
-      user: Deno.env.get("MAIL_USERNAME")!,
-      pass: Deno.env.get("MAIL_PASSWORD")!,
-    },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 15000,
-  });
+  console.log(`[voip-mail] Attempting SMTP send to ${body.to} via ${host}:${configuredPort}`);
 
-  const mailOptions: any = {
-    from: `"Admin" <${Deno.env.get("MAIL_USERNAME")}>`,
-    to: body.to,
-    subject: body.subject,
-    html: body.body || body.text || "",
-  };
+  // Try configured port first, then fallback to alternate
+  const portsToTry = configuredPort === 465 ? [465, 587] : [587, 465];
+  let lastError: Error | null = null;
 
-  if (body.cc) mailOptions.cc = body.cc;
-  if (body.bcc) mailOptions.bcc = body.bcc;
-  if (body.inReplyTo) mailOptions.inReplyTo = body.inReplyTo;
+  for (const port of portsToTry) {
+    const secure = port === 465;
+    console.log(`[voip-mail] Trying SMTP port ${port} (secure=${secure})...`);
 
-  await transporter.sendMail(mailOptions);
+    try {
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure,
+        ...(secure ? {} : { ignoreTLS: true }),
+        auth: { user: username, pass: password },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 12000,
+        greetingTimeout: 8000,
+        socketTimeout: 15000,
+      });
 
-  await auditLog(adminId, "mail_message_sent", {
-    to: body.to,
-    subject: body.subject,
-    cc: body.cc || null,
-  });
+      const mailOptions: any = {
+        from: `"Admin" <${username}>`,
+        to: body.to,
+        subject: body.subject,
+        html: body.body || body.text || "",
+      };
 
-  console.log(`[voip-mail] Sent email to ${body.to}: ${body.subject}`);
-  return json({ success: true });
+      if (body.cc) mailOptions.cc = body.cc;
+      if (body.bcc) mailOptions.bcc = body.bcc;
+      if (body.inReplyTo) mailOptions.inReplyTo = body.inReplyTo;
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[voip-mail] Sent email via port ${port}, messageId: ${info.messageId}`);
+
+      // Audit log (non-blocking)
+      auditLog(adminId, "mail_message_sent", {
+        to: body.to,
+        subject: body.subject,
+        cc: body.cc || null,
+        port,
+      }).catch(() => {});
+
+      console.log(`[voip-mail] Sent email to ${body.to}: ${body.subject}`);
+      return json({ success: true });
+    } catch (err: any) {
+      console.error(`[voip-mail] SMTP port ${port} failed:`, err?.message || err);
+      lastError = err;
+      // Try next port
+    }
+  }
+
+  // Both ports failed
+  const errorMsg = lastError?.message || "SMTP connection failed";
+  console.error(`[voip-mail] All SMTP ports failed. Last error:`, errorMsg);
+  return errorResponse(`Failed to send email: ${errorMsg}`, 500);
 }
 
 // ─── Action: Mark Read/Unread ───────────────────────────────────────────────────
