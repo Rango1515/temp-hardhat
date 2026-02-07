@@ -363,7 +363,7 @@ serve(async (req) => {
           const newCount = pToken.uses_count + 1;
           const tokenUpdates: Record<string, unknown> = { uses_count: newCount };
           if (pToken.max_uses !== null && newCount >= pToken.max_uses) {
-            tokenUpdates.status = "revoked";
+            tokenUpdates.status = "used";
           }
           await supabase
             .from("voip_partner_tokens")
