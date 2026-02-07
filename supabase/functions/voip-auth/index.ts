@@ -311,10 +311,10 @@ serve(async (req) => {
 
             if (updateError) throw updateError;
 
-            // Increment uses_count and revoke token (one-time use for self-signup)
+            // Increment uses_count and mark token as used (one-time use for self-signup)
             await supabase
               .from("voip_partner_tokens")
-              .update({ uses_count: pToken.uses_count + 1, status: "revoked" })
+              .update({ uses_count: pToken.uses_count + 1, status: "used" })
               .eq("id", pToken.id);
 
             // Record usage
