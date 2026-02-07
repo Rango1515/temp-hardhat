@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { useVoipApi } from "@/hooks/useVoipApi";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Loader2, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Eye, Phone, Clock, Target, CalendarDays, TrendingUp, BarChart3 } from "lucide-react";
 import { format } from "date-fns";
 
 interface Client {
@@ -19,10 +19,43 @@ interface Client {
   totalAppointments: number;
 }
 
+interface ClientAnalytics {
+  totalCalls: number;
+  totalTalkTime: number;
+  totalSessionTime: number;
+  leadsRequested: number;
+  leadsCompleted: number;
+  totalAppointments: number;
+  conversionRate: number;
+  avgTimePerLead: number;
+}
+
 interface ClientDetail {
   client: { id: number; name: string; email: string; status: string; created_at: string };
-  recentCalls: Array<{ id: number; to_number: string; outcome: string; duration_seconds: number; start_time: string }>;
+  recentCalls: Array<{ id: number; to_number: string; outcome: string; duration_seconds: number; start_time: string; notes: string }>;
   revenue: Array<{ id: number; amount: number; type: string; created_at: string }>;
+  analytics: ClientAnalytics;
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function StatCard({ label, value, icon: Icon }: { label: string; value: string | number; icon: React.ElementType }) {
+  return (
+    <div className="bg-muted/50 rounded-lg p-3 space-y-1">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <Icon className="w-4 h-4" />
+        <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
+      </div>
+      <p className="text-lg font-bold text-foreground">{value}</p>
+    </div>
+  );
 }
 
 export default function PartnerClients() {
@@ -105,7 +138,7 @@ export default function PartnerClients() {
                       <TableCell>{client.totalAppointments}</TableCell>
                       <TableCell>
                         <Button size="sm" variant="ghost" onClick={() => viewClient(client.id)}>
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-4 h-4 mr-1" /> View
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -130,7 +163,7 @@ export default function PartnerClients() {
 
         {/* Client Detail Dialog */}
         <Dialog open={!!selectedClient || detailLoading} onOpenChange={() => setSelectedClient(null)}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{selectedClient?.client.name || "Client Details"}</DialogTitle>
             </DialogHeader>
@@ -140,7 +173,8 @@ export default function PartnerClients() {
               </div>
             ) : selectedClient && (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+                {/* Client Info */}
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Email</p>
                     <p className="font-medium">{selectedClient.client.email}</p>
@@ -157,53 +191,92 @@ export default function PartnerClients() {
                   </div>
                 </div>
 
+                {/* Analytics Grid */}
+                <div>
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4 text-primary" />
+                    Performance Analytics
+                  </h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <StatCard label="Total Calls" value={selectedClient.analytics.totalCalls} icon={Phone} />
+                    <StatCard label="Talk Time" value={formatDuration(selectedClient.analytics.totalTalkTime)} icon={Clock} />
+                    <StatCard label="Leads Requested" value={selectedClient.analytics.leadsRequested} icon={Target} />
+                    <StatCard label="Leads Completed" value={selectedClient.analytics.leadsCompleted} icon={Target} />
+                    <StatCard label="Appointments" value={selectedClient.analytics.totalAppointments} icon={CalendarDays} />
+                    <StatCard label="Conversion Rate" value={`${selectedClient.analytics.conversionRate}%`} icon={TrendingUp} />
+                    <StatCard label="Avg Time/Lead" value={formatDuration(selectedClient.analytics.avgTimePerLead)} icon={Clock} />
+                    <StatCard
+                      label="Completion Rate"
+                      value={
+                        selectedClient.analytics.leadsRequested > 0
+                          ? `${((selectedClient.analytics.leadsCompleted / selectedClient.analytics.leadsRequested) * 100).toFixed(1)}%`
+                          : "0%"
+                      }
+                      icon={TrendingUp}
+                    />
+                  </div>
+                </div>
+
+                {/* Recent Calls */}
                 {selectedClient.recentCalls.length > 0 && (
                   <div>
-                    <h3 className="font-semibold mb-2">Recent Calls</h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Number</TableHead>
-                          <TableHead>Outcome</TableHead>
-                          <TableHead>Duration</TableHead>
-                          <TableHead>Date</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedClient.recentCalls.map((call) => (
-                          <TableRow key={call.id}>
-                            <TableCell>{call.to_number}</TableCell>
-                            <TableCell>{call.outcome || "—"}</TableCell>
-                            <TableCell>{call.duration_seconds ? `${Math.floor(call.duration_seconds / 60)}m ${call.duration_seconds % 60}s` : "—"}</TableCell>
-                            <TableCell>{call.start_time ? format(new Date(call.start_time), "MMM d, HH:mm") : "—"}</TableCell>
+                    <h3 className="font-semibold mb-2 flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-primary" />
+                      Recent Calls
+                    </h3>
+                    <div className="border border-border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Number</TableHead>
+                            <TableHead>Outcome</TableHead>
+                            <TableHead>Duration</TableHead>
+                            <TableHead>Date</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedClient.recentCalls.map((call) => (
+                            <TableRow key={call.id}>
+                              <TableCell className="font-mono text-sm">{call.to_number}</TableCell>
+                              <TableCell>
+                                {call.outcome ? (
+                                  <Badge variant="outline" className="capitalize">{call.outcome}</Badge>
+                                ) : "—"}
+                              </TableCell>
+                              <TableCell>{call.duration_seconds ? formatDuration(call.duration_seconds) : "—"}</TableCell>
+                              <TableCell>{call.start_time ? format(new Date(call.start_time), "MMM d, HH:mm") : "—"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 )}
 
+                {/* Revenue Events */}
                 {selectedClient.revenue.length > 0 && (
                   <div>
                     <h3 className="font-semibold mb-2">Revenue Events</h3>
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Date</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedClient.revenue.map((rev) => (
-                          <TableRow key={rev.id}>
-                            <TableCell className="capitalize">{rev.type}</TableCell>
-                            <TableCell>${Number(rev.amount).toFixed(2)}</TableCell>
-                            <TableCell>{format(new Date(rev.created_at), "MMM d, yyyy")}</TableCell>
+                    <div className="border border-border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Date</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedClient.revenue.map((rev) => (
+                            <TableRow key={rev.id}>
+                              <TableCell className="capitalize">{rev.type}</TableCell>
+                              <TableCell className="font-medium">${Number(rev.amount).toFixed(2)}</TableCell>
+                              <TableCell>{format(new Date(rev.created_at), "MMM d, yyyy")}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
                 )}
               </div>
