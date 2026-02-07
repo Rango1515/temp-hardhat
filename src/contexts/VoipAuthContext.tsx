@@ -288,14 +288,15 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
     sendHeartbeat();
     checkUserStatus();
 
-    // Heartbeat every 30 seconds
-    const heartbeatInterval = setInterval(sendHeartbeat, 30000);
+    // Heartbeat every 60 seconds (was 30s)
+    const heartbeatInterval = setInterval(sendHeartbeat, 60000);
 
-    // Status check every 30 seconds
-    const statusInterval = setInterval(checkUserStatus, 30000);
+    // Status check every 60 seconds (was 30s)
+    const statusInterval = setInterval(checkUserStatus, 60000);
 
-    // Idle detection (5 minutes)
+    // Idle detection (5 minutes) with throttled mousemove
     let idleTimer: NodeJS.Timeout;
+    let lastMoveTime = 0;
     const markIdle = async () => {
       try {
         await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-analytics?action=idle`, {
@@ -316,7 +317,15 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
       idleTimer = setTimeout(markIdle, 5 * 60 * 1000);
     };
 
-    window.addEventListener("mousemove", resetIdle);
+    // Throttle mousemove to fire at most once per 2 seconds
+    const throttledResetIdle = () => {
+      const now = Date.now();
+      if (now - lastMoveTime < 2000) return;
+      lastMoveTime = now;
+      resetIdle();
+    };
+
+    window.addEventListener("mousemove", throttledResetIdle);
     window.addEventListener("keypress", resetIdle);
     window.addEventListener("click", resetIdle);
     resetIdle();
@@ -325,7 +334,7 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(heartbeatInterval);
       clearInterval(statusInterval);
       clearTimeout(idleTimer);
-      window.removeEventListener("mousemove", resetIdle);
+      window.removeEventListener("mousemove", throttledResetIdle);
       window.removeEventListener("keypress", resetIdle);
       window.removeEventListener("click", resetIdle);
     };

@@ -7,30 +7,26 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-// Pages
-import Index from "./pages/Index";
-import DemoSite from "./pages/DemoSite";
-import ServicePage from "./pages/seo/ServicePage";
-
-// Error Pages
-import ErrorPage from "./pages/ErrorPage";
-
-// VoIP Pages
+// Auth guards (small, needed immediately)
 import { VoipAuthProvider } from "./contexts/VoipAuthContext";
 import { ProtectedRoute } from "./components/voip/auth/ProtectedRoute";
 import { AdminRoute } from "./components/voip/auth/AdminRoute";
 import { PartnerRoute } from "./components/voip/auth/PartnerRoute";
-import VoipAuth from "./pages/voip/Auth";
-const PartnerSignup = lazy(() => import("./pages/voip/PartnerSignup"));
-import ClientDashboard from "./pages/voip/ClientDashboard";
-import Dialer from "./pages/voip/Dialer";
-import Settings from "./pages/voip/Settings";
-import Support from "./pages/voip/Support";
-import HowTo from "./pages/voip/HowTo";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
 
-// Lazy-loaded heavy pages
+// ALL pages lazy-loaded for smaller initial bundle
+const Index = lazy(() => import("./pages/Index"));
+const DemoSite = lazy(() => import("./pages/DemoSite"));
+const ServicePage = lazy(() => import("./pages/seo/ServicePage"));
+const ErrorPage = lazy(() => import("./pages/ErrorPage"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const VoipAuth = lazy(() => import("./pages/voip/Auth"));
+const PartnerSignup = lazy(() => import("./pages/voip/PartnerSignup"));
+const ClientDashboard = lazy(() => import("./pages/voip/ClientDashboard"));
+const Dialer = lazy(() => import("./pages/voip/Dialer"));
+const Settings = lazy(() => import("./pages/voip/Settings"));
+const Support = lazy(() => import("./pages/voip/Support"));
+const HowTo = lazy(() => import("./pages/voip/HowTo"));
 const CallHistory = lazy(() => import("./pages/voip/CallHistory"));
 const MyAnalytics = lazy(() => import("./pages/voip/MyAnalytics"));
 const Leaderboard = lazy(() => import("./pages/voip/Leaderboard"));
@@ -59,7 +55,16 @@ const LazyFallback = () => (
 );
 
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,       // Data stays fresh for 60s — prevents refetch on every mount
+      gcTime: 5 * 60_000,      // Keep unused cache for 5 min
+      retry: 1,                // Only retry once on failure
+      refetchOnWindowFocus: false, // Don't refetch when user tabs back
+    },
+  },
+});
 
 const App = () => (
   <ErrorBoundary>
