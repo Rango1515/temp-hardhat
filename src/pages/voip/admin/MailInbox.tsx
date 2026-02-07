@@ -44,7 +44,20 @@ const EMPTY_COMPOSE: ComposeData = { to: "", cc: "", subject: "", body: "", inRe
 
 export default function MailInbox() {
   const { toast } = useToast();
-  const mailApi = useMailApi();
+  const {
+    loadFolders,
+    loadMessages,
+    loadMessage,
+    searchMessages,
+    sendEmail,
+    saveDraft,
+    markMessage,
+    moveMessage,
+    deleteMessage,
+    clearFolder,
+    downloadAttachment,
+    debugLogs,
+  } = useMailApi();
 
   // ─── State ──────────────────────────────────────────────────────────────────
   const [folders, setFolders] = useState<MailFolder[]>([]);
@@ -76,19 +89,20 @@ export default function MailInbox() {
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const initialLoadDone = useRef(false);
 
   // ─── Data Loading ───────────────────────────────────────────────────────────
   const refreshFolders = useCallback(async () => {
     setLoadingFolders(true);
-    const result = await mailApi.loadFolders();
+    const result = await loadFolders();
     if (result) setFolders(result);
     setLoadingFolders(false);
-  }, [mailApi]);
+  }, [loadFolders]);
 
   const refreshMessages = useCallback(async (folder: string, p: number) => {
     setLoadingMessages(true);
     setListError(null);
-    const result = await mailApi.loadMessages(folder, p);
+    const result = await loadMessages(folder, p);
     if (result) {
       setMessages(result.messages);
       setTotalMessages(result.total);
@@ -97,7 +111,7 @@ export default function MailInbox() {
       setListError("Failed to load messages. Check your connection.");
     }
     setLoadingMessages(false);
-  }, [mailApi]);
+  }, [loadMessages]);
 
   const handleSelectMessage = useCallback(async (uid: number) => {
     if (selectedUid === uid && loadingMessage) return;
@@ -112,7 +126,7 @@ export default function MailInbox() {
     setMessages((prev) => prev.map((m) => (m.uid === uid ? { ...m, read: true } : m)));
 
     try {
-      const msg = await mailApi.loadMessage(activeFolder, uid);
+      const msg = await loadMessage(activeFolder, uid);
       if (msg) {
         setSelectedMessage(msg);
       }
@@ -124,14 +138,21 @@ export default function MailInbox() {
     } finally {
       setLoadingMessage(false);
     }
-  }, [selectedUid, loadingMessage, mailApi, activeFolder]);
+  }, [selectedUid, loadingMessage, loadMessage, activeFolder]);
 
   // ─── Effects ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    refreshFolders();
-  }, [refreshFolders]);
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      refreshFolders();
+      refreshMessages("INBOX", 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // Only re-fetch when folder/page actually changes (not on initial mount)
   useEffect(() => {
+    if (!initialLoadDone.current) return;
     if (!isSearchActive) {
       refreshMessages(activeFolder, page);
     }
@@ -162,7 +183,7 @@ export default function MailInbox() {
       setLoadingMessages(true);
       setIsSearchActive(true);
       setListError(null);
-      const result = await mailApi.searchMessages(activeFolder, query);
+      const result = await searchMessages(activeFolder, query);
       if (result) {
         setMessages(result.messages);
         setTotalMessages(result.total);
@@ -177,7 +198,7 @@ export default function MailInbox() {
   const handleRefresh = () => {
     refreshFolders();
     if (isSearchActive && searchQuery) {
-      mailApi.searchMessages(activeFolder, searchQuery).then((r) => {
+      searchMessages(activeFolder, searchQuery).then((r) => {
         if (r) {
           setMessages(r.messages);
           setTotalMessages(r.total);
@@ -190,7 +211,7 @@ export default function MailInbox() {
 
   const handleClearInbox = async () => {
     setClearingInbox(true);
-    const count = await mailApi.clearFolder(activeFolder);
+    const count = await clearFolder(activeFolder);
     if (count >= 0) {
       setMessages([]);
       setTotalMessages(0);
@@ -231,7 +252,7 @@ export default function MailInbox() {
   };
 
   const handleMarkUnread = async (uid: number) => {
-    await mailApi.markMessage(activeFolder, uid, "unseen");
+    await markMessage(activeFolder, uid, "unseen");
     setMessages((prev) => prev.map((m) => (m.uid === uid ? { ...m, read: false } : m)));
     if (selectedMessage?.uid === uid) {
       setSelectedMessage(null);
@@ -245,7 +266,7 @@ export default function MailInbox() {
       (f) => f.specialUse === "\\Trash" || f.name.toLowerCase() === "trash"
     );
     const destination = trashFolder?.path || "Trash";
-    const success = await mailApi.moveMessage(activeFolder, uid, destination);
+    const success = await moveMessage(activeFolder, uid, destination);
     if (success) {
       setMessages((prev) => prev.filter((m) => m.uid !== uid));
       if (selectedMessage?.uid === uid) {
@@ -258,7 +279,7 @@ export default function MailInbox() {
   };
 
   const handleDeleteForever = async (uid: number) => {
-    const success = await mailApi.deleteMessage(activeFolder, uid);
+    const success = await deleteMessage(activeFolder, uid);
     if (success) {
       setMessages((prev) => prev.filter((m) => m.uid !== uid));
       if (selectedMessage?.uid === uid) {
@@ -275,7 +296,7 @@ export default function MailInbox() {
       toast({ title: "Missing fields", description: "To and Subject are required", variant: "destructive" });
       return;
     }
-    const success = await mailApi.sendEmail({
+    const success = await sendEmail({
       to: compose.to,
       cc: compose.cc || undefined,
       subject: compose.subject,
@@ -295,7 +316,7 @@ export default function MailInbox() {
       toast({ title: "Nothing to save", description: "Add content before saving", variant: "destructive" });
       return;
     }
-    const success = await mailApi.saveDraft({
+    const success = await saveDraft({
       to: compose.to,
       cc: compose.cc || undefined,
       subject: compose.subject,
@@ -311,7 +332,7 @@ export default function MailInbox() {
   };
 
   const handleDownloadAttachment = async (uid: number, index: number, filename: string) => {
-    await mailApi.downloadAttachment(activeFolder, uid, index, filename);
+    await downloadAttachment(activeFolder, uid, index, filename);
   };
 
   const handleRetryList = () => {
@@ -489,7 +510,7 @@ export default function MailInbox() {
       {/* Debug Panel */}
       {debugMode && (
         <DebugPanel
-          logs={mailApi.debugLogs}
+          logs={debugLogs}
           open={debugPanelOpen}
           onClose={() => setDebugPanelOpen(false)}
         />
