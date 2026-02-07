@@ -72,9 +72,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Verify API key
-  const authHeader = req.headers["authorization"] || "";
-  const providedKey = authHeader.replace("Bearer ", "");
+  // Verify API key via X-Relay-Key header
+  const providedKey = req.headers["x-relay-key"] || "";
   if (providedKey !== API_KEY) {
     console.log(`[mail-relay] Unauthorized request from ${req.socket.remoteAddress}`);
     res.writeHead(401, { "Content-Type": "application/json" });

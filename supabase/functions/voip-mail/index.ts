@@ -406,7 +406,7 @@ async function handleSend(body: any, adminId: number): Promise<Response> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${relayKey}`,
+        "X-Relay-Key": relayKey,
       },
       body: JSON.stringify(relayBody),
     });
