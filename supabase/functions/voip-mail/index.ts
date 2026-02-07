@@ -389,62 +389,85 @@ async function handleSend(body: any, adminId: number): Promise<Response> {
 
   console.log(`[voip-mail] Attempting SMTP send to ${body.to} via ${host}:${configuredPort}`);
 
-  // Try configured port first, then fallback to alternate
-  const portsToTry = configuredPort === 465 ? [465, 587] : [587, 465];
+  // Build list of port configurations to try
+  // Port 465 = implicit TLS (SMTPS), 587 = submission (STARTTLS), 25 = plain SMTP
+  const portConfigs: Array<{ port: number; secure: boolean; ignoreTLS: boolean }> = [];
+
+  // Add configured port first
+  if (configuredPort === 465) {
+    portConfigs.push({ port: 465, secure: true, ignoreTLS: false });
+    portConfigs.push({ port: 587, secure: false, ignoreTLS: true });
+    portConfigs.push({ port: 25, secure: false, ignoreTLS: true });
+  } else if (configuredPort === 25) {
+    portConfigs.push({ port: 25, secure: false, ignoreTLS: true });
+    portConfigs.push({ port: 587, secure: false, ignoreTLS: true });
+    portConfigs.push({ port: 465, secure: true, ignoreTLS: false });
+  } else {
+    portConfigs.push({ port: 587, secure: false, ignoreTLS: true });
+    portConfigs.push({ port: 25, secure: false, ignoreTLS: true });
+    portConfigs.push({ port: 465, secure: true, ignoreTLS: false });
+  }
+
+  const mailOptions: any = {
+    from: `"Admin" <${username}>`,
+    to: body.to,
+    subject: body.subject,
+    html: body.body || body.text || "",
+  };
+  if (body.cc) mailOptions.cc = body.cc;
+  if (body.bcc) mailOptions.bcc = body.bcc;
+  if (body.inReplyTo) mailOptions.inReplyTo = body.inReplyTo;
+
   let lastError: Error | null = null;
 
-  for (const port of portsToTry) {
-    const secure = port === 465;
-    console.log(`[voip-mail] Trying SMTP port ${port} (secure=${secure})...`);
+  for (const config of portConfigs) {
+    console.log(`[voip-mail] Trying SMTP port ${config.port} (secure=${config.secure}, ignoreTLS=${config.ignoreTLS})...`);
 
     try {
-      const transporter = nodemailer.createTransport({
+      const transportOpts: any = {
         host,
-        port,
-        secure,
-        ...(secure ? {} : { ignoreTLS: true }),
+        port: config.port,
+        secure: config.secure,
         auth: { user: username, pass: password },
         tls: { rejectUnauthorized: false },
-        connectionTimeout: 12000,
-        greetingTimeout: 8000,
-        socketTimeout: 15000,
-      });
-
-      const mailOptions: any = {
-        from: `"Admin" <${username}>`,
-        to: body.to,
-        subject: body.subject,
-        html: body.body || body.text || "",
+        connectionTimeout: 15000,
+        greetingTimeout: 10000,
+        socketTimeout: 20000,
       };
 
-      if (body.cc) mailOptions.cc = body.cc;
-      if (body.bcc) mailOptions.bcc = body.bcc;
-      if (body.inReplyTo) mailOptions.inReplyTo = body.inReplyTo;
+      if (config.ignoreTLS) {
+        transportOpts.ignoreTLS = true;
+        transportOpts.requireTLS = false;
+      }
 
+      const transporter = nodemailer.createTransport(transportOpts);
       const info = await transporter.sendMail(mailOptions);
-      console.log(`[voip-mail] Sent email via port ${port}, messageId: ${info.messageId}`);
+      console.log(`[voip-mail] ✅ Sent email via port ${config.port}, messageId: ${info.messageId}`);
 
       // Audit log (non-blocking)
       auditLog(adminId, "mail_message_sent", {
         to: body.to,
         subject: body.subject,
         cc: body.cc || null,
-        port,
+        port: config.port,
       }).catch(() => {});
 
-      console.log(`[voip-mail] Sent email to ${body.to}: ${body.subject}`);
       return json({ success: true });
     } catch (err: any) {
-      console.error(`[voip-mail] SMTP port ${port} failed:`, err?.message || err);
+      const errMsg = err?.message || String(err);
+      console.error(`[voip-mail] ❌ SMTP port ${config.port} failed: ${errMsg}`);
       lastError = err;
-      // Try next port
+      // Continue to next port config
     }
   }
 
-  // Both ports failed
-  const errorMsg = lastError?.message || "SMTP connection failed";
-  console.error(`[voip-mail] All SMTP ports failed. Last error:`, errorMsg);
-  return errorResponse(`Failed to send email: ${errorMsg}`, 500);
+  // All port configs failed
+  const errorMsg = lastError?.message || "All SMTP ports failed";
+  console.error(`[voip-mail] All SMTP configurations failed. Last error: ${errorMsg}`);
+  return errorResponse(
+    `Failed to send email. Your mail server may need SMTPS (port 465) enabled. Error: ${errorMsg}`,
+    500
+  );
 }
 
 // ─── Action: Mark Read/Unread ───────────────────────────────────────────────────
