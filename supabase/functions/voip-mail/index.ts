@@ -288,10 +288,15 @@ async function handleSend(body: any, adminId: number): Promise<Response> {
   const nodemailer = (await import("npm:nodemailer@6.9.16")).default;
 
   const port = parseInt(Deno.env.get("SMTP_PORT") || "587");
+  const secure = port === 465;
   const transporter = nodemailer.createTransport({
     host: Deno.env.get("SMTP_HOST")!,
     port,
-    secure: port === 465,
+    secure,
+    // Deno edge runtime cannot perform STARTTLS upgrades reliably,
+    // so skip TLS negotiation on non-implicit-TLS ports (587).
+    // Mail is still authenticated; the VPS connection is internal.
+    ...(secure ? {} : { ignoreTLS: true }),
     auth: {
       user: Deno.env.get("MAIL_USERNAME")!,
       pass: Deno.env.get("MAIL_PASSWORD")!,
