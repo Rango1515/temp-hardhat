@@ -140,9 +140,8 @@ serve(async (req) => {
             status: "active",
           });
 
-          // Auto-generate a partner token for signup
+          // Auto-generate a partner token for signup (no expiration — valid until used)
           const tokenCode = generateTokenCode(20);
-          const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
 
           const { data: newToken } = await supabase
             .from("voip_partner_tokens")
@@ -150,7 +149,7 @@ serve(async (req) => {
               token_code: tokenCode,
               partner_id: newPartner.id,
               max_uses: 1,
-              expires_at: expiresAt,
+              expires_at: null,
               created_by: adminId,
             })
             .select("id")
