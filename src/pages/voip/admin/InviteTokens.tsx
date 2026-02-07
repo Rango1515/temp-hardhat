@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Ticket, Plus, Copy, Trash2, Loader2, CheckCircle2 } from "lucide-react";
+import { Ticket, Plus, Copy, Trash2, Loader2, CheckCircle2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 interface InviteToken {
@@ -54,6 +54,12 @@ export default function InviteTokens() {
   const [newEmail, setNewEmail] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("");
   const [neverExpires, setNeverExpires] = useState(false);
+
+  // Edit expiration
+  const [editToken, setEditToken] = useState<InviteToken | null>(null);
+  const [editExpiresAt, setEditExpiresAt] = useState("");
+  const [editNeverExpires, setEditNeverExpires] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const fetchTokens = async () => {
     setIsLoading(true);
@@ -87,7 +93,6 @@ export default function InviteTokens() {
 
     if (data) {
       toast.success("Invite token created successfully");
-      // Copy to clipboard
       await navigator.clipboard.writeText(data.token);
       toast.info("Token copied to clipboard");
       setDialogOpen(false);
@@ -110,7 +115,6 @@ export default function InviteTokens() {
   };
 
   const handleDelete = async (id: number) => {
-    // Show loading state
     toast.loading("Deleting token...", { id: `delete-${id}` });
     
     const { error } = await apiCall("voip-admin-ext", {
@@ -120,11 +124,58 @@ export default function InviteTokens() {
 
     if (!error) {
       toast.success("Token deleted successfully", { id: `delete-${id}` });
-      // Immediately remove from local state for instant UI feedback
       setTokens(prev => prev.filter(t => t.id !== id));
     } else {
       toast.error(error || "Failed to delete token", { id: `delete-${id}` });
     }
+  };
+
+  const openEditDialog = (token: InviteToken) => {
+    setEditToken(token);
+    // Check if expiration is ~10 years out (never expires)
+    const isNever = token.expires_at
+      ? new Date(token.expires_at).getTime() > Date.now() + 5 * 365 * 24 * 60 * 60 * 1000
+      : true;
+    setEditNeverExpires(isNever);
+    if (!isNever && token.expires_at) {
+      // Format for datetime-local input
+      const d = new Date(token.expires_at);
+      const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setEditExpiresAt(local);
+    } else {
+      setEditExpiresAt("");
+    }
+  };
+
+  const handleSaveExpiration = async () => {
+    if (!editToken) return;
+    setIsSavingEdit(true);
+
+    const body: Record<string, unknown> = {};
+    if (editNeverExpires) {
+      body.neverExpires = true;
+    } else if (editExpiresAt) {
+      body.expiresAt = new Date(editExpiresAt).toISOString();
+    } else {
+      toast.error("Please set an expiration date or choose 'Never expires'");
+      setIsSavingEdit(false);
+      return;
+    }
+
+    const { error } = await apiCall("voip-admin-ext", {
+      method: "PATCH",
+      params: { action: "invite-tokens", id: editToken.id.toString() },
+      body,
+    });
+
+    if (!error) {
+      toast.success("Expiration updated");
+      setEditToken(null);
+      fetchTokens();
+    } else {
+      toast.error(error || "Failed to update expiration");
+    }
+    setIsSavingEdit(false);
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -136,6 +187,11 @@ export default function InviteTokens() {
       hour: "2-digit",
       minute: "2-digit",
     });
+  };
+
+  const isNeverExpires = (dateStr: string | null) => {
+    if (!dateStr) return true;
+    return new Date(dateStr).getTime() > Date.now() + 5 * 365 * 24 * 60 * 60 * 1000;
   };
 
   const activeTokens = tokens.filter((t) => !t.used);
@@ -271,7 +327,9 @@ export default function InviteTokens() {
                         {token.email || <span className="text-muted-foreground">Any</span>}
                       </TableCell>
                       <TableCell>
-                        {token.expires_at ? (
+                        {isNeverExpires(token.expires_at) ? (
+                          <span className="text-muted-foreground">Never</span>
+                        ) : token.expires_at ? (
                           new Date(token.expires_at) < new Date() ? (
                             <Badge variant="destructive">Expired</Badge>
                           ) : (
@@ -284,7 +342,15 @@ export default function InviteTokens() {
                       <TableCell>{token.created_by_name}</TableCell>
                       <TableCell>{formatDate(token.created_at)}</TableCell>
                       <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(token)}
+                            title="Edit expiration"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -331,6 +397,7 @@ export default function InviteTokens() {
                   <TableRow>
                     <TableHead>Token</TableHead>
                     <TableHead>Used By</TableHead>
+                    <TableHead>Expires</TableHead>
                     <TableHead>Used At</TableHead>
                     <TableHead>Created By</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -350,16 +417,39 @@ export default function InviteTokens() {
                           </div>
                         </div>
                       </TableCell>
+                      <TableCell>
+                        {isNeverExpires(token.expires_at) ? (
+                          <span className="text-muted-foreground">Never</span>
+                        ) : token.expires_at ? (
+                          new Date(token.expires_at) < new Date() ? (
+                            <Badge variant="destructive">Expired</Badge>
+                          ) : (
+                            formatDate(token.expires_at)
+                          )
+                        ) : (
+                          <span className="text-muted-foreground">Never</span>
+                        )}
+                      </TableCell>
                       <TableCell>{formatDate(token.used_at)}</TableCell>
                       <TableCell>{token.created_by_name}</TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDelete(token.id)}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditDialog(token)}
+                            title="Edit expiration"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDelete(token.id)}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -368,6 +458,49 @@ export default function InviteTokens() {
             </CardContent>
           </Card>
         )}
+
+        {/* Edit Expiration Dialog */}
+        <Dialog open={!!editToken} onOpenChange={(open) => { if (!open) setEditToken(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Token Expiration</DialogTitle>
+              <DialogDescription>
+                Change when this token expires{editToken?.used ? " (this user has already signed up)" : ""}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>New Expiration Date</Label>
+                <Input
+                  type="datetime-local"
+                  value={editExpiresAt}
+                  onChange={(e) => setEditExpiresAt(e.target.value)}
+                  disabled={editNeverExpires}
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="edit-never-expires"
+                  checked={editNeverExpires}
+                  onCheckedChange={(checked) => {
+                    setEditNeverExpires(checked === true);
+                    if (checked) setEditExpiresAt("");
+                  }}
+                />
+                <Label htmlFor="edit-never-expires" className="text-sm font-normal cursor-pointer">
+                  Never expires
+                </Label>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditToken(null)}>Cancel</Button>
+              <Button onClick={handleSaveExpiration} disabled={isSavingEdit}>
+                {isSavingEdit ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </VoipLayout>
   );
