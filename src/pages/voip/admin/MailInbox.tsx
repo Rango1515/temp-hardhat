@@ -84,6 +84,7 @@ interface FullMessage {
   html: string;
   text: string;
   read: boolean;
+  truncated?: boolean;
   attachments: { index: number; filename: string; contentType: string; size: number }[];
   messageId: string;
   inReplyTo: string;
@@ -510,6 +511,7 @@ export default function MailInbox() {
     if (name === "sent" || folder.specialUse === "\\Sent") return <Send className="w-4 h-4" />;
     if (name === "trash" || folder.specialUse === "\\Trash") return <Trash2 className="w-4 h-4" />;
     if (name === "drafts" || folder.specialUse === "\\Drafts") return <PenSquare className="w-4 h-4" />;
+    if (name === "spam" || name === "junk" || folder.specialUse === "\\Junk") return <AlertTriangle className="w-4 h-4" />;
     return <Mail className="w-4 h-4" />;
   };
 
@@ -826,9 +828,15 @@ export default function MailInbox() {
 
                 {/* Message body */}
                 <div className="flex-1 overflow-auto">
+                  {selectedMessage.truncated && (
+                    <div className="mx-4 mt-3 px-3 py-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 dark:text-yellow-400 text-sm flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>This email was too large to load fully. Some content may be truncated.</span>
+                    </div>
+                  )}
                   {selectedMessage.html ? (
                     <iframe
-                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#333;margin:16px;line-height:1.5;word-wrap:break-word}img{max-width:100%;height:auto}a{color:#2563eb}pre{overflow-x:auto;background:#f5f5f5;padding:8px;border-radius:4px}</style></head><body>${selectedMessage.html}</body></html>`}
+                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#333;margin:16px;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word}img{max-width:100%;height:auto}a{color:#2563eb}pre{overflow-x:auto;background:#f5f5f5;padding:8px;border-radius:4px}table{max-width:100%;border-collapse:collapse}td,th{padding:4px 8px}</style></head><body>${selectedMessage.html}</body></html>`}
                       sandbox="allow-same-origin"
                       className="w-full h-full border-0"
                       title="Email content"
