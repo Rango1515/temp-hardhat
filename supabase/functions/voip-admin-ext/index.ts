@@ -17,16 +17,59 @@ serve(async (req) => {
   }
 
   const payload = await verifyJWT(token);
-  if (!payload || payload.role !== "admin") {
+  if (!payload) {
+    return new Response(
+      JSON.stringify({ error: "Invalid token" }),
+      { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  const userId = parseInt(payload.sub);
+  const url = new URL(req.url);
+  const action = url.searchParams.get("action");
+
+  // ── Error logging (available to ALL authenticated users) ──────────────────
+  if (action === "log-error" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const { endpoint, method, status, error: errorMsg, context } = body;
+
+      await supabase.from("voip_admin_audit_log").insert({
+        admin_id: userId,
+        action: "api_error",
+        entity_type: endpoint || null,
+        details: {
+          method: method || "GET",
+          status: status || null,
+          error: typeof errorMsg === "string" ? errorMsg.slice(0, 500) : String(errorMsg),
+          context: context || null,
+          role: payload.role,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      return new Response(
+        JSON.stringify({ logged: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (e) {
+      console.error("[log-error] Failed:", e);
+      return new Response(
+        JSON.stringify({ logged: false }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  // ── Admin-only actions below ──────────────────────────────────────────────
+  if (payload.role !== "admin") {
     return new Response(
       JSON.stringify({ error: "Admin access required" }),
       { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  const adminId = parseInt(payload.sub);
-  const url = new URL(req.url);
-  const action = url.searchParams.get("action");
+  const adminId = userId;
 
   try {
     switch (action) {

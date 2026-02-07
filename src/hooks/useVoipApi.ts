@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useVoipAuth } from "@/contexts/VoipAuthContext";
 
 interface ApiOptions {
@@ -9,6 +9,41 @@ interface ApiOptions {
 
 export function useVoipApi() {
   const { token, refreshToken, logout } = useVoipAuth();
+  const errorLogInflight = useRef(false);
+
+  const logError = useCallback(
+    async (endpoint: string, method: string, status: number | null, error: string) => {
+      // Prevent infinite loop: don't log errors from the error-logging endpoint
+      if (errorLogInflight.current) return;
+      errorLogInflight.current = true;
+
+      try {
+        const currentToken = localStorage.getItem("voip_token");
+        if (!currentToken) return;
+
+        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-admin-ext?action=log-error`;
+        await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${currentToken}`,
+          },
+          body: JSON.stringify({
+            endpoint,
+            method,
+            status,
+            error: error.slice(0, 500),
+            context: window.location.pathname,
+          }),
+        }).catch(() => {}); // Silently fail
+      } catch {
+        // Never throw from error logging
+      } finally {
+        errorLogInflight.current = false;
+      }
+    },
+    []
+  );
 
   const apiCall = useCallback(
     async <T = unknown>(
@@ -59,18 +94,13 @@ export function useVoipApi() {
         });
       }
 
-      // Log the full URL for debugging
-      console.log(`[useVoipApi] ${method} request to:`, url.toString());
-
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${currentToken}`,
       };
 
       try {
-        // Use url.href to ensure proper URL formatting (avoid double-encoding issues)
         const fullUrl = url.href;
-        console.log(`[useVoipApi] Final URL:`, fullUrl);
         
         const response = await fetch(fullUrl, {
           method,
@@ -78,11 +108,8 @@ export function useVoipApi() {
           body: body ? JSON.stringify(body) : undefined,
         });
 
-        console.log(`[useVoipApi] Response status:`, response.status);
-
         // Handle token expiration
         if (response.status === 401) {
-          console.log("[useVoipApi] Got 401, attempting token refresh...");
           const refreshed = await refreshToken();
           if (refreshed) {
             // Retry with new token
@@ -100,9 +127,13 @@ export function useVoipApi() {
             if (!retryResponse.ok) {
               try {
                 const errorData = await retryResponse.json();
-                return { data: null, error: errorData.error || "Request failed" };
+                const errMsg = errorData.error || "Request failed";
+                logError(endpoint, method, retryResponse.status, errMsg);
+                return { data: null, error: errMsg };
               } catch {
-                return { data: null, error: `Request failed with status ${retryResponse.status}` };
+                const errMsg = `Request failed with status ${retryResponse.status}`;
+                logError(endpoint, method, retryResponse.status, errMsg);
+                return { data: null, error: errMsg };
               }
             }
 
@@ -120,9 +151,13 @@ export function useVoipApi() {
         if (!response.ok) {
           try {
             const errorData = await response.json();
-            return { data: null, error: errorData.error || `Request failed with status ${response.status}` };
+            const errMsg = errorData.error || `Request failed with status ${response.status}`;
+            logError(endpoint, method, response.status, errMsg);
+            return { data: null, error: errMsg };
           } catch {
-            return { data: null, error: `Request failed with status ${response.status}` };
+            const errMsg = `Request failed with status ${response.status}`;
+            logError(endpoint, method, response.status, errMsg);
+            return { data: null, error: errMsg };
           }
         }
 
@@ -134,17 +169,13 @@ export function useVoipApi() {
           return { data: null as T, error: null };
         }
       } catch (error) {
-        console.error("API call error:", error);
-        // Provide more specific error messaging
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error("[useVoipApi] Detailed error:", errorMessage);
-        return { 
-          data: null, 
-          error: `Connection error: ${errorMessage}. Please check your network and try again.` 
-        };
+        const errMsg = `Connection error: ${errorMessage}. Please check your network and try again.`;
+        logError(endpoint, method, null, errMsg);
+        return { data: null, error: errMsg };
       }
     },
-    [token, refreshToken, logout]
+    [token, refreshToken, logout, logError]
   );
 
   return { apiCall };
