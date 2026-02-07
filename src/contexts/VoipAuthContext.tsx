@@ -5,9 +5,10 @@ interface VoipUser {
   id: number;
   name: string;
   email: string;
-  role: "admin" | "client";
+  role: "admin" | "client" | "partner";
   status?: string;
   suspension_reason?: string;
+  partner_id?: number | null;
 }
 
 interface VoipAuthContextType {
@@ -16,6 +17,7 @@ interface VoipAuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  isPartner: boolean;
   userStatus: string | null;
   suspensionReason: string | null;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -337,6 +339,7 @@ export function VoipAuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isAuthenticated: !!token && !!user,
         isAdmin: user?.role === "admin",
+        isPartner: user?.role === "partner",
         userStatus,
         suspensionReason,
         login,

@@ -8,8 +8,9 @@ interface User {
   name: string;
   email: string;
   password_hash: string;
-  role: "admin" | "client";
+  role: "admin" | "client" | "partner";
   status: string;
+  partner_id?: number | null;
 }
 
 // Rate limiting store (in production, use Redis)
@@ -111,7 +112,7 @@ serve(async (req) => {
         
         const { data: users, error: userError } = await supabase
           .from("voip_users")
-          .select("id, name, email, password_hash, role, status")
+          .select("id, name, email, password_hash, role, status, partner_id")
           .eq("email", email.toLowerCase().trim());
         
         if (userError) {
@@ -138,7 +139,7 @@ serve(async (req) => {
         }
 
         // Check if user's signup token has expired (non-admin only)
-        if (user.role !== "admin") {
+        if (user.role !== "admin" && user.role !== "partner") {
           const { data: signupTokens } = await supabase
             .from("voip_signup_tokens")
             .select("expires_at")
@@ -183,6 +184,7 @@ serve(async (req) => {
               name: user.name,
               email: user.email,
               role: user.role,
+              partner_id: user.partner_id || null,
             },
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -199,45 +201,6 @@ serve(async (req) => {
         if (!inviteToken) {
           return new Response(
             JSON.stringify({ error: "Invite token is required. Please contact an admin to get an invite." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // Check if invite token exists and is valid
-        const { data: invites, error: inviteError } = await supabase
-          .from("voip_signup_tokens")
-          .select("id, email, expires_at, used_by")
-          .eq("token", inviteToken.trim());
-
-        if (inviteError) throw inviteError;
-
-        if (!invites || invites.length === 0) {
-          return new Response(
-            JSON.stringify({ error: "Invalid invite token" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        const invite = invites[0];
-
-        if (invite.used_by) {
-          return new Response(
-            JSON.stringify({ error: "This invite token has already been used" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
-          return new Response(
-            JSON.stringify({ error: "This invite token has expired" }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        // If token is email-specific, validate it matches
-        if (invite.email && invite.email.toLowerCase() !== email.toLowerCase().trim()) {
-          return new Response(
-            JSON.stringify({ error: "This invite token was issued for a different email address" }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -288,6 +251,126 @@ serve(async (req) => {
           return new Response(
             JSON.stringify({ error: "An account with this email already exists" }),
             { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // ── Try partner token first ──
+        const { data: partnerTokens } = await supabase
+          .from("voip_partner_tokens")
+          .select("id, partner_id, max_uses, uses_count, expires_at, status")
+          .eq("token_code", inviteToken.trim())
+          .eq("status", "active");
+
+        if (partnerTokens && partnerTokens.length > 0) {
+          const pToken = partnerTokens[0];
+
+          // Validate expiration
+          if (pToken.expires_at && new Date(pToken.expires_at) < new Date()) {
+            return new Response(
+              JSON.stringify({ error: "This invite token has expired" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          // Validate max uses
+          if (pToken.max_uses !== null && pToken.uses_count >= pToken.max_uses) {
+            return new Response(
+              JSON.stringify({ error: "This invite token has reached its maximum usage limit" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          // Hash password and create user linked to partner
+          const passwordHash = await hashPassword(password);
+          const { data: newUser, error: createError } = await supabase
+            .from("voip_users")
+            .insert({
+              name: name.trim(),
+              email: email.toLowerCase().trim(),
+              password_hash: passwordHash,
+              role: "client",
+              status: "active",
+              partner_id: pToken.partner_id,
+            })
+            .select("id")
+            .single();
+
+          if (createError) throw createError;
+
+          // Increment uses_count
+          const newCount = pToken.uses_count + 1;
+          const tokenUpdates: Record<string, unknown> = { uses_count: newCount };
+          if (pToken.max_uses !== null && newCount >= pToken.max_uses) {
+            tokenUpdates.status = "revoked";
+          }
+          await supabase
+            .from("voip_partner_tokens")
+            .update(tokenUpdates)
+            .eq("id", pToken.id);
+
+          // Record usage
+          await supabase.from("voip_partner_token_usage").insert({
+            token_id: pToken.id,
+            client_user_id: newUser.id,
+          });
+
+          console.log(`[voip-auth] Client ${newUser.id} signed up via partner token, linked to partner ${pToken.partner_id}`);
+
+          const token = await createJWT(newUser.id, email, "client", name);
+          const refreshToken = await createRefreshToken(newUser.id);
+
+          return new Response(
+            JSON.stringify({
+              token,
+              refreshToken,
+              user: {
+                id: newUser.id,
+                name: name.trim(),
+                email: email.toLowerCase().trim(),
+                role: "client",
+                partner_id: pToken.partner_id,
+              },
+            }),
+            { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // ── Fall back to standard signup tokens ──
+        const { data: invites, error: inviteError } = await supabase
+          .from("voip_signup_tokens")
+          .select("id, email, expires_at, used_by")
+          .eq("token", inviteToken.trim());
+
+        if (inviteError) throw inviteError;
+
+        if (!invites || invites.length === 0) {
+          return new Response(
+            JSON.stringify({ error: "Invalid invite token" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const invite = invites[0];
+
+        if (invite.used_by) {
+          return new Response(
+            JSON.stringify({ error: "This invite token has already been used" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+          return new Response(
+            JSON.stringify({ error: "This invite token has expired" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // If token is email-specific, validate it matches
+        if (invite.email && invite.email.toLowerCase() !== email.toLowerCase().trim()) {
+          return new Response(
+            JSON.stringify({ error: "This invite token was issued for a different email address" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
 
@@ -392,7 +475,7 @@ serve(async (req) => {
 
         const { data: users } = await supabase
           .from("voip_users")
-          .select("id, name, email, role, status, suspension_reason")
+          .select("id, name, email, role, status, suspension_reason, partner_id")
           .eq("id", parseInt(payload.sub));
 
         if (!users || users.length === 0) {
@@ -404,9 +487,9 @@ serve(async (req) => {
 
         const user = users[0];
 
-        // Check if user's signup token has expired (only for non-admin users)
+        // Check if user's signup token has expired (only for client users)
         let effectiveStatus = user.status;
-        if (user.role !== "admin" && user.status === "active") {
+        if (user.role === "client" && user.status === "active") {
           const { data: signupTokens } = await supabase
             .from("voip_signup_tokens")
             .select("expires_at")
@@ -430,6 +513,7 @@ serve(async (req) => {
             role: user.role,
             status: effectiveStatus,
             suspension_reason: user.suspension_reason || null,
+            partner_id: user.partner_id || null,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );

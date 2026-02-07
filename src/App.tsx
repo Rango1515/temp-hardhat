@@ -16,6 +16,7 @@ import ServicePage from "./pages/seo/ServicePage";
 import { VoipAuthProvider } from "./contexts/VoipAuthContext";
 import { ProtectedRoute } from "./components/voip/auth/ProtectedRoute";
 import { AdminRoute } from "./components/voip/auth/AdminRoute";
+import { PartnerRoute } from "./components/voip/auth/PartnerRoute";
 import VoipAuth from "./pages/voip/Auth";
 import ClientDashboard from "./pages/voip/ClientDashboard";
 import Dialer from "./pages/voip/Dialer";
@@ -39,6 +40,12 @@ const Appointments = lazy(() => import("./pages/voip/admin/Appointments"));
 const ClientAnalytics = lazy(() => import("./pages/voip/admin/ClientAnalytics"));
 const AuditLog = lazy(() => import("./pages/voip/admin/AuditLog"));
 const AdminTickets = lazy(() => import("./pages/voip/admin/Tickets"));
+const Partners = lazy(() => import("./pages/voip/admin/Partners"));
+const PartnerTokens = lazy(() => import("./pages/voip/admin/PartnerTokens"));
+const PartnerPayouts = lazy(() => import("./pages/voip/admin/PartnerPayouts"));
+const PartnerDashboard = lazy(() => import("./pages/voip/partner/PartnerDashboard"));
+const PartnerClients = lazy(() => import("./pages/voip/partner/PartnerClients"));
+const PartnerEarnings = lazy(() => import("./pages/voip/partner/PartnerEarnings"));
 
 const LazyFallback = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
@@ -89,6 +96,14 @@ const App = () => (
               <Route path="/voip/admin/audit-log" element={<AdminRoute><AuditLog /></AdminRoute>} />
               <Route path="/voip/admin/invite-tokens" element={<AdminRoute><AdminInviteTokens /></AdminRoute>} />
               <Route path="/voip/admin/tickets" element={<AdminRoute><AdminTickets /></AdminRoute>} />
+              <Route path="/voip/admin/partners" element={<AdminRoute><Partners /></AdminRoute>} />
+              <Route path="/voip/admin/partner-tokens" element={<AdminRoute><PartnerTokens /></AdminRoute>} />
+              <Route path="/voip/admin/partner-payouts" element={<AdminRoute><PartnerPayouts /></AdminRoute>} />
+
+              {/* Partner Routes */}
+              <Route path="/voip/partner/dashboard" element={<PartnerRoute><PartnerDashboard /></PartnerRoute>} />
+              <Route path="/voip/partner/clients" element={<PartnerRoute><PartnerClients /></PartnerRoute>} />
+              <Route path="/voip/partner/earnings" element={<PartnerRoute><PartnerEarnings /></PartnerRoute>} />
 
               {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
