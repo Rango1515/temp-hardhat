@@ -376,6 +376,47 @@ serve(async (req) => {
           );
         }
 
+        if (req.method === "PATCH") {
+          const tokenId = url.searchParams.get("id");
+          if (!tokenId) {
+            return new Response(
+              JSON.stringify({ error: "Token ID is required" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const { expiresAt, neverExpires } = await req.json();
+
+          const updates: Record<string, unknown> = {};
+          if (neverExpires) {
+            // Set to 10 years from now (effectively never)
+            updates.expires_at = new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString();
+          } else if (expiresAt) {
+            updates.expires_at = new Date(expiresAt).toISOString();
+          }
+
+          if (Object.keys(updates).length === 0) {
+            return new Response(
+              JSON.stringify({ error: "No updates provided" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const { error } = await supabase
+            .from("voip_signup_tokens")
+            .update(updates)
+            .eq("id", parseInt(tokenId));
+
+          if (error) throw error;
+
+          console.log(`[voip-admin-ext] Token ${tokenId} expiration updated by admin ${adminId}`);
+
+          return new Response(
+            JSON.stringify({ message: "Token expiration updated" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
         if (req.method === "DELETE") {
           const tokenId = url.searchParams.get("id");
 
@@ -389,8 +430,7 @@ serve(async (req) => {
           const { error } = await supabase
             .from("voip_signup_tokens")
             .delete()
-            .eq("id", parseInt(tokenId))
-            .is("used_by", null);
+            .eq("id", parseInt(tokenId));
 
           if (error) throw error;
 
