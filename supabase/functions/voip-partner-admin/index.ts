@@ -200,6 +200,64 @@ serve(async (req) => {
           });
         }
 
+        if (req.method === "DELETE") {
+          const partnerId = url.searchParams.get("partnerId");
+          if (!partnerId) {
+            return new Response(JSON.stringify({ error: "partnerId required" }), {
+              status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          const pid = parseInt(partnerId);
+
+          // Delete related data in order (respecting FK constraints)
+          // 1. Delete token usage records for this partner's tokens
+          const { data: partnerTokens } = await supabase
+            .from("voip_partner_tokens")
+            .select("id")
+            .eq("partner_id", pid);
+          
+          const tokenIds = (partnerTokens || []).map(t => t.id);
+          if (tokenIds.length > 0) {
+            await supabase.from("voip_partner_token_usage").delete().in("token_id", tokenIds);
+          }
+
+          // 2. Delete partner tokens
+          await supabase.from("voip_partner_tokens").delete().eq("partner_id", pid);
+
+          // 3. Delete commissions
+          await supabase.from("voip_commissions").delete().eq("partner_id", pid);
+
+          // 4. Delete revenue events
+          await supabase.from("voip_revenue_events").delete().eq("partner_id", pid);
+
+          // 5. Delete partner profile
+          await supabase.from("voip_partner_profiles").delete().eq("user_id", pid);
+
+          // 6. Unlink any clients from this partner
+          await supabase.from("voip_users").update({ partner_id: null }).eq("partner_id", pid);
+
+          // 7. Delete audit log entries for this partner
+          await supabase.from("voip_admin_audit_log").delete().eq("entity_type", "partner").eq("entity_id", pid);
+
+          // 8. Delete the partner user
+          await supabase.from("voip_users").delete().eq("id", pid).eq("role", "partner");
+
+          // Audit the deletion itself
+          await supabase.from("voip_admin_audit_log").insert({
+            admin_id: adminId,
+            action: "partner_deleted",
+            entity_type: "partner",
+            entity_id: pid,
+          });
+
+          console.log(`[voip-partner-admin] Partner ${pid} deleted by admin ${adminId}`);
+
+          return new Response(JSON.stringify({ message: "Partner deleted" }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
         break;
       }
 
@@ -304,22 +362,44 @@ serve(async (req) => {
 
         if (req.method === "DELETE") {
           const tokenId = url.searchParams.get("tokenId");
+          const permanent = url.searchParams.get("permanent");
+
           if (!tokenId) {
             return new Response(JSON.stringify({ error: "tokenId required" }), {
               status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
           }
 
+          const tid = parseInt(tokenId);
+
+          if (permanent === "true") {
+            // Permanently delete token and usage history
+            await supabase.from("voip_partner_token_usage").delete().eq("token_id", tid);
+            await supabase.from("voip_partner_tokens").delete().eq("id", tid);
+
+            await supabase.from("voip_admin_audit_log").insert({
+              admin_id: adminId,
+              action: "partner_token_deleted",
+              entity_type: "partner_token",
+              entity_id: tid,
+            });
+
+            return new Response(JSON.stringify({ message: "Token deleted permanently" }), {
+              status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          // Just revoke
           await supabase
             .from("voip_partner_tokens")
             .update({ status: "revoked" })
-            .eq("id", parseInt(tokenId));
+            .eq("id", tid);
 
           await supabase.from("voip_admin_audit_log").insert({
             admin_id: adminId,
             action: "partner_token_revoked",
             entity_type: "partner_token",
-            entity_id: parseInt(tokenId),
+            entity_id: tid,
           });
 
           return new Response(JSON.stringify({ message: "Token revoked" }), {

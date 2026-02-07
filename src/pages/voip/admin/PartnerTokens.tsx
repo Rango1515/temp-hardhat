@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, ChevronLeft, ChevronRight, Copy, X, Eye } from "lucide-react";
+import { Loader2, Plus, ChevronLeft, ChevronRight, Copy, X, Eye, Trash2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -116,6 +117,15 @@ export default function PartnerTokens() {
       params: { action: "partner-tokens", tokenId: String(tokenId) },
     });
     toast({ title: "Token revoked" });
+    fetchTokens();
+  };
+
+  const deleteToken = async (tokenId: number) => {
+    await apiCall("voip-partner-admin", {
+      method: "DELETE",
+      params: { action: "partner-tokens", tokenId: String(tokenId), permanent: "true" },
+    });
+    toast({ title: "Token deleted permanently" });
     fetchTokens();
   };
 
@@ -259,6 +269,30 @@ export default function PartnerTokens() {
                               <X className="w-4 h-4" />
                             </Button>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive">
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Token</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently delete this token and its usage history. This cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => deleteToken(t.id)}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>
