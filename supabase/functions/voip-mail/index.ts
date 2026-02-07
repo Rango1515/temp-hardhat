@@ -382,92 +382,57 @@ async function handleAttachment(folder: string, uid: number, index: number): Pro
 
 // ─── Action: Send Email ─────────────────────────────────────────────────────────
 async function handleSend(body: any, adminId: number): Promise<Response> {
-  const host = Deno.env.get("SMTP_HOST")!;
-  const configuredPort = parseInt(Deno.env.get("SMTP_PORT") || "587");
-  const username = Deno.env.get("MAIL_USERNAME")!;
-  const password = Deno.env.get("MAIL_PASSWORD")!;
+  const relayUrl = Deno.env.get("MAIL_RELAY_URL");
+  const relayKey = Deno.env.get("MAIL_RELAY_KEY");
 
-  console.log(`[voip-mail] Attempting SMTP send to ${body.to} via ${host}:${configuredPort}`);
-
-  // Build list of port configurations to try
-  // Port 465 = implicit TLS (SMTPS), 587 = submission (STARTTLS), 25 = plain SMTP
-  const portConfigs: Array<{ port: number; secure: boolean; ignoreTLS: boolean }> = [];
-
-  // Add configured port first
-  if (configuredPort === 465) {
-    portConfigs.push({ port: 465, secure: true, ignoreTLS: false });
-    portConfigs.push({ port: 587, secure: false, ignoreTLS: true });
-    portConfigs.push({ port: 25, secure: false, ignoreTLS: true });
-  } else if (configuredPort === 25) {
-    portConfigs.push({ port: 25, secure: false, ignoreTLS: true });
-    portConfigs.push({ port: 587, secure: false, ignoreTLS: true });
-    portConfigs.push({ port: 465, secure: true, ignoreTLS: false });
-  } else {
-    portConfigs.push({ port: 587, secure: false, ignoreTLS: true });
-    portConfigs.push({ port: 25, secure: false, ignoreTLS: true });
-    portConfigs.push({ port: 465, secure: true, ignoreTLS: false });
+  if (!relayUrl || !relayKey) {
+    console.error("[voip-mail] MAIL_RELAY_URL or MAIL_RELAY_KEY not configured");
+    return errorResponse("Mail relay not configured. Please set MAIL_RELAY_URL and MAIL_RELAY_KEY.", 500);
   }
 
-  const mailOptions: any = {
-    from: `"Admin" <${username}>`,
-    to: body.to,
-    subject: body.subject,
-    html: body.body || body.text || "",
-  };
-  if (body.cc) mailOptions.cc = body.cc;
-  if (body.bcc) mailOptions.bcc = body.bcc;
-  if (body.inReplyTo) mailOptions.inReplyTo = body.inReplyTo;
+  console.log(`[voip-mail] Sending email via HTTP relay to ${body.to}`);
 
-  let lastError: Error | null = null;
+  try {
+    const relayBody = {
+      to: body.to,
+      subject: body.subject,
+      html: body.body || body.text || "",
+      cc: body.cc || undefined,
+      bcc: body.bcc || undefined,
+      inReplyTo: body.inReplyTo || undefined,
+    };
 
-  for (const config of portConfigs) {
-    console.log(`[voip-mail] Trying SMTP port ${config.port} (secure=${config.secure}, ignoreTLS=${config.ignoreTLS})...`);
+    const relayResponse = await fetch(relayUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${relayKey}`,
+      },
+      body: JSON.stringify(relayBody),
+    });
 
-    try {
-      const transportOpts: any = {
-        host,
-        port: config.port,
-        secure: config.secure,
-        auth: { user: username, pass: password },
-        tls: { rejectUnauthorized: false },
-        connectionTimeout: 15000,
-        greetingTimeout: 10000,
-        socketTimeout: 20000,
-      };
+    const relayResult = await relayResponse.json();
 
-      if (config.ignoreTLS) {
-        transportOpts.ignoreTLS = true;
-        transportOpts.requireTLS = false;
-      }
-
-      const transporter = nodemailer.createTransport(transportOpts);
-      const info = await transporter.sendMail(mailOptions);
-      console.log(`[voip-mail] ✅ Sent email via port ${config.port}, messageId: ${info.messageId}`);
-
-      // Audit log (non-blocking)
-      auditLog(adminId, "mail_message_sent", {
-        to: body.to,
-        subject: body.subject,
-        cc: body.cc || null,
-        port: config.port,
-      }).catch(() => {});
-
-      return json({ success: true });
-    } catch (err: any) {
-      const errMsg = err?.message || String(err);
-      console.error(`[voip-mail] ❌ SMTP port ${config.port} failed: ${errMsg}`);
-      lastError = err;
-      // Continue to next port config
+    if (!relayResponse.ok) {
+      console.error(`[voip-mail] ❌ Relay returned ${relayResponse.status}:`, relayResult.error || relayResult);
+      return errorResponse(`Failed to send email: ${relayResult.error || "Relay error"}`, 500);
     }
-  }
 
-  // All port configs failed
-  const errorMsg = lastError?.message || "All SMTP ports failed";
-  console.error(`[voip-mail] All SMTP configurations failed. Last error: ${errorMsg}`);
-  return errorResponse(
-    `Failed to send email. Your mail server may need SMTPS (port 465) enabled. Error: ${errorMsg}`,
-    500
-  );
+    console.log(`[voip-mail] ✅ Email sent via relay, messageId: ${relayResult.messageId}`);
+
+    // Audit log (non-blocking)
+    auditLog(adminId, "mail_message_sent", {
+      to: body.to,
+      subject: body.subject,
+      cc: body.cc || null,
+    }).catch(() => {});
+
+    return json({ success: true, messageId: relayResult.messageId });
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    console.error(`[voip-mail] ❌ HTTP relay failed: ${errMsg}`);
+    return errorResponse(`Failed to send email via relay: ${errMsg}`, 500);
+  }
 }
 
 // ─── Action: Mark Read/Unread ───────────────────────────────────────────────────

@@ -1,0 +1,17 @@
+[Unit]
+Description=Mail Relay HTTP Server
+After=network.target postfix.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mail-relay
+ExecStart=/usr/bin/node /opt/mail-relay/mail-relay.js
+Restart=always
+RestartSec=5
+Environment=MAIL_RELAY_KEY=YOUR_SECRET_KEY_HERE
+Environment=MAIL_FROM=admin@hardhathosting.work
+Environment=RELAY_PORT=8587
+
+[Install]
+WantedBy=multi-user.target
