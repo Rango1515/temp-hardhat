@@ -270,7 +270,7 @@ export default function PartnerTokens() {
                       <TableCell className="font-medium">{t.partner_name}</TableCell>
                       <TableCell>{t.uses_count}{t.max_uses ? `/${t.max_uses}` : "/∞"}</TableCell>
                       <TableCell>
-                        <Badge variant={t.status === "active" ? "default" : "destructive"}>
+                        <Badge variant={t.status === "active" ? "default" : t.status === "used" ? "secondary" : "destructive"}>
                           {t.status}
                         </Badge>
                       </TableCell>
