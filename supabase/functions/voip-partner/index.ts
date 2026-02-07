@@ -152,14 +152,14 @@ serve(async (req) => {
           });
         }
 
-        // Recent calls
+        // Recent calls (last 20)
         const { data: recentCalls } = await supabase
           .from("voip_calls")
-          .select("id, to_number, outcome, duration_seconds, start_time")
+          .select("id, to_number, outcome, duration_seconds, session_duration_seconds, start_time, notes")
           .eq("user_id", client.id)
           .is("deleted_at", null)
           .order("start_time", { ascending: false })
-          .limit(10);
+          .limit(20);
 
         // Revenue events for this client
         const { data: revenue } = await supabase
@@ -169,10 +169,74 @@ serve(async (req) => {
           .eq("partner_id", partnerId)
           .order("created_at", { ascending: false });
 
+        // Analytics: total calls
+        const { count: totalCalls } = await supabase
+          .from("voip_calls")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", client.id)
+          .is("deleted_at", null);
+
+        // Analytics: total talk time
+        const { data: callDurations } = await supabase
+          .from("voip_calls")
+          .select("duration_seconds, session_duration_seconds")
+          .eq("user_id", client.id)
+          .is("deleted_at", null);
+
+        const totalTalkTime = (callDurations || []).reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
+        const totalSessionTime = (callDurations || []).reduce((sum, c) => sum + (c.session_duration_seconds || 0), 0);
+
+        // Analytics: leads requested
+        const { count: leadsRequested } = await supabase
+          .from("voip_worker_lead_history")
+          .select("id", { count: "exact", head: true })
+          .eq("worker_id", client.id);
+
+        // Analytics: leads completed (calls with an outcome)
+        const { count: leadsCompleted } = await supabase
+          .from("voip_calls")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", client.id)
+          .is("deleted_at", null)
+          .not("outcome", "is", null);
+
+        // Analytics: appointments
+        const { count: totalAppointments } = await supabase
+          .from("voip_appointments")
+          .select("id", { count: "exact", head: true })
+          .eq("created_by", client.id)
+          .is("deleted_at", null);
+
+        // Analytics: interested leads (for conversion rate)
+        const { count: interestedCount } = await supabase
+          .from("voip_calls")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", client.id)
+          .is("deleted_at", null)
+          .eq("outcome", "interested");
+
+        const conversionRate = interestedCount && interestedCount > 0
+          ? ((totalAppointments || 0) / interestedCount * 100).toFixed(1)
+          : "0.0";
+
+        const avgTimePerLead = leadsCompleted && leadsCompleted > 0
+          ? Math.round(totalSessionTime / leadsCompleted)
+          : 0;
+
         return new Response(JSON.stringify({
           client,
           recentCalls: recentCalls || [],
           revenue: revenue || [],
+          analytics: {
+            totalCalls: totalCalls || 0,
+            totalTalkTime,
+            totalSessionTime,
+            leadsRequested: leadsRequested || 0,
+            leadsCompleted: leadsCompleted || 0,
+            totalAppointments: totalAppointments || 0,
+            conversionRate: parseFloat(conversionRate),
+            avgTimePerLead,
+          },
         }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
