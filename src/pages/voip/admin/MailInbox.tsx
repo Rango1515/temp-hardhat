@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { VoipLayout } from "@/components/voip/layout/VoipLayout";
 import { useVoipApi } from "@/hooks/useVoipApi";
 import { useToast } from "@/hooks/use-toast";
@@ -96,6 +96,132 @@ interface ComposeData {
   subject: string;
   body: string;
   inReplyTo: string;
+}
+
+// ─── Email Body Renderer ────────────────────────────────────────────────────────
+function EmailBody({ message }: { message: FullMessage }) {
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Build sanitized HTML for the iframe with proper styling
+  const iframeSrcDoc = useMemo(() => {
+    if (!message.html) return "";
+    return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #e4e4e7;
+    background: transparent;
+    margin: 0;
+    padding: 20px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  img { max-width: 100%; height: auto; border-radius: 4px; }
+  a { color: #60a5fa; text-decoration: none; word-break: break-all; }
+  a:hover { text-decoration: underline; }
+  pre, code {
+    overflow-x: auto;
+    background: rgba(255,255,255,0.05);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  }
+  blockquote {
+    border-left: 3px solid rgba(255,255,255,0.15);
+    margin: 12px 0;
+    padding: 4px 16px;
+    color: #a1a1aa;
+  }
+  table { max-width: 100%; border-collapse: collapse; margin: 8px 0; }
+  td, th { padding: 6px 10px; border: 1px solid rgba(255,255,255,0.1); }
+  hr { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 16px 0; }
+  h1, h2, h3, h4, h5, h6 { color: #fafafa; margin: 16px 0 8px; }
+  p { margin: 8px 0; }
+  /* Make long URLs not break layout */
+  td a, p a { max-width: 100%; display: inline-block; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+  /* Hide tracking pixels */
+  img[width="1"], img[height="1"] { display: none !important; }
+</style>
+</head>
+<body>${message.html}</body>
+</html>`;
+  }, [message.html]);
+
+  // For plain text: linkify URLs and format nicely
+  const formattedText = useMemo(() => {
+    if (message.html || !message.text) return null;
+    // Linkify URLs
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    const parts = message.text.split(urlRegex);
+    return parts.map((part, i) => {
+      if (urlRegex.test(part)) {
+        // Truncate display of very long URLs
+        const display = part.length > 80 ? part.substring(0, 77) + "..." : part;
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline break-all"
+          >
+            {display}
+          </a>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  }, [message.text, message.html]);
+
+  // Reset loaded state when message changes
+  useEffect(() => {
+    setIframeLoaded(false);
+  }, [message.uid]);
+
+  if (message.html) {
+    return (
+      <div className="relative flex-1 h-full">
+        {/* Lazy loader overlay while iframe renders */}
+        {!iframeLoaded && (
+          <div className="absolute inset-0 p-5 space-y-3 bg-card z-10 animate-pulse">
+            <div className="h-3.5 w-full rounded bg-muted" />
+            <div className="h-3.5 w-11/12 rounded bg-muted" />
+            <div className="h-3.5 w-4/5 rounded bg-muted" />
+            <div className="py-1" />
+            <div className="h-3.5 w-full rounded bg-muted" />
+            <div className="h-3.5 w-10/12 rounded bg-muted" />
+            <div className="h-3.5 w-3/4 rounded bg-muted" />
+          </div>
+        )}
+        <iframe
+          ref={iframeRef}
+          srcDoc={iframeSrcDoc}
+          sandbox="allow-same-origin"
+          className={cn(
+            "w-full h-full border-0 transition-opacity duration-300",
+            iframeLoaded ? "opacity-100" : "opacity-0"
+          )}
+          title="Email content"
+          onLoad={() => setIframeLoaded(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+      {formattedText}
+    </div>
+  );
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────────
@@ -829,23 +955,12 @@ export default function MailInbox() {
                 {/* Message body */}
                 <div className="flex-1 overflow-auto">
                   {selectedMessage.truncated && (
-                    <div className="mx-4 mt-3 px-3 py-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 dark:text-yellow-400 text-sm flex items-center gap-2">
+                    <div className="mx-4 mt-3 px-3 py-2 rounded-md bg-accent/50 border border-border text-muted-foreground text-sm flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>This email was too large to load fully. Some content may be truncated.</span>
                     </div>
                   )}
-                  {selectedMessage.html ? (
-                    <iframe
-                      srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:#333;margin:16px;line-height:1.5;word-wrap:break-word;overflow-wrap:break-word}img{max-width:100%;height:auto}a{color:#2563eb}pre{overflow-x:auto;background:#f5f5f5;padding:8px;border-radius:4px}table{max-width:100%;border-collapse:collapse}td,th{padding:4px 8px}</style></head><body>${selectedMessage.html}</body></html>`}
-                      sandbox="allow-same-origin"
-                      className="w-full h-full border-0"
-                      title="Email content"
-                    />
-                  ) : (
-                    <div className="p-4 whitespace-pre-wrap text-sm">
-                      {selectedMessage.text}
-                    </div>
-                  )}
+                  <EmailBody message={selectedMessage} />
                 </div>
               </>
             ) : (
