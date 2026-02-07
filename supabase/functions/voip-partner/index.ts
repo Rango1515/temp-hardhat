@@ -332,6 +332,92 @@ serve(async (req) => {
         });
       }
 
+      // ── My Referral Tokens ──
+      case "my-tokens": {
+        if (req.method === "GET") {
+          const { data: tokens, error } = await supabase
+            .from("voip_partner_tokens")
+            .select("id, token_code, max_uses, uses_count, expires_at, status, created_at")
+            .eq("partner_id", partnerId)
+            .order("created_at", { ascending: false });
+
+          if (error) throw error;
+
+          return new Response(JSON.stringify({
+            tokens: (tokens || []).map(t => ({
+              ...t,
+              referral_link: `https://hardhathosting.work/voip/partner-signup?token=${t.token_code}`,
+            })),
+          }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        if (req.method === "POST") {
+          const body = await req.json();
+          const maxUses = body.maxUses || null;
+
+          // Generate token
+          const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+          let tokenCode = "";
+          const arr = crypto.getRandomValues(new Uint8Array(20));
+          for (let i = 0; i < 20; i++) {
+            tokenCode += chars[arr[i] % chars.length];
+          }
+
+          const { data: newToken, error: insertErr } = await supabase
+            .from("voip_partner_tokens")
+            .insert({
+              token_code: tokenCode,
+              partner_id: partnerId,
+              max_uses: maxUses,
+              expires_at: null,
+              created_by: partnerId,
+            })
+            .select("id, token_code, max_uses, uses_count, status, created_at")
+            .single();
+
+          if (insertErr) throw insertErr;
+
+          return new Response(JSON.stringify({
+            token: {
+              ...newToken,
+              referral_link: `https://hardhathosting.work/voip/partner-signup?token=${newToken.token_code}`,
+            },
+          }), { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        if (req.method === "DELETE") {
+          const tokenId = url.searchParams.get("tokenId");
+          if (!tokenId) {
+            return new Response(JSON.stringify({ error: "tokenId required" }), {
+              status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          // Only allow deleting own tokens
+          const { data: existing } = await supabase
+            .from("voip_partner_tokens")
+            .select("id")
+            .eq("id", parseInt(tokenId))
+            .eq("partner_id", partnerId)
+            .maybeSingle();
+
+          if (!existing) {
+            return new Response(JSON.stringify({ error: "Token not found" }), {
+              status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+
+          await supabase.from("voip_partner_token_usage").delete().eq("token_id", parseInt(tokenId));
+          await supabase.from("voip_partner_tokens").delete().eq("id", parseInt(tokenId));
+
+          return new Response(JSON.stringify({ message: "Token deleted" }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        break;
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
