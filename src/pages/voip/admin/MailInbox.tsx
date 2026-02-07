@@ -39,7 +39,19 @@ import {
   Inbox,
   PenSquare,
   X,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 
 // ─── Types ──────────────────────────────────────────────────────────────────────
@@ -118,6 +130,9 @@ export default function MailInbox() {
     inReplyTo: "",
   });
 
+  // Clearing inbox
+  const [clearingInbox, setClearingInbox] = useState(false);
+
   // Mobile reading pane toggle
   const [showReadingPane, setShowReadingPane] = useState(false);
 
@@ -170,6 +185,11 @@ export default function MailInbox() {
     setShowReadingPane(true);
     setSelectedMessage(null);
 
+    // Optimistically mark as read immediately (removes orange dot)
+    setMessages((prev) =>
+      prev.map((m) => (m.uid === uid ? { ...m, read: true } : m))
+    );
+
     try {
       const currentToken = localStorage.getItem("voip_token");
       const url = new URL(
@@ -200,9 +220,6 @@ export default function MailInbox() {
 
       if (data?.message) {
         setSelectedMessage(data.message);
-        setMessages((prev) =>
-          prev.map((m) => (m.uid === uid ? { ...m, read: true } : m))
-        );
       }
     } catch (err: any) {
       if (err?.name === "AbortError") return; // Cancelled — ignore
@@ -270,6 +287,28 @@ export default function MailInbox() {
     searchTimeout.current = setTimeout(() => {
       searchMessages(activeFolder, query);
     }, 500);
+  };
+
+  const handleClearInbox = async () => {
+    setClearingInbox(true);
+    const result = await apiCall<{ deleted: number }>("voip-mail", {
+      method: "POST",
+      params: { action: "clear" },
+      body: { folder: activeFolder },
+    });
+    if (result.error) {
+      toast({ title: "Failed to clear inbox", description: result.error, variant: "destructive" });
+    } else {
+      const count = result.data?.deleted || 0;
+      toast({ title: `Cleared ${count} message${count !== 1 ? "s" : ""}` });
+      setMessages([]);
+      setTotalMessages(0);
+      setSelectedMessage(null);
+      setSelectedUid(null);
+      setShowReadingPane(false);
+      loadFolders();
+    }
+    setClearingInbox(false);
   };
 
   const handleRefresh = () => {
@@ -448,6 +487,28 @@ export default function MailInbox() {
           <Button size="sm" variant="outline" onClick={handleRefresh}>
             <RefreshCw className="w-4 h-4" />
           </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" disabled={clearingInbox || messages.length === 0}>
+                {clearingInbox ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                Clear {activeFolder === "INBOX" ? "Inbox" : activeFolder}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Clear all messages?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete all {totalMessages} message{totalMessages !== 1 ? "s" : ""} in <strong>{activeFolder}</strong>. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleClearInbox} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Delete All
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <div className="relative flex-1 min-w-[200px] max-w-sm">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input

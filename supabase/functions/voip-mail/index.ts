@@ -488,6 +488,38 @@ async function handleDelete(body: any, adminId: number): Promise<Response> {
   }
 }
 
+// ─── Action: Clear All Messages in Folder ───────────────────────────────────────
+async function handleClear(folder: string, adminId: number): Promise<Response> {
+  const client = await createImapClient();
+  try {
+    const lock = await client.getMailboxLock(folder);
+    try {
+      // Search for all messages in this folder
+      const allUids: number[] = await client.search({ all: true }, { uid: true });
+      
+      if (allUids.length === 0) {
+        return json({ success: true, deleted: 0 });
+      }
+
+      // Delete all messages
+      const uidRange = allUids.join(",");
+      await client.messageDelete(uidRange, { uid: true });
+
+      await auditLog(adminId, "mail_inbox_cleared", {
+        folder,
+        count: allUids.length,
+      });
+
+      console.log(`[voip-mail] Cleared ${allUids.length} messages from ${folder}`);
+      return json({ success: true, deleted: allUids.length });
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+}
+
 // ─── Action: Search Messages ────────────────────────────────────────────────────
 async function handleSearch(folder: string, query: string): Promise<Response> {
   const client = await createImapClient();
@@ -628,6 +660,13 @@ Deno.serve(async (req) => {
         const query = url.searchParams.get("query") || "";
         if (!query) return errorResponse("query required");
         return await handleSearch(folder, query);
+      }
+
+      case "clear": {
+        if (req.method !== "POST") return errorResponse("POST required", 405);
+        const body = await req.json();
+        if (!body.folder) return errorResponse("folder required");
+        return await handleClear(body.folder, parseInt(payload.sub));
       }
 
       default:
