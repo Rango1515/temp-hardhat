@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Loader2, Plus, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { PartnerSettingsCard } from "@/components/voip/admin/PartnerSettingsCard";
 
 interface Partner {
   id: number;
@@ -211,6 +212,9 @@ export default function Partners() {
             </Button>
           </div>
         )}
+
+        {/* Partner Settings */}
+        <PartnerSettingsCard />
       </div>
     </VoipLayout>
   );

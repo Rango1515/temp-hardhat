@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate, useLocation, Navigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation, useSearchParams, Navigate } from "react-router-dom";
 import { useVoipAuth } from "@/contexts/VoipAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,11 +14,15 @@ export default function VoipAuth() {
   const { login, signup, isAuthenticated, isLoading: authLoading } = useVoipAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [activeTab, setActiveTab] = useState("login");
+
+  // Auto-switch to signup tab and pre-fill token from URL parameter
+  const urlToken = searchParams.get("token") || "";
+  const [activeTab, setActiveTab] = useState(urlToken ? "signup" : "login");
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -29,7 +33,7 @@ export default function VoipAuth() {
   const [signupEmail, setSignupEmail] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
-  const [inviteToken, setInviteToken] = useState("");
+  const [inviteToken, setInviteToken] = useState(urlToken);
   const [tosAccepted, setTosAccepted] = useState(false);
 
   if (authLoading) {
