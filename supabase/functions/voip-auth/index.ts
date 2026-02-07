@@ -113,7 +113,8 @@ serve(async (req) => {
         const { data: users, error: userError } = await supabase
           .from("voip_users")
           .select("id, name, email, password_hash, role, status, partner_id")
-          .eq("email", email.toLowerCase().trim());
+          .eq("email", email.toLowerCase().trim())
+          .is("deleted_at", null);
         
         if (userError) {
           console.error("[voip-auth] User query error:", userError);

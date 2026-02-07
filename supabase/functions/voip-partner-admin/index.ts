@@ -225,8 +225,20 @@ serve(async (req) => {
 
           const pid = parseInt(partnerId);
 
-          // Delete related data in order (respecting FK constraints)
-          // 1. Delete token usage records for this partner's tokens
+          // Step 1: Immediately disable the account and set ban reason
+          // This triggers the live-kick mechanism (30s status poll) to boot them if online
+          await supabase.from("voip_users").update({
+            status: "disabled",
+            suspension_reason: "Your account has been removed by an administrator.",
+          }).eq("id", pid);
+
+          // Step 2: Delete all refresh tokens so they can't re-authenticate
+          await supabase.from("voip_refresh_tokens").delete().eq("user_id", pid);
+
+          console.log(`[voip-partner-admin] Partner ${pid} disabled and sessions invalidated`);
+
+          // Step 3: Delete related data in order (respecting FK constraints)
+          // 3a. Delete token usage records for this partner's tokens
           const { data: partnerTokens } = await supabase
             .from("voip_partner_tokens")
             .select("id")
@@ -237,26 +249,28 @@ serve(async (req) => {
             await supabase.from("voip_partner_token_usage").delete().in("token_id", tokenIds);
           }
 
-          // 2. Delete partner tokens
+          // 3b. Delete partner tokens
           await supabase.from("voip_partner_tokens").delete().eq("partner_id", pid);
 
-          // 3. Delete commissions
+          // 3c. Delete commissions
           await supabase.from("voip_commissions").delete().eq("partner_id", pid);
 
-          // 4. Delete revenue events
+          // 3d. Delete revenue events
           await supabase.from("voip_revenue_events").delete().eq("partner_id", pid);
 
-          // 5. Delete partner profile
+          // 3e. Delete partner profile
           await supabase.from("voip_partner_profiles").delete().eq("user_id", pid);
 
-          // 6. Unlink any clients from this partner
+          // 3f. Unlink any clients from this partner
           await supabase.from("voip_users").update({ partner_id: null }).eq("partner_id", pid);
 
-          // 7. Delete audit log entries for this partner
+          // 3g. Delete audit log entries for this partner
           await supabase.from("voip_admin_audit_log").delete().eq("entity_type", "partner").eq("entity_id", pid);
 
-          // 8. Delete the partner user
-          await supabase.from("voip_users").delete().eq("id", pid).eq("role", "partner");
+          // 3h. Soft-delete the partner user (keep record to block future logins)
+          await supabase.from("voip_users").update({
+            deleted_at: new Date().toISOString(),
+          }).eq("id", pid).eq("role", "partner");
 
           // Audit the deletion itself
           await supabase.from("voip_admin_audit_log").insert({
@@ -266,7 +280,7 @@ serve(async (req) => {
             entity_id: pid,
           });
 
-          console.log(`[voip-partner-admin] Partner ${pid} deleted by admin ${adminId}`);
+          console.log(`[voip-partner-admin] Partner ${pid} fully deleted by admin ${adminId}`);
 
           return new Response(JSON.stringify({ message: "Partner deleted" }), {
             status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
