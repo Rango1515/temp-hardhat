@@ -3,6 +3,100 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { supabase } from "../_shared/db.ts";
 import { verifyJWT, extractToken } from "../_shared/auth.ts";
 
+async function checkCaseCloseBonus(userId: number) {
+  try {
+    // Get the client's partner_id
+    const { data: user } = await supabase
+      .from("voip_users")
+      .select("id, partner_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (!user?.partner_id) {
+      console.log("[case-close-bonus] User has no partner, skipping bonus check");
+      return;
+    }
+
+    const partnerId = user.partner_id;
+
+    // Get partner settings
+    const { data: settings } = await supabase
+      .from("voip_partner_settings")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+
+    if (!settings?.bonus_enabled) {
+      console.log("[case-close-bonus] Bonus not enabled, skipping");
+      return;
+    }
+
+    // Check if bonus already applied for this client (if once per client)
+    if (settings.apply_bonus_once_per_client) {
+      const { data: existingBonus } = await supabase
+        .from("voip_revenue_events")
+        .select("id")
+        .eq("client_id", userId)
+        .eq("partner_id", partnerId)
+        .eq("type", "case_bonus")
+        .limit(1);
+
+      if (existingBonus && existingBonus.length > 0) {
+        console.log("[case-close-bonus] Bonus already applied for this client, skipping");
+        return;
+      }
+    }
+
+    // Calculate bonus amount
+    let bonusAmount = 0;
+    if (settings.bonus_type === "flat_amount") {
+      bonusAmount = Number(settings.bonus_value);
+    } else if (settings.bonus_type === "percentage") {
+      // Percentage of... we'll use a fixed reference or just the bonus_value as a dollar amount
+      bonusAmount = Number(settings.bonus_value);
+    }
+
+    if (bonusAmount <= 0) {
+      console.log("[case-close-bonus] Bonus amount is 0, skipping");
+      return;
+    }
+
+    // Create revenue event
+    const { data: event, error: evtErr } = await supabase
+      .from("voip_revenue_events")
+      .insert({
+        client_id: userId,
+        partner_id: partnerId,
+        amount: bonusAmount,
+        type: "case_bonus",
+        description: `Case-close bonus for client #${userId}`,
+      })
+      .select("id")
+      .single();
+
+    if (evtErr) {
+      console.error("[case-close-bonus] Error creating revenue event:", evtErr);
+      return;
+    }
+
+    // Create commission
+    const commissionRate = Number(settings.commission_rate) || 0.05;
+    const commissionAmount = bonusAmount * commissionRate;
+
+    await supabase.from("voip_commissions").insert({
+      revenue_event_id: event.id,
+      partner_id: partnerId,
+      commission_amount: commissionAmount,
+      commission_rate: commissionRate,
+      status: "pending",
+    });
+
+    console.log(`[case-close-bonus] Created bonus: $${bonusAmount}, commission: $${commissionAmount} for partner ${partnerId}`);
+  } catch (err) {
+    console.error("[case-close-bonus] Error:", err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -170,12 +264,13 @@ serve(async (req) => {
           );
         }
 
-        const { status, duration_seconds } = await req.json();
+        const body = await req.json();
+        const { status, duration_seconds, outcome } = body;
 
         // Verify call belongs to user
         const { data: calls } = await supabase
           .from("voip_calls")
-          .select("id")
+          .select("id, user_id")
           .eq("id", parseInt(callId))
           .eq("user_id", userId);
 
@@ -201,6 +296,10 @@ serve(async (req) => {
           updates.cost = parseFloat(((duration_seconds / 60) * 0.02).toFixed(4));
         }
 
+        if (outcome) {
+          updates.outcome = outcome;
+        }
+
         if (Object.keys(updates).length > 0) {
           const { error } = await supabase
             .from("voip_calls")
@@ -208,6 +307,14 @@ serve(async (req) => {
             .eq("id", parseInt(callId));
 
           if (error) throw error;
+        }
+
+        // Check for case-close bonus when outcome is a "closed" type
+        const closedOutcomes = ["closed", "case_closed", "sold", "won", "converted"];
+        if (outcome && closedOutcomes.includes(outcome.toLowerCase())) {
+          console.log(`[voip-calls] Case closed outcome detected for user ${userId}, checking bonus...`);
+          // Fire and forget - don't block the response
+          checkCaseCloseBonus(userId).catch(e => console.error("[voip-calls] Bonus check error:", e));
         }
 
         return new Response(
