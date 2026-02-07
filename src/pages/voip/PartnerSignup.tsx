@@ -109,18 +109,18 @@ export default function PartnerSignup() {
               <HardHat className="w-6 h-6 text-primary-foreground" />
             </div>
           </Link>
-          <h1 className="text-2xl font-bold text-foreground">Partner Sign Up</h1>
+          <h1 className="text-2xl font-bold text-foreground">Referral Sign Up</h1>
           <div className="flex items-center justify-center gap-2 mt-2">
             <Users className="w-4 h-4 text-primary" />
             <p className="text-sm text-muted-foreground">
-              Create your partner account to start earning
+              Create your account to get started
             </p>
           </div>
         </div>
 
         <Card className="border-border/50">
           <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Welcome, Partner!</CardTitle>
+            <CardTitle className="text-xl">Welcome!</CardTitle>
             <CardDescription>
               Set up your account with your email and password
             </CardDescription>
@@ -222,7 +222,7 @@ export default function PartnerSignup() {
                     Creating account...
                   </>
                 ) : (
-                  "Create Partner Account"
+                  "Create Account"
                 )}
               </Button>
             </form>
