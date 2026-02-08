@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { supabase } from "../_shared/db.ts";
-import { verifyJWT, extractToken } from "../_shared/auth.ts";
+import { verifyJWT, extractToken, hashPassword } from "../_shared/auth.ts";
 
 // Sanitize search input to prevent SQL wildcard injection
 function sanitizeSearchPattern(input: string): string {
@@ -276,11 +276,8 @@ serve(async (req) => {
           );
         }
 
-        const encoder = new TextEncoder();
-        const data = encoder.encode(newPassword);
-        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const passwordHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+        // Use the same secure PBKDF2 hashing as signup
+        const passwordHash = await hashPassword(newPassword);
 
         const { error } = await supabase
           .from("voip_users")
