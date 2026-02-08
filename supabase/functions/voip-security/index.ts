@@ -18,7 +18,7 @@ const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
 let lastDdosAlertTime = 0;
 const DDOS_WINDOW_MS = 60_000; // 1-minute window
 const DDOS_IP_THRESHOLD = 5; // 5+ unique IPs blocked in 1 minute = DDoS
-const DDOS_ALERT_COOLDOWN_MS = 60_000; // 1 minute buffer between DDoS Discord alerts
+const DDOS_ALERT_COOLDOWN_MS = 600_000; // 10 minute buffer between DDoS Discord alerts
 
 // ── Fingerprint tracking (IP + User-Agent combo) ────────────────────────────
 // Map<fingerprint, Array<timestamp_ms>>
@@ -1498,11 +1498,11 @@ serve(async (req) => {
             { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
 
-        // Server-side 1-minute cooldown — reuse the same lastDdosAlertTime variable
+        // Server-side 10-minute cooldown — reuse the same lastDdosAlertTime variable
         const nowMs = Date.now();
-        if ((nowMs - lastDdosAlertTime) < 60_000) {
+        if ((nowMs - lastDdosAlertTime) < DDOS_ALERT_COOLDOWN_MS) {
           return new Response(
-            JSON.stringify({ message: "DDoS alert on cooldown", cooldown_remaining_s: Math.ceil((60_000 - (nowMs - lastDdosAlertTime)) / 1000) }),
+            JSON.stringify({ message: "DDoS alert on cooldown", cooldown_remaining_s: Math.ceil((DDOS_ALERT_COOLDOWN_MS - (nowMs - lastDdosAlertTime)) / 1000) }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
