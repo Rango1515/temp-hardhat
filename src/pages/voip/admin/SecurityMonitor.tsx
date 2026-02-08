@@ -323,18 +323,15 @@ export default function SecurityMonitor() {
 
   const handleTestDiscordWebhook = async () => {
     setDiscordTesting(true);
-    // Temporarily block a fake IP to trigger a Discord alert, then immediately unblock
-    const result = await apiCall("voip-security", {
+    const result = await apiCall<{ message?: string; error?: string }>("voip-security", {
       method: "POST",
-      params: { action: "block-ip" },
-      body: { ip: "0.0.0.0", reason: "🧪 Test alert from Security Monitor", duration: "5min", scope: "all" },
+      params: { action: "test-discord" },
     });
     setDiscordTesting(false);
     if (result.error) {
       toast({ title: "Test Failed", description: result.error, variant: "destructive" });
     } else {
-      toast({ title: "Test Sent", description: "Check your Discord channel for the alert." });
-      fetchBlockedIps();
+      toast({ title: "Test Sent!", description: "Check your Discord channel for the green test alert." });
     }
   };
 
