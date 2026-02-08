@@ -100,27 +100,67 @@
 
     .info-box p { font-size: 0.85rem; color: #a3a3a3; line-height: 1.5; }
 
-    .countdown {
-      display: flex; align-items: center; justify-content: center;
-      gap: 0.5rem; font-size: 0.875rem; color: #737373; margin-bottom: 1.5rem;
+    .timer-ring-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
     }
 
-    .countdown svg { width: 16px; height: 16px; }
-    .countdown #timer { font-weight: 600; color: #f97316; font-variant-numeric: tabular-nums; }
-
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 0.5rem; padding: 0.625rem 1.25rem; border-radius: 8px;
-      font-size: 0.875rem; font-weight: 500; cursor: pointer;
-      transition: all 0.15s ease; border: none; font-family: inherit;
+    .timer-ring-container {
+      position: relative;
+      width: 100px;
+      height: 100px;
     }
 
-    .btn-primary { background: #f97316; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #ea580c; }
-    .btn-disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn svg { width: 16px; height: 16px; }
+    .timer-ring-container svg {
+      transform: rotate(-90deg);
+      width: 100px;
+      height: 100px;
+    }
 
-    .status-msg { font-size: 0.8rem; color: #ef4444; margin-top: 0.75rem; min-height: 1.2em; text-align: center; }
+    .timer-ring-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 5;
+    }
+
+    .timer-ring-progress {
+      fill: none;
+      stroke: #ef4444;
+      stroke-width: 5;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s linear;
+    }
+
+    .timer-number {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #ef4444;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .timer-number span {
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: #737373;
+      display: block;
+      margin-top: -2px;
+    }
+
+    .timer-label {
+      font-size: 0.85rem;
+      color: #737373;
+    }
+
+    .status-msg { font-size: 0.8rem; min-height: 1.2em; text-align: center; margin-bottom: 1rem; }
+    .status-msg.error { color: #ef4444; }
+    .status-msg.success { color: #22c55e; }
 
     .footer { margin-top: 2rem; font-size: 0.75rem; color: rgba(255, 255, 255, 0.2); }
     .footer a { color: #f97316; text-decoration: none; }
@@ -129,213 +169,134 @@
 </head>
 <body>
   <div class="container" id="root">
-    <div class="code">403</div>
-    <div class="icon-box">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        <line x1="4" y1="4" x2="20" y2="20"/>
-      </svg>
-    </div>
-    <div class="rule-badge" id="badge">BLOCKED</div>
-    <h1 id="title">Access Temporarily Blocked</h1>
-    <p class="description" id="desc">Your IP address has been temporarily blocked due to suspicious activity. This is an automated security measure.</p>
-
-    <div class="details-card">
-      <h3>Block Details</h3>
-      <div class="detail-row">
-        <span class="detail-label">Block Duration</span>
-        <span class="detail-value" id="durationVal">—</span>
-      </div>
-      <div class="detail-row">
-        <span class="detail-label">Your IP</span>
-        <span class="detail-value" id="user-ip">detecting…</span>
-      </div>
-    </div>
-
-    <div class="info-box">
-      <p><strong>Why was I blocked?</strong> <span id="whyText">Our Web Application Firewall detected activity from your IP that violates our security policies.</span></p>
-    </div>
-
-    <div class="countdown">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
-      </svg>
-      <span>Auto-retry in <span id="timer">60</span>s</span>
-    </div>
-
-    <div>
-      <button class="btn btn-primary btn-disabled" id="retryBtn" disabled>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-        <span id="retryLabel">Wait 60s</span>
-      </button>
-    </div>
-
-    <p class="status-msg" id="statusMsg"></p>
-
-    <div class="footer">
-      <p>If you believe this is an error, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p>
-    </div>
+    <p style="color:#737373;">Loading…</p>
   </div>
 
   <script>
-    // ══════════════════════════════════════════════════════════════
-    // 403 BLOCK PAGE — Fully self-contained. No redirects.
-    // Reads block info from localStorage. Works as server 403 page
-    // and as a direct-visit block page.
-    // ══════════════════════════════════════════════════════════════
-
     var BLOCK_KEY = 'waf_block_until';
     var BLOCK_RULE_KEY = 'waf_block_rule';
     var BLOCK_DURATION_KEY = 'waf_block_duration_min';
     var SUPABASE_URL = 'https://sqtbqtpudoossunaaofx.supabase.co';
+    var CHECK_URL = SUPABASE_URL + '/functions/v1/voip-security?action=check-block';
 
-    // ── Hard lock navigation ──────────────────────────────────────
+    function clearBlockStorage() {
+      localStorage.removeItem(BLOCK_KEY);
+      localStorage.removeItem(BLOCK_RULE_KEY);
+      localStorage.removeItem(BLOCK_DURATION_KEY);
+      localStorage.removeItem('waf_retry_count');
+      localStorage.removeItem('waf_retry_window_start');
+    }
+
+    function goHome() {
+      clearBlockStorage();
+      window.location.replace('/');
+    }
+
+    function checkServer() {
+      return fetch(CHECK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        return { blocked: d.blocked === true, seconds: d.remaining_seconds || 0 };
+      })
+      .catch(function() {
+        return { blocked: true, seconds: 30 };
+      });
+    }
+
+    // Lock navigation for server-level 403s
     history.pushState(null, '', location.href);
     window.addEventListener('popstate', function() {
       history.pushState(null, '', location.href);
     });
 
-    window.addEventListener('beforeunload', function(e) {
-      var expiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-      if (Date.now() < expiry) {
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
-      }
-    });
-
-    // ── Rule info (cosmetic only) ─────────────────────────────────
-    var RULE_INFO = {
-      rate_flood: { badge: 'RATE FLOOD', title: 'Rate Flood Detected', desc: 'You triggered our rate flood protection by sending too many requests in a short burst.', why: 'Your IP exceeded the maximum allowed requests within a short window.' },
-      sustained_flood: { badge: 'SUSTAINED FLOOD', title: 'Sustained Flood Detected', desc: 'Our system detected a sustained high volume of requests from your IP.', why: 'Your IP maintained an abnormally high request rate.' },
-      brute_force: { badge: 'BRUTE FORCE', title: 'Brute Force Attempt Blocked', desc: 'Too many failed login attempts were detected from your IP address.', why: 'Multiple consecutive failed login attempts suggest a password-guessing attack.' },
-      endpoint_abuse: { badge: 'ENDPOINT ABUSE', title: 'Sensitive Endpoint Abuse', desc: 'Excessive requests to protected system endpoints were detected.', why: 'Your IP sent too many requests to sensitive routes.' },
-      connection_flood: { badge: 'CONNECTION FLOOD', title: 'Connection Flood Detected', desc: 'An extreme burst of connections was detected from your IP.', why: 'Your IP opened too many connections in a very short window.' },
-      automated_tool: { badge: 'BOT DETECTED', title: 'Automated Tool Blocked', desc: 'Our system identified your traffic as originating from an automated tool.', why: 'Your request pattern matches known automated tool signatures.' },
-    };
-
-    // ── Read block info from localStorage ─────────────────────────
-    var storedExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-    var storedRule = localStorage.getItem(BLOCK_RULE_KEY) || '';
-    var storedDuration = parseInt(localStorage.getItem(BLOCK_DURATION_KEY) || '1', 10);
-    var now = Date.now();
-
-    // If no active block in localStorage, check server then redirect home
-    if (!storedExpiry || storedExpiry <= now) {
-      // Could be a server-level 403 without client-side block info.
-      // Try server check, if not blocked, go home. If blocked, set localStorage.
-      (function() {
-        fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.blocked) {
-            // Set localStorage from server response
-            var secs = data.remaining_seconds || 60;
-            localStorage.setItem(BLOCK_KEY, String(Date.now() + secs * 1000));
-            localStorage.setItem(BLOCK_RULE_KEY, data.rule || '');
-            localStorage.setItem(BLOCK_DURATION_KEY, String(Math.ceil(secs / 60)));
-            location.reload();
-          } else {
-            // Not blocked — clean up and go home
-            localStorage.removeItem(BLOCK_KEY);
-            localStorage.removeItem(BLOCK_RULE_KEY);
-            localStorage.removeItem(BLOCK_DURATION_KEY);
-            window.location.href = '/';
-          }
-        })
-        .catch(function() {
-          // Can't reach server — just go home
-          localStorage.removeItem(BLOCK_KEY);
-          localStorage.removeItem(BLOCK_RULE_KEY);
-          localStorage.removeItem(BLOCK_DURATION_KEY);
-          window.location.href = '/';
-        });
-      })();
-    }
-
-    // ── Apply rule-specific text ──────────────────────────────────
-    var info = RULE_INFO[storedRule];
-    if (info) {
-      document.getElementById('badge').textContent = info.badge;
-      document.getElementById('title').textContent = info.title;
-      document.getElementById('desc').textContent = info.desc;
-      document.getElementById('whyText').textContent = info.why;
-    }
-
-    document.getElementById('durationVal').textContent = storedDuration + ' minute' + (storedDuration !== 1 ? 's' : '');
-
-    // ── Countdown timer ───────────────────────────────────────────
-    var timerEl = document.getElementById('timer');
-    var retryBtn = document.getElementById('retryBtn');
-    var retryLabel = document.getElementById('retryLabel');
-    var statusMsg = document.getElementById('statusMsg');
-
-    var remaining = Math.max(1, Math.ceil((storedExpiry - now) / 1000));
-    timerEl.textContent = remaining;
-    retryLabel.textContent = 'Wait ' + remaining + 's';
-
-    var countdownInterval = setInterval(function() {
-      var currentExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-      var left = Math.ceil((currentExpiry - Date.now()) / 1000);
-
-      if (left <= 0) {
-        clearInterval(countdownInterval);
-        timerEl.textContent = '0';
-        retryBtn.disabled = false;
-        retryBtn.classList.remove('btn-disabled');
-        retryLabel.textContent = 'Try Again';
-        retryBtn.onclick = function() {
-          retryBtn.disabled = true;
-          retryBtn.classList.add('btn-disabled');
-          retryLabel.textContent = 'Checking...';
-          statusMsg.textContent = '';
-
-          fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({})
-          })
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            if (data.blocked) {
-              var secs = data.remaining_seconds || 60;
-              localStorage.setItem(BLOCK_KEY, String(Date.now() + secs * 1000));
-              statusMsg.textContent = 'Your IP is still blocked. Please wait longer.';
-              setTimeout(function() { location.reload(); }, 1500);
-            } else {
-              localStorage.removeItem(BLOCK_KEY);
-              localStorage.removeItem(BLOCK_RULE_KEY);
-              localStorage.removeItem(BLOCK_DURATION_KEY);
-              window.location.href = '/';
-            }
-          })
-          .catch(function() {
-            statusMsg.textContent = 'Could not reach server. Try again shortly.';
-            retryBtn.disabled = false;
-            retryBtn.classList.remove('btn-disabled');
-            retryLabel.textContent = 'Try Again';
-          });
-        };
+    checkServer().then(function(result) {
+      if (!result.blocked) {
+        goHome();
         return;
       }
 
-      timerEl.textContent = left;
-      retryLabel.textContent = 'Wait ' + left + 's';
-    }, 1000);
+      var seconds = Math.max(5, result.seconds);
+      localStorage.setItem(BLOCK_KEY, String(Date.now() + seconds * 1000));
 
-    // ── Cosmetic IP detection ─────────────────────────────────────
-    fetch('https://api.ipify.org?format=json')
-      .then(function(r) { return r.json(); })
-      .then(function(d) { document.getElementById('user-ip').textContent = d.ip || 'unknown'; })
-      .catch(function() { document.getElementById('user-ip').textContent = 'hidden'; });
+      var durationMin = Math.max(1, Math.ceil(seconds / 60));
+      var circumference = 2 * Math.PI * 42;
+
+      var root = document.getElementById('root');
+      root.innerHTML =
+        '<div class="code">403</div>' +
+        '<div class="icon-box">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' +
+            '<line x1="4" y1="4" x2="20" y2="20"/>' +
+          '</svg>' +
+        '</div>' +
+        '<div class="rule-badge">BLOCKED</div>' +
+        '<h1>Access Temporarily Blocked</h1>' +
+        '<p class="description">Your IP address has been temporarily blocked due to suspicious activity. This is an automated security measure.</p>' +
+        '<div class="details-card">' +
+          '<h3>Block Details</h3>' +
+          '<div class="detail-row"><span class="detail-label">Block Duration</span><span class="detail-value">' + durationMin + ' min</span></div>' +
+          '<div class="detail-row"><span class="detail-label">Your IP</span><span class="detail-value" id="user-ip">detecting…</span></div>' +
+        '</div>' +
+        '<div class="info-box"><p><strong>Why was I blocked?</strong> Our Web Application Firewall detected activity from your IP that violates our security policies.</p></div>' +
+        '<div class="timer-ring-wrap">' +
+          '<div class="timer-ring-container">' +
+            '<svg viewBox="0 0 100 100">' +
+              '<circle class="timer-ring-bg" cx="50" cy="50" r="42"/>' +
+              '<circle class="timer-ring-progress" id="ringProgress" cx="50" cy="50" r="42" ' +
+                'stroke-dasharray="' + circumference + '" stroke-dashoffset="0"/>' +
+            '</svg>' +
+            '<div class="timer-number"><span id="timerNum">' + seconds + '</span><span>seconds</span></div>' +
+          '</div>' +
+          '<div class="timer-label">You\'ll be redirected automatically</div>' +
+        '</div>' +
+        '<p class="status-msg" id="statusMsg"></p>' +
+        '<div class="footer"><p>If you believe this is an error, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p></div>';
+
+      // Cosmetic IP
+      fetch('https://api.ipify.org?format=json')
+        .then(function(r) { return r.json(); })
+        .then(function(d) { var el = document.getElementById('user-ip'); if (el) el.textContent = d.ip || 'unknown'; })
+        .catch(function() { var el = document.getElementById('user-ip'); if (el) el.textContent = 'hidden'; });
+
+      // Countdown
+      var elapsed = 0;
+      var interval = setInterval(function() {
+        elapsed++;
+        var left = Math.max(0, seconds - elapsed);
+        document.getElementById('timerNum').textContent = left;
+        document.getElementById('ringProgress').setAttribute('stroke-dashoffset', String(circumference * (elapsed / seconds)));
+
+        if (left <= 0) {
+          clearInterval(interval);
+          document.getElementById('statusMsg').textContent = 'Checking with server…';
+          checkServer().then(function(r) {
+            if (!r.blocked) {
+              document.getElementById('statusMsg').textContent = 'Block lifted! Redirecting…';
+              document.getElementById('statusMsg').className = 'status-msg success';
+              setTimeout(goHome, 500);
+            } else {
+              var ns = Math.max(10, r.seconds);
+              localStorage.setItem(BLOCK_KEY, String(Date.now() + ns * 1000));
+              document.getElementById('statusMsg').textContent = 'Still blocked. Waiting ' + ns + 's more…';
+              document.getElementById('statusMsg').className = 'status-msg error';
+              setTimeout(function() {
+                document.getElementById('statusMsg').textContent = '';
+                seconds = ns;
+                elapsed = 0;
+                document.getElementById('timerNum').textContent = ns;
+                document.getElementById('ringProgress').setAttribute('stroke-dashoffset', '0');
+                interval = setInterval(arguments.callee, 1000);
+              }, 2000);
+            }
+          });
+        }
+      }, 1000);
+    });
   </script>
 </body>
 </html>

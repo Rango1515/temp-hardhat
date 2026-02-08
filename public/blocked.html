@@ -34,12 +34,6 @@
       user-select: none;
     }
 
-    /* Hide verbose details in short-block mode */
-    .short-block .code { display: none; }
-    .short-block .details-card { display: none; }
-    .short-block .info-box { display: none; }
-    .short-block .rule-badge { display: none; }
-
     .icon-box {
       width: 80px;
       height: 80px;
@@ -48,21 +42,12 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      background: rgba(249, 115, 22, 0.1);
+      border: 2px solid rgba(249, 115, 22, 0.3);
+      color: #f97316;
     }
 
-    .icon-box svg {
-      width: 40px;
-      height: 40px;
-    }
-
-    /* Rule-specific color themes */
-    .theme-rate-flood .icon-box      { background: rgba(239, 68, 68, 0.1); border: 2px solid rgba(239, 68, 68, 0.3); color: #ef4444; }
-    .theme-sustained-flood .icon-box { background: rgba(220, 38, 38, 0.12); border: 2px solid rgba(220, 38, 38, 0.35); color: #dc2626; }
-    .theme-brute-force .icon-box     { background: rgba(245, 158, 11, 0.1); border: 2px solid rgba(245, 158, 11, 0.3); color: #f59e0b; }
-    .theme-endpoint-abuse .icon-box  { background: rgba(168, 85, 247, 0.1); border: 2px solid rgba(168, 85, 247, 0.3); color: #a855f7; }
-    .theme-connection-flood .icon-box { background: rgba(249, 115, 22, 0.1); border: 2px solid rgba(249, 115, 22, 0.3); color: #f97316; }
-    .theme-default .icon-box         { background: rgba(249, 115, 22, 0.1); border: 2px solid rgba(249, 115, 22, 0.3); color: #f97316; }
-    .theme-short .icon-box           { background: rgba(249, 115, 22, 0.1); border: 2px solid rgba(249, 115, 22, 0.3); color: #f97316; }
+    .icon-box svg { width: 40px; height: 40px; }
 
     .rule-badge {
       display: inline-flex;
@@ -75,21 +60,11 @@
       padding: 0.3rem 0.75rem;
       border-radius: 999px;
       margin-bottom: 1rem;
+      background: rgba(249, 115, 22, 0.15);
+      color: #fdba74;
     }
 
-    .theme-rate-flood .rule-badge      { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
-    .theme-sustained-flood .rule-badge { background: rgba(220, 38, 38, 0.15); color: #fca5a5; }
-    .theme-brute-force .rule-badge     { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
-    .theme-endpoint-abuse .rule-badge  { background: rgba(168, 85, 247, 0.15); color: #d8b4fe; }
-    .theme-connection-flood .rule-badge { background: rgba(249, 115, 22, 0.15); color: #fdba74; }
-    .theme-default .rule-badge         { background: rgba(249, 115, 22, 0.15); color: #fdba74; }
-
-    h1 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #f5f5f5;
-      margin-bottom: 0.5rem;
-    }
+    h1 { font-size: 1.5rem; font-weight: 700; color: #f5f5f5; margin-bottom: 0.5rem; }
 
     .description {
       color: #a3a3a3;
@@ -108,526 +83,287 @@
     }
 
     .details-card h3 {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #d4d4d4;
-      margin-bottom: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-size: 0.8rem; font-weight: 600; color: #d4d4d4;
+      margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
     }
 
     .detail-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.35rem 0;
-      font-size: 0.85rem;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0.35rem 0; font-size: 0.85rem;
     }
 
-    .detail-row + .detail-row {
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .detail-label {
-      color: #737373;
-    }
-
+    .detail-row + .detail-row { border-top: 1px solid rgba(255, 255, 255, 0.05); }
+    .detail-label { color: #737373; }
     .detail-value {
-      color: #d4d4d4;
-      font-weight: 500;
-      font-family: 'SF Mono', SFMono-Regular, Consolas, monospace;
-      font-size: 0.8rem;
+      color: #d4d4d4; font-weight: 500;
+      font-family: 'SF Mono', SFMono-Regular, Consolas, monospace; font-size: 0.8rem;
     }
 
     .info-box {
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px;
-      padding: 0.875rem 1.25rem;
-      margin-bottom: 1.5rem;
+      border-radius: 12px; padding: 0.875rem 1.25rem; margin-bottom: 1.5rem;
     }
 
-    .info-box p {
-      font-size: 0.85rem;
-      color: #a3a3a3;
-      line-height: 1.5;
-    }
+    .info-box p { font-size: 0.85rem; color: #a3a3a3; line-height: 1.5; }
 
-    .countdown {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      font-size: 0.875rem;
-      color: #737373;
-      margin-bottom: 1.5rem;
-    }
-
-    .countdown svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    .countdown #timer {
-      font-weight: 600;
-      font-variant-numeric: tabular-nums;
-      color: #f97316;
-    }
-
-    .actions {
+    /* Circular countdown */
+    .timer-ring-wrap {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .btn {
-      display: inline-flex;
       align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
-      padding: 0.625rem 1.25rem;
-      border-radius: 8px;
-      font-size: 0.875rem;
-      font-weight: 500;
-      text-decoration: none;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      border: none;
-      font-family: inherit;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
     }
 
-    .btn-primary {
-      background: #f97316;
-      color: #fff;
+    .timer-ring-container {
+      position: relative;
+      width: 100px;
+      height: 100px;
     }
 
-    .btn-primary:hover:not(:disabled) {
-      background: #ea580c;
+    .timer-ring-container svg {
+      transform: rotate(-90deg);
+      width: 100px;
+      height: 100px;
     }
 
-    .btn-disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .timer-ring-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.06);
+      stroke-width: 5;
     }
 
-    .btn svg {
-      width: 16px;
-      height: 16px;
+    .timer-ring-progress {
+      fill: none;
+      stroke: #f97316;
+      stroke-width: 5;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 1s linear;
     }
 
-    .footer {
-      margin-top: 2rem;
-      font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.2);
-    }
-
-    .footer a {
+    .timer-number {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.75rem;
+      font-weight: 700;
       color: #f97316;
-      text-decoration: none;
+      font-variant-numeric: tabular-nums;
     }
 
-    .footer a:hover {
-      text-decoration: underline;
+    .timer-number span {
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: #737373;
+      display: block;
+      margin-top: -2px;
+    }
+
+    .timer-label {
+      font-size: 0.85rem;
+      color: #737373;
     }
 
     .status-msg {
       font-size: 0.8rem;
-      color: #ef4444;
-      margin-top: 0.75rem;
       min-height: 1.2em;
       text-align: center;
+      margin-bottom: 1rem;
     }
 
-    @media (min-width: 640px) {
-      .actions {
-        flex-direction: row;
-        justify-content: center;
-      }
-    }
+    .status-msg.error { color: #ef4444; }
+    .status-msg.success { color: #22c55e; }
+
+    .footer { margin-top: 2rem; font-size: 0.75rem; color: rgba(255, 255, 255, 0.2); }
+    .footer a { color: #f97316; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <div class="container" id="root">
-    <!-- Content injected by JS -->
+    <p style="color:#737373;">Loading…</p>
   </div>
 
   <script>
     // ══════════════════════════════════════════════════════════════
-    // BLOCK PAGE — Friendly block page with short-block simplified view.
-    // Uses ONLY localStorage — zero API calls on load.
+    // BLOCK PAGE — Simple countdown. No buttons. No reload loops.
+    // 1. Check server for real remaining time on load
+    // 2. Count down to zero
+    // 3. Verify with server, redirect home or extend
     // ══════════════════════════════════════════════════════════════
 
     var BLOCK_KEY = 'waf_block_until';
     var BLOCK_RULE_KEY = 'waf_block_rule';
     var BLOCK_DURATION_KEY = 'waf_block_duration_min';
     var SUPABASE_URL = 'https://sqtbqtpudoossunaaofx.supabase.co';
+    var CHECK_URL = SUPABASE_URL + '/functions/v1/voip-security?action=check-block';
 
-    // ── Rule definitions ──────────────────────────────────────────
+    // ── Rule cosmetics ────────────────────────────────────────────
     var RULES = {
-      "rate_flood": {
-        theme: "rate-flood",
-        badge: "RATE FLOOD",
-        title: "Whoa, slow down!",
-        description: "Too many requests detected. Please wait a moment and try again.",
-        icon: "flood",
-        why: "Your IP exceeded the maximum allowed requests within a short window. This limit prevents denial-of-service attacks.",
-      },
-      "sustained_flood": {
-        theme: "sustained-flood",
-        badge: "SUSTAINED FLOOD",
-        title: "Whoa, slow down!",
-        description: "Too many requests detected over an extended period. Please wait a moment and try again.",
-        icon: "waves",
-        why: "Your IP maintained an abnormally high request rate. This protection prevents resource exhaustion attacks.",
-      },
-      "brute_force": {
-        theme: "brute-force",
-        badge: "BRUTE FORCE",
-        title: "Too Many Login Attempts",
-        description: "Too many failed login attempts were detected. Please wait before trying again.",
-        icon: "lock",
-        why: "Multiple consecutive failed login attempts suggest a password-guessing attack.",
-      },
-      "endpoint_abuse": {
-        theme: "endpoint-abuse",
-        badge: "ENDPOINT ABUSE",
-        title: "Whoa, slow down!",
-        description: "Too many requests to protected endpoints detected. Please wait a moment and try again.",
-        icon: "shield",
-        why: "Your IP sent an unusually high number of requests to sensitive routes.",
-      },
-      "connection_flood": {
-        theme: "connection-flood",
-        badge: "CONNECTION FLOOD",
-        title: "Whoa, slow down!",
-        description: "An extreme burst of connections was detected. Please wait a moment and try again.",
-        icon: "zap",
-        why: "Your IP opened too many connections in a very short window.",
-      },
-      "automated_tool": {
-        theme: "connection-flood",
-        badge: "BOT DETECTED",
-        title: "Automated Tool Blocked",
-        description: "Our system identified your traffic as originating from an automated tool.",
-        icon: "bot",
-        why: "The combination of your IP address and request pattern matches known automated tool signatures.",
-      },
+      rate_flood:       { badge: 'RATE FLOOD',       title: 'Whoa, slow down!',          desc: 'Too many requests detected. Please wait a moment.' },
+      sustained_flood:  { badge: 'SUSTAINED FLOOD',  title: 'Whoa, slow down!',          desc: 'Too many requests over an extended period.' },
+      brute_force:      { badge: 'BRUTE FORCE',      title: 'Too Many Login Attempts',   desc: 'Too many failed login attempts. Please wait.' },
+      endpoint_abuse:   { badge: 'ENDPOINT ABUSE',   title: 'Whoa, slow down!',          desc: 'Too many requests to protected endpoints.' },
+      connection_flood: { badge: 'CONNECTION FLOOD',  title: 'Whoa, slow down!',          desc: 'An extreme burst of connections was detected.' },
+      automated_tool:   { badge: 'BOT DETECTED',     title: 'Automated Tool Blocked',    desc: 'Traffic from an automated tool was detected.' },
     };
+    var DEFAULT_RULE = { badge: 'RATE LIMITED', title: 'Whoa, slow down!', desc: 'Too many requests detected. Please wait a moment.' };
 
-    var DEFAULT_RULE = {
-      theme: "default",
-      badge: "RATE LIMITED",
-      title: "Whoa, slow down!",
-      description: "Too many requests detected. Please wait a moment and try again.",
-      icon: "shield",
-      why: "Our Web Application Firewall detected too many requests from your IP. This is an automated safety measure.",
-    };
-
-    // ── Icons ─────────────────────────────────────────────────────
-    var ICONS = {
-      flood: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
-      waves: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
-      lock: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><line x1="12" y1="16" x2="12" y2="19"/></svg>',
-      shield: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="4" y1="4" x2="20" y2="20"/></svg>',
-      zap: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
-      bot: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>',
-    };
-
-    // ══════════════════════════════════════════════════════════════
-    // Read block info from localStorage
-    // ══════════════════════════════════════════════════════════════
-    var storedExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-    var storedRule = localStorage.getItem(BLOCK_RULE_KEY) || '';
-    var storedDurationMin = parseInt(localStorage.getItem(BLOCK_DURATION_KEY) || '1', 10);
-    var now = Date.now();
-    var isShortBlock = storedDurationMin <= 2; // 2 minutes or less = short block
-    var isLongBlock = storedDurationMin > 5;   // Over 5 minutes = long block
-
-    // ── Navigation lock — ONLY for long blocks (>5 minutes) ──────
-    if (isLongBlock) {
-      history.pushState(null, '', location.href);
-      window.addEventListener('popstate', function() {
-        history.pushState(null, '', location.href);
-      });
-      window.addEventListener('beforeunload', function(e) {
-        var expiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-        if (Date.now() < expiry) {
-          e.preventDefault();
-          e.returnValue = '';
-          return '';
-        }
-      });
-      document.addEventListener('click', function(e) {
-        var expiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-        if (Date.now() < expiry) {
-          var target = e.target;
-          while (target && target.tagName !== 'A') target = target.parentElement;
-          if (target && target.tagName === 'A' && target.href && !target.href.startsWith('mailto:')) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-        }
-      }, true);
+    // ── Helpers ──────────────────────────────────────────────────
+    function clearBlockStorage() {
+      localStorage.removeItem(BLOCK_KEY);
+      localStorage.removeItem(BLOCK_RULE_KEY);
+      localStorage.removeItem(BLOCK_DURATION_KEY);
+      localStorage.removeItem('waf_retry_count');
+      localStorage.removeItem('waf_retry_window_start');
     }
 
-    // ── Server check on load — sync local timer with server ─────
-    var serverCheckDone = false;
-    (function() {
-      fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      })
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        serverCheckDone = true;
-        if (!data.blocked) {
-          localStorage.removeItem(BLOCK_KEY);
-          localStorage.removeItem(BLOCK_RULE_KEY);
-          localStorage.removeItem(BLOCK_DURATION_KEY);
-          localStorage.removeItem('waf_retry_count');
-          localStorage.removeItem('waf_retry_window_start');
-          window.location.href = '/';
-        } else if (data.remaining_seconds && data.remaining_seconds > 1) {
-          // Sync localStorage with the server's actual remaining time
-          var newExpiry = Date.now() + data.remaining_seconds * 1000;
-          localStorage.setItem(BLOCK_KEY, String(newExpiry));
-          // Update remaining seconds for display
-          remainingSeconds = data.remaining_seconds;
-        }
-      })
-      .catch(function() { serverCheckDone = true; });
-    })();
+    function goHome() {
+      clearBlockStorage();
+      window.location.replace('/');
+    }
 
-    // If block expired or not set AND no server check pending, redirect home
-    // But DON'T redirect if we haven't checked the server yet — prevents loop
-    if (!storedExpiry || storedExpiry <= now) {
-      // Check server first before redirecting
-      fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
+    function checkServer() {
+      return fetch(CHECK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       })
       .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (data.blocked && data.remaining_seconds > 0) {
-          // Server says still blocked — set localStorage and reload
-          var newExpiry = Date.now() + data.remaining_seconds * 1000;
-          localStorage.setItem(BLOCK_KEY, String(newExpiry));
-          var newDuration = Math.ceil(data.remaining_seconds / 60);
-          localStorage.setItem(BLOCK_DURATION_KEY, String(newDuration));
-          location.reload();
-        } else {
-          // Truly not blocked — safe to go home
-          localStorage.removeItem(BLOCK_KEY);
-          localStorage.removeItem(BLOCK_RULE_KEY);
-          localStorage.removeItem(BLOCK_DURATION_KEY);
-          localStorage.removeItem('waf_retry_count');
-          localStorage.removeItem('waf_retry_window_start');
-          window.location.href = '/';
-        }
+      .then(function(d) {
+        return { blocked: d.blocked === true, seconds: d.remaining_seconds || 0 };
       })
       .catch(function() {
-        // Can't reach server — clear and go home
-        localStorage.removeItem(BLOCK_KEY);
-        localStorage.removeItem(BLOCK_RULE_KEY);
-        localStorage.removeItem(BLOCK_DURATION_KEY);
-        window.location.href = '/';
+        // Can't reach server — assume still blocked with 30s fallback
+        return { blocked: true, seconds: 30 };
       });
-      // Stop further execution while waiting for server
-      storedExpiry = Date.now() + 60000; // Prevent page from rendering empty
-      remainingSeconds = 60;
     }
 
-    // Parse rule
-    var params = new URLSearchParams(window.location.search);
-    var paramRule = (params.get('rule') || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
-    var ruleKey = storedRule || paramRule;
-    var rule = RULES[ruleKey] || DEFAULT_RULE;
-    var remainingSeconds = Math.max(1, Math.ceil((storedExpiry - now) / 1000));
-
-    document.title = rule.title + ' — HardHat Hosting';
-
-    // ── Render ─────────────────────────────────────────────────────
-    var root = document.getElementById('root');
-    root.className = 'container' + (isShortBlock ? ' short-block' : '') + ' theme-' + (isShortBlock ? 'default' : rule.theme);
-
-    var html = '';
-    
-    if (!isShortBlock) {
-      html += '<div class="code">403</div>';
-    }
-    
-    html += '<div class="icon-box">' + (ICONS[rule.icon] || ICONS.shield) + '</div>';
-    
-    if (!isShortBlock) {
-      html += '<div class="rule-badge">' + rule.badge + '</div>';
-    }
-    
-    html += '<h1>' + rule.title + '</h1>';
-    html += '<p class="description">' + rule.description + '</p>';
-    
-    if (!isShortBlock) {
-      html += '<div class="details-card">' +
-        '<h3>Block Details</h3>' +
-        '<div class="detail-row"><span class="detail-label">Rule Triggered</span><span class="detail-value">' + rule.badge + '</span></div>' +
-        '<div class="detail-row"><span class="detail-label">Block Duration</span><span class="detail-value">' + storedDurationMin + ' minute' + (storedDurationMin !== 1 ? 's' : '') + '</span></div>' +
-        '<div class="detail-row"><span class="detail-label">Your IP</span><span class="detail-value" id="user-ip">detecting…</span></div>' +
-      '</div>';
-      html += '<div class="info-box"><p><strong>Why was I blocked?</strong> ' + rule.why + '</p></div>';
-    }
-    
-    html += '<div class="countdown">' +
-      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
-      '<span>Auto-retry in <span id="timer">' + remainingSeconds + '</span>s</span>' +
-    '</div>';
-    
-    html += '<div class="actions">' +
-      '<button class="btn btn-primary btn-disabled" id="retryBtn" disabled>' +
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>' +
-        '<span id="retryLabel">Wait ' + remainingSeconds + 's</span>' +
-      '</button>' +
-    '</div>';
-    
-    html += '<p class="status-msg" id="statusMsg"></p>';
-    html += '<div class="footer"><p>If you believe this is an error, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p></div>';
-
-    root.innerHTML = html;
-
-    // ── Countdown timer ──────────────────────────────────────────
-    var timerEl = document.getElementById('timer');
-    var retryBtn = document.getElementById('retryBtn');
-    var retryLabel = document.getElementById('retryLabel');
-    var statusMsg = document.getElementById('statusMsg');
-
-    // ── Retry click tracking for escalation ──────────────────
-    var RETRY_COUNT_KEY = 'waf_retry_count';
-    var RETRY_WINDOW_KEY = 'waf_retry_window_start';
-    var ESCALATION_THRESHOLD = 3; // 3+ retries while still blocked = escalate
-    var RETRY_WINDOW_MS = 120000; // 2-minute window for counting retries
-
-    function trackRetryClick() {
-      var now = Date.now();
-      var windowStart = parseInt(localStorage.getItem(RETRY_WINDOW_KEY) || '0', 10);
-      var retryCount = parseInt(localStorage.getItem(RETRY_COUNT_KEY) || '0', 10);
-
-      // Reset window if expired
-      if (now - windowStart > RETRY_WINDOW_MS) {
-        retryCount = 0;
-        windowStart = now;
-        localStorage.setItem(RETRY_WINDOW_KEY, String(now));
-      }
-
-      retryCount++;
-      localStorage.setItem(RETRY_COUNT_KEY, String(retryCount));
-
-      // If threshold reached, request escalation from server
-      if (retryCount >= ESCALATION_THRESHOLD) {
-        fetch(SUPABASE_URL + '/functions/v1/voip-security?action=escalate-block', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ retryCount: retryCount })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (data.new_expiry_seconds) {
-            var newExpiry = Date.now() + data.new_expiry_seconds * 1000;
-            localStorage.setItem(BLOCK_KEY, String(newExpiry));
-            var newDuration = Math.ceil(data.new_expiry_seconds / 60);
-            localStorage.setItem(BLOCK_DURATION_KEY, String(newDuration));
-          }
-        })
-        .catch(function() {});
-
-        // Reset count after escalation request
-        localStorage.setItem(RETRY_COUNT_KEY, '0');
-      }
-    }
-
-    var countdownInterval = setInterval(function() {
-      var currentExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-      var left = Math.ceil((currentExpiry - Date.now()) / 1000);
-
-      if (left <= 0) {
-        clearInterval(countdownInterval);
-        timerEl.textContent = '0';
-        retryBtn.disabled = false;
-        retryBtn.classList.remove('btn-disabled');
-        retryLabel.textContent = 'Try Again';
-
-        // ALWAYS verify with server before redirecting — prevents refresh loops
-        retryBtn.onclick = function() {
-          retryBtn.disabled = true;
-          retryBtn.classList.add('btn-disabled');
-          retryLabel.textContent = 'Checking...';
-          statusMsg.textContent = '';
-
-          checkIfStillBlocked().then(function(result) {
-            if (result.blocked) {
-              // Track the retry click — this is what triggers escalation
-              trackRetryClick();
-
-              if (result.remainingSeconds > 0) {
-                var newExpiry = Date.now() + result.remainingSeconds * 1000;
-                localStorage.setItem(BLOCK_KEY, String(newExpiry));
-                var newDuration = Math.ceil(result.remainingSeconds / 60);
-                localStorage.setItem(BLOCK_DURATION_KEY, String(newDuration));
-              }
-              statusMsg.textContent = 'Your IP is still blocked. Please wait longer.';
-              setTimeout(function() { location.reload(); }, 1500);
-            } else {
-              localStorage.removeItem(BLOCK_KEY);
-              localStorage.removeItem(BLOCK_RULE_KEY);
-              localStorage.removeItem(BLOCK_DURATION_KEY);
-              localStorage.removeItem(RETRY_COUNT_KEY);
-              localStorage.removeItem(RETRY_WINDOW_KEY);
-              window.location.href = '/';
-            }
-          });
-        };
-
-        // For short blocks, auto-click the retry button (verifies with server first)
-        if (isShortBlock) {
-          retryBtn.click();
-        }
+    // ══════════════════════════════════════════════════════════════
+    // INIT — Single server check, then render
+    // ══════════════════════════════════════════════════════════════
+    checkServer().then(function(result) {
+      if (!result.blocked) {
+        goHome();
         return;
       }
 
-      timerEl.textContent = left;
-      retryLabel.textContent = 'Wait ' + left + 's';
-    }, 1000);
+      // Sync localStorage with server truth
+      var seconds = Math.max(5, result.seconds); // at least 5s
+      localStorage.setItem(BLOCK_KEY, String(Date.now() + seconds * 1000));
 
-    // ── Server check function ────────────────────────────────────
-    function checkIfStillBlocked() {
-      return fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      })
-      .then(function(res) { return res.json(); })
-      .then(function(data) {
-        return {
-          blocked: data.blocked === true,
-          remainingSeconds: data.remaining_seconds || 0
-        };
-      })
-      .catch(function() {
-        return { blocked: true, remainingSeconds: 60 };
-      });
-    }
+      var storedRule = localStorage.getItem(BLOCK_RULE_KEY) || '';
+      var rule = RULES[storedRule] || DEFAULT_RULE;
+      var durationMin = Math.max(1, Math.ceil(seconds / 60));
 
-    // ── Cosmetic IP detection (only for long blocks) ─────────────
-    if (!isShortBlock) {
+      renderPage(rule, durationMin, seconds);
+      startCountdown(seconds);
+    });
+
+    // ══════════════════════════════════════════════════════════════
+    // RENDER
+    // ══════════════════════════════════════════════════════════════
+    function renderPage(rule, durationMin, totalSeconds) {
+      var circumference = 2 * Math.PI * 42; // r=42 for the SVG circle
+
+      var root = document.getElementById('root');
+      root.innerHTML =
+        '<div class="code">403</div>' +
+        '<div class="icon-box">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' +
+            '<line x1="4" y1="4" x2="20" y2="20"/>' +
+          '</svg>' +
+        '</div>' +
+        '<div class="rule-badge">' + rule.badge + '</div>' +
+        '<h1>' + rule.title + '</h1>' +
+        '<p class="description">' + rule.desc + '</p>' +
+
+        '<div class="details-card">' +
+          '<h3>Block Details</h3>' +
+          '<div class="detail-row"><span class="detail-label">Block Duration</span><span class="detail-value">' + durationMin + ' min</span></div>' +
+          '<div class="detail-row"><span class="detail-label">Your IP</span><span class="detail-value" id="user-ip">detecting…</span></div>' +
+        '</div>' +
+
+        '<div class="timer-ring-wrap">' +
+          '<div class="timer-ring-container">' +
+            '<svg viewBox="0 0 100 100">' +
+              '<circle class="timer-ring-bg" cx="50" cy="50" r="42"/>' +
+              '<circle class="timer-ring-progress" id="ringProgress" cx="50" cy="50" r="42" ' +
+                'stroke-dasharray="' + circumference + '" stroke-dashoffset="0"/>' +
+            '</svg>' +
+            '<div class="timer-number"><span id="timerNum">' + totalSeconds + '</span><span>seconds</span></div>' +
+          '</div>' +
+          '<div class="timer-label">You\'ll be redirected automatically</div>' +
+        '</div>' +
+
+        '<p class="status-msg" id="statusMsg"></p>' +
+
+        '<div class="footer"><p>If you believe this is an error, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p></div>';
+
+      // Cosmetic IP fetch
       fetch('https://api.ipify.org?format=json')
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          var ipEl = document.getElementById('user-ip');
-          if (ipEl) ipEl.textContent = d.ip || 'unknown';
+          var el = document.getElementById('user-ip');
+          if (el) el.textContent = d.ip || 'unknown';
         })
         .catch(function() {
-          var ipEl = document.getElementById('user-ip');
-          if (ipEl) ipEl.textContent = 'hidden';
+          var el = document.getElementById('user-ip');
+          if (el) el.textContent = 'hidden';
         });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // COUNTDOWN — pure client-side, no reloads
+    // ══════════════════════════════════════════════════════════════
+    function startCountdown(totalSeconds) {
+      var timerNum = document.getElementById('timerNum');
+      var ringProgress = document.getElementById('ringProgress');
+      var statusMsg = document.getElementById('statusMsg');
+      var circumference = 2 * Math.PI * 42;
+      var elapsed = 0;
+
+      var interval = setInterval(function() {
+        elapsed++;
+        var left = Math.max(0, totalSeconds - elapsed);
+
+        // Update number
+        timerNum.textContent = left;
+
+        // Update ring
+        var progress = elapsed / totalSeconds;
+        ringProgress.setAttribute('stroke-dashoffset', String(circumference * progress));
+
+        if (left <= 0) {
+          clearInterval(interval);
+          timerNum.textContent = '0';
+          statusMsg.textContent = 'Checking with server…';
+          statusMsg.className = 'status-msg';
+
+          // Verify with server
+          checkServer().then(function(result) {
+            if (!result.blocked) {
+              statusMsg.textContent = 'Block lifted! Redirecting…';
+              statusMsg.className = 'status-msg success';
+              setTimeout(goHome, 500);
+            } else {
+              // Still blocked — restart countdown with new time
+              var newSeconds = Math.max(10, result.seconds);
+              localStorage.setItem(BLOCK_KEY, String(Date.now() + newSeconds * 1000));
+              statusMsg.textContent = 'Still blocked. Waiting ' + newSeconds + ' more seconds…';
+              statusMsg.className = 'status-msg error';
+              setTimeout(function() {
+                statusMsg.textContent = '';
+                timerNum.textContent = newSeconds;
+                startCountdown(newSeconds);
+              }, 2000);
+            }
+          });
+        }
+      }, 1000);
     }
   </script>
 </body>
