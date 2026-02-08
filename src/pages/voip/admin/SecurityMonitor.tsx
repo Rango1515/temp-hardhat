@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Shield, ShieldAlert, Ban, Activity, Globe, AlertTriangle, Trash2,
-  RefreshCw, Loader2, Unlock, Copy, Radio, Settings2, Timer,
+  RefreshCw, Loader2, Unlock, Copy, Radio, Settings2, Timer, Bell,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -138,6 +140,14 @@ export default function SecurityMonitor() {
 
   // Active tab
   const [activeTab, setActiveTab] = useState("overview");
+
+  // Discord webhook dialog
+  const [discordOpen, setDiscordOpen] = useState(false);
+  const [discordUrl, setDiscordUrl] = useState("");
+  const [discordMasked, setDiscordMasked] = useState("");
+  const [discordSource, setDiscordSource] = useState("");
+  const [discordSaving, setDiscordSaving] = useState(false);
+  const [discordTesting, setDiscordTesting] = useState(false);
 
   // ── Data fetchers ───────────────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
@@ -272,6 +282,67 @@ export default function SecurityMonitor() {
     refreshAll();
   };
 
+  // ── Discord webhook management ───────────────────────────────
+  const fetchDiscordWebhook = useCallback(async () => {
+    const result = await apiCall<{ url: string; source: string; updatedAt: string | null }>(
+      "voip-security", { params: { action: "discord-webhook" } }
+    );
+    if (result.data) {
+      setDiscordMasked(result.data.url);
+      setDiscordSource(result.data.source);
+    }
+  }, [apiCall]);
+
+  const handleSaveDiscordWebhook = async () => {
+    if (!discordUrl.trim()) return;
+    setDiscordSaving(true);
+    const result = await apiCall("voip-security", {
+      method: "POST",
+      params: { action: "discord-webhook" },
+      body: { url: discordUrl.trim() },
+    });
+    setDiscordSaving(false);
+    if (result.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Webhook Updated", description: "Discord webhook URL saved." });
+      setDiscordUrl("");
+      fetchDiscordWebhook();
+    }
+  };
+
+  const handleRemoveDiscordWebhook = async () => {
+    if (!confirm("Remove the Discord webhook URL? WAF alerts will no longer be sent.")) return;
+    setDiscordSaving(true);
+    await apiCall("voip-security", { method: "DELETE", params: { action: "discord-webhook" } });
+    setDiscordSaving(false);
+    toast({ title: "Webhook Removed" });
+    setDiscordMasked("");
+    setDiscordSource("not_set");
+  };
+
+  const handleTestDiscordWebhook = async () => {
+    setDiscordTesting(true);
+    // Temporarily block a fake IP to trigger a Discord alert, then immediately unblock
+    const result = await apiCall("voip-security", {
+      method: "POST",
+      params: { action: "block-ip" },
+      body: { ip: "0.0.0.0", reason: "🧪 Test alert from Security Monitor", duration: "5min", scope: "all" },
+    });
+    setDiscordTesting(false);
+    if (result.error) {
+      toast({ title: "Test Failed", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Test Sent", description: "Check your Discord channel for the alert." });
+      fetchBlockedIps();
+    }
+  };
+
+  // Fetch discord webhook info when dialog opens
+  useEffect(() => {
+    if (discordOpen) fetchDiscordWebhook();
+  }, [discordOpen, fetchDiscordWebhook]);
+
   const filterByIp = (ip: string) => {
     setTrafficIpFilter(ip);
     setTrafficPage(1);
@@ -296,11 +367,73 @@ export default function SecurityMonitor() {
             <p className="text-muted-foreground text-sm mt-1">Traffic monitoring, threat detection, and IP management</p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={() => setDiscordOpen(true)}>
+              <Bell className="w-4 h-4 mr-1" /> Discord Alerts
+            </Button>
             <Button variant="outline" size="sm" onClick={refreshAll}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>
             <Button variant="outline" size="sm" onClick={handleCleanup}><Timer className="w-4 h-4 mr-1" /> Cleanup</Button>
             <Button variant="destructive" size="sm" onClick={() => handleClearLogs("all")}><Trash2 className="w-4 h-4 mr-1" /> Clear All Logs</Button>
           </div>
         </div>
+
+        {/* Discord Webhook Settings Dialog */}
+        <Dialog open={discordOpen} onOpenChange={setDiscordOpen}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Bell className="w-5 h-5" /> Discord Alert Settings
+              </DialogTitle>
+              <DialogDescription>
+                Configure a Discord webhook to receive real-time WAF auto-block alerts in your server.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* Current status */}
+              <div className="rounded-lg border border-border p-3 space-y-1">
+                <Label className="text-xs text-muted-foreground">Current Webhook</Label>
+                {discordMasked ? (
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs bg-muted px-2 py-1 rounded flex-1 truncate">{discordMasked}</code>
+                    <Badge variant="secondary" className="text-[10px]">{discordSource}</Badge>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No webhook configured</p>
+                )}
+              </div>
+
+              {/* URL input */}
+              <div className="space-y-2">
+                <Label htmlFor="discord-url">New Webhook URL</Label>
+                <Input
+                  id="discord-url"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={discordUrl}
+                  onChange={(e) => setDiscordUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Get this from your Discord server → Channel Settings → Integrations → Webhooks
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              {discordMasked && (
+                <Button variant="destructive" size="sm" onClick={handleRemoveDiscordWebhook} disabled={discordSaving} className="mr-auto">
+                  Remove Webhook
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={handleTestDiscordWebhook} disabled={discordTesting || !discordMasked}>
+                {discordTesting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                Send Test Alert
+              </Button>
+              <Button size="sm" onClick={handleSaveDiscordWebhook} disabled={discordSaving || !discordUrl.trim()}>
+                {discordSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
+                Save Webhook
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Attack Alert Banner */}
         {hasActiveAlert && (
