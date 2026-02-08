@@ -24,6 +24,7 @@ import {
   KeyRound,
   DollarSign,
   Mail,
+  Shield,
 } from "lucide-react";
  
  const clientNavItems = [
@@ -53,6 +54,7 @@ const adminNavItems = [
   { href: "/voip/admin/partner-tokens", label: "Referral Links", icon: KeyRound },
   { href: "/voip/admin/partner-payouts", label: "Partner Payouts", icon: DollarSign },
   { href: "/voip/admin/mail", label: "Mail", icon: Mail },
+  { href: "/voip/admin/security", label: "Security Monitor", icon: Shield },
 ];
 
 const partnerNavItems = [
@@ -68,6 +70,7 @@ const partnerNavItems = [
    const [ticketCount, setTicketCount] = useState(0);
  
   const [followupCount, setFollowupCount] = useState(0);
+  const [securityAlertCount, setSecurityAlertCount] = useState(0);
 
   // Check for open tickets (for badge)
   const checkTickets = useCallback(async () => {
@@ -91,16 +94,29 @@ const partnerNavItems = [
     }
   }, [apiCall, isAdmin]);
 
+  // Check for suspicious security events (for badge)
+  const checkSecurityAlerts = useCallback(async () => {
+    if (!isAdmin) return;
+    const result = await apiCall<{ count: number }>("voip-security", {
+      params: { action: "suspicious-count" },
+    });
+    if (result.data) {
+      setSecurityAlertCount(result.data.count);
+    }
+  }, [apiCall, isAdmin]);
+
   useEffect(() => {
     checkTickets();
     checkFollowups();
-    // Poll every 60 seconds (was 15s — reduced 75% fewer API calls)
+    checkSecurityAlerts();
+    // Poll every 60 seconds
     const interval = setInterval(() => {
       checkTickets();
       checkFollowups();
+      checkSecurityAlerts();
     }, 60000);
     return () => clearInterval(interval);
-  }, [checkTickets, checkFollowups]);
+  }, [checkTickets, checkFollowups, checkSecurityAlerts]);
  
   const navItems = isAdmin
     ? [...adminNavItems, ...clientNavItems.slice(1)]
@@ -142,14 +158,20 @@ const partnerNavItems = [
                 ticketCount > 0 &&
                 !isActive;
 
-              const isAppointmentBadge =
-                item.href === "/voip/admin/appointments" &&
-                isAdmin &&
-                followupCount > 0 &&
-                !isActive;
+               const isAppointmentBadge =
+                 item.href === "/voip/admin/appointments" &&
+                 isAdmin &&
+                 followupCount > 0 &&
+                 !isActive;
 
-              const badgeCount = isTicketBadge ? ticketCount : isAppointmentBadge ? followupCount : 0;
-              const showBadge = badgeCount > 0;
+               const isSecurityBadge =
+                 item.href === "/voip/admin/security" &&
+                 isAdmin &&
+                 securityAlertCount > 0 &&
+                 !isActive;
+
+               const badgeCount = isTicketBadge ? ticketCount : isAppointmentBadge ? followupCount : isSecurityBadge ? securityAlertCount : 0;
+               const showBadge = badgeCount > 0;
  
            return (
              <div key={item.href}>

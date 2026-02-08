@@ -350,6 +350,47 @@ export type Database = {
           },
         ]
       }
+      voip_blocked_ips: {
+        Row: {
+          blocked_at: string
+          blocked_by: number | null
+          created_at: string
+          expires_at: string | null
+          id: number
+          ip_address: string
+          reason: string | null
+          status: string
+        }
+        Insert: {
+          blocked_at?: string
+          blocked_by?: number | null
+          created_at?: string
+          expires_at?: string | null
+          id?: number
+          ip_address: string
+          reason?: string | null
+          status?: string
+        }
+        Update: {
+          blocked_at?: string
+          blocked_by?: number | null
+          created_at?: string
+          expires_at?: string | null
+          id?: number
+          ip_address?: string
+          reason?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_blocked_ips_blocked_by_fkey"
+            columns: ["blocked_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_calls: {
         Row: {
           appointment_created: boolean | null
@@ -1184,6 +1225,56 @@ export type Database = {
           {
             foreignKeyName: "voip_revenue_events_partner_id_fkey"
             columns: ["partner_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voip_security_logs: {
+        Row: {
+          created_at: string
+          details: Json | null
+          endpoint: string | null
+          id: number
+          ip_address: string | null
+          request_count: number | null
+          rule_triggered: string | null
+          status: string
+          timestamp: string
+          user_agent: string | null
+          user_id: number | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          endpoint?: string | null
+          id?: number
+          ip_address?: string | null
+          request_count?: number | null
+          rule_triggered?: string | null
+          status?: string
+          timestamp?: string
+          user_agent?: string | null
+          user_id?: number | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          endpoint?: string | null
+          id?: number
+          ip_address?: string | null
+          request_count?: number | null
+          rule_triggered?: string | null
+          status?: string
+          timestamp?: string
+          user_agent?: string | null
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_security_logs_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "voip_users"
             referencedColumns: ["id"]
