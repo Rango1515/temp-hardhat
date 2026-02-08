@@ -174,22 +174,32 @@ export default function SecurityMonitor() {
     if (result.data) setWafRules(result.data.rules);
   }, [apiCall]);
 
-  const loadAll = useCallback(async () => {
+  // Initial load — fetches everything once
+  const initialLoadDone = useRef(false);
+  useEffect(() => {
+    if (initialLoadDone.current) return;
+    initialLoadDone.current = true;
     setLoading(true);
-    await Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules()]);
-    setLoading(false);
-  }, [fetchDashboard, fetchTrafficLogs, fetchBlockedIps, fetchWafRules]);
+    Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules()])
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
-
-  // Auto-refresh dashboard every 30s
+  // Auto-refresh dashboard every 20s (lightweight — only dashboard stats)
   useEffect(() => {
     const interval = setInterval(fetchDashboard, 20000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 
-  // Refetch traffic logs on filter changes
-  useEffect(() => { fetchTrafficLogs(); }, [fetchTrafficLogs]);
+  // Refetch traffic logs ONLY when filters change (not on initial mount — handled above)
+  const filtersChanged = useRef(false);
+  useEffect(() => {
+    if (!filtersChanged.current) {
+      filtersChanged.current = true;
+      return; // Skip initial run, already handled by initial load
+    }
+    fetchTrafficLogs();
+  }, [fetchTrafficLogs]);
 
   // Live stream mode
   useEffect(() => {
@@ -223,11 +233,17 @@ export default function SecurityMonitor() {
     else { toast({ title: "IP Unblocked" }); fetchBlockedIps(); fetchDashboard(); }
   };
 
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules()]);
+    setLoading(false);
+  }, [fetchDashboard, fetchTrafficLogs, fetchBlockedIps, fetchWafRules]);
+
   const handleClearLogs = async (target: string) => {
     if (!confirm(`Clear ${target} logs? This cannot be undone.`)) return;
     await apiCall("voip-security", { method: "DELETE", params: { action: "clear-logs", target } });
     toast({ title: "Logs Cleared" });
-    loadAll();
+    refreshAll();
   };
 
   const handleToggleRule = async (rule: WafRule) => {
@@ -253,7 +269,7 @@ export default function SecurityMonitor() {
     if (!confirm("Run retention cleanup? Deletes logs older than 7 days and security events older than 30 days.")) return;
     await apiCall("voip-security", { method: "POST", params: { action: "cleanup" } });
     toast({ title: "Cleanup Complete" });
-    loadAll();
+    refreshAll();
   };
 
   const filterByIp = (ip: string) => {
@@ -280,7 +296,7 @@ export default function SecurityMonitor() {
             <p className="text-muted-foreground text-sm mt-1">Traffic monitoring, threat detection, and IP management</p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={loadAll}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>
+            <Button variant="outline" size="sm" onClick={refreshAll}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>
             <Button variant="outline" size="sm" onClick={handleCleanup}><Timer className="w-4 h-4 mr-1" /> Cleanup</Button>
             <Button variant="destructive" size="sm" onClick={() => handleClearLogs("all")}><Trash2 className="w-4 h-4 mr-1" /> Clear All Logs</Button>
           </div>

@@ -72,51 +72,32 @@ const partnerNavItems = [
   const [followupCount, setFollowupCount] = useState(0);
   const [securityAlertCount, setSecurityAlertCount] = useState(0);
 
-  // Check for open tickets (for badge)
-  const checkTickets = useCallback(async () => {
-    const result = await apiCall<{ count: number }>("voip-support", {
-      params: { action: "ticket-count" },
-    });
+  // Batch all badge checks into a single concurrent call
+  const checkBadges = useCallback(async () => {
+    const [ticketResult, followupResult, securityResult] = await Promise.all([
+      apiCall<{ count: number }>("voip-support", { params: { action: "ticket-count" } }),
+      isAdmin
+        ? apiCall<{ followups: unknown[] }>("voip-leads", { params: { action: "followups" } })
+        : Promise.resolve({ data: null }),
+      isAdmin
+        ? apiCall<{ count: number }>("voip-security", { params: { action: "suspicious-count" } })
+        : Promise.resolve({ data: null }),
+    ]);
 
-    if (result.data) {
-      setTicketCount(result.data.count);
+    if (ticketResult.data) setTicketCount(ticketResult.data.count);
+    if (followupResult.data && "followups" in followupResult.data) {
+      setFollowupCount((followupResult.data as { followups: unknown[] }).followups.length);
     }
-  }, [apiCall]);
-
-  // Check for pending follow-ups (for badge)
-  const checkFollowups = useCallback(async () => {
-    if (!isAdmin) return;
-    const result = await apiCall<{ followups: unknown[] }>("voip-leads", {
-      params: { action: "followups" },
-    });
-    if (result.data?.followups) {
-      setFollowupCount(result.data.followups.length);
-    }
-  }, [apiCall, isAdmin]);
-
-  // Check for suspicious security events (for badge)
-  const checkSecurityAlerts = useCallback(async () => {
-    if (!isAdmin) return;
-    const result = await apiCall<{ count: number }>("voip-security", {
-      params: { action: "suspicious-count" },
-    });
-    if (result.data) {
-      setSecurityAlertCount(result.data.count);
+    if (securityResult.data && "count" in securityResult.data) {
+      setSecurityAlertCount((securityResult.data as { count: number }).count);
     }
   }, [apiCall, isAdmin]);
 
   useEffect(() => {
-    checkTickets();
-    checkFollowups();
-    checkSecurityAlerts();
-    // Poll every 60 seconds
-    const interval = setInterval(() => {
-      checkTickets();
-      checkFollowups();
-      checkSecurityAlerts();
-    }, 60000);
+    checkBadges();
+    const interval = setInterval(checkBadges, 60000);
     return () => clearInterval(interval);
-  }, [checkTickets, checkFollowups, checkSecurityAlerts]);
+  }, [checkBadges]);
  
   const navItems = isAdmin
     ? [...adminNavItems, ...clientNavItems.slice(1)]
