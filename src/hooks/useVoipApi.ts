@@ -10,6 +10,8 @@ interface ApiOptions {
 export function useVoipApi() {
   const { token, refreshToken, logout } = useVoipAuth();
   const errorLogInflight = useRef(false);
+  const securityLogInflight = useRef(false);
+  const lastSecurityLogTime = useRef(0);
 
   const logError = useCallback(
     async (endpoint: string, method: string, status: number | null, error: string) => {
@@ -41,6 +43,45 @@ export function useVoipApi() {
       } finally {
         errorLogInflight.current = false;
       }
+    },
+    []
+  );
+
+  // Fire-and-forget security log (throttled to 1 per 2s, never recursive)
+  const logRequest = useCallback(
+    (endpoint: string, method: string) => {
+      // Skip logging security calls to prevent recursion
+      if (endpoint.includes("voip-security")) return;
+      if (securityLogInflight.current) return;
+
+      const now = Date.now();
+      if (now - lastSecurityLogTime.current < 2000) return;
+      lastSecurityLogTime.current = now;
+      securityLogInflight.current = true;
+
+      const currentToken = localStorage.getItem("voip_token");
+      if (!currentToken) {
+        securityLogInflight.current = false;
+        return;
+      }
+
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-security?action=log-request`;
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({
+          endpoint,
+          method,
+          userAgent: navigator.userAgent,
+        }),
+      })
+        .catch(() => {})
+        .finally(() => {
+          securityLogInflight.current = false;
+        });
     },
     []
   );
@@ -101,6 +142,9 @@ export function useVoipApi() {
 
       try {
         const fullUrl = url.href;
+
+        // Fire background security log
+        logRequest(endpoint, method);
         
         const response = await fetch(fullUrl, {
           method,
@@ -175,7 +219,7 @@ export function useVoipApi() {
         return { data: null, error: errMsg };
       }
     },
-    [token, refreshToken, logout, logError]
+    [token, refreshToken, logout, logError, logRequest]
   );
 
   return { apiCall };

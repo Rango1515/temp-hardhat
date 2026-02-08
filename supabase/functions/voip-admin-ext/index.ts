@@ -556,6 +556,9 @@ serve(async (req) => {
         console.log(`Master reset initiated by admin ${adminId}`);
 
         // Delete in dependency order
+        // 0. Security tables (no dependencies)
+        await supabase.from("voip_security_logs").delete().gte("id", 0);
+        await supabase.from("voip_blocked_ips").delete().gte("id", 0);
         // 1. Commissions (depends on revenue_events & partners)
         await supabase.from("voip_commissions").delete().gte("id", 0);
         // 2. Revenue events
