@@ -1280,6 +1280,181 @@ serve(async (req) => {
         break;
       }
 
+      // ── Cloudflare firewall events ─────────────────────
+      case "cloudflare-events": {
+        const cfToken = Deno.env.get("CLOUDFLARE_API_TOKEN");
+        const cfZone = Deno.env.get("CLOUDFLARE_ZONE_ID");
+
+        if (!cfToken || !cfZone) {
+          return new Response(
+            JSON.stringify({ error: "Cloudflare credentials not configured", events: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const cfLimit = Math.min(parseInt(url.searchParams.get("limit") || "25"), 100);
+        const cfSince = url.searchParams.get("since") || new Date(Date.now() - 3600000).toISOString();
+
+        const graphqlQuery = {
+          query: `query($zoneTag: string, $filter: FirewallEventsAdaptiveFilter_InputObject) {
+            viewer {
+              zones(filter: { zoneTag: $zoneTag }) {
+                firewallEventsAdaptive(
+                  filter: $filter
+                  limit: ${cfLimit}
+                  orderBy: [datetime_DESC]
+                ) {
+                  action
+                  clientAsn
+                  clientCountryName
+                  clientIP
+                  clientRequestHTTPHost
+                  clientRequestPath
+                  clientRequestQuery
+                  datetime
+                  source
+                  userAgent
+                  ruleId
+                  rayName
+                }
+              }
+            }
+          }`,
+          variables: {
+            zoneTag: cfZone,
+            filter: {
+              datetime_gt: cfSince,
+            },
+          },
+        };
+
+        try {
+          const cfRes = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${cfToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(graphqlQuery),
+          });
+
+          if (!cfRes.ok) {
+            const errText = await cfRes.text();
+            console.error(`[CF] Cloudflare API error: ${cfRes.status} ${errText}`);
+            return new Response(
+              JSON.stringify({ error: `Cloudflare API returned ${cfRes.status}`, events: [] }),
+              { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const cfData = await cfRes.json();
+          const zones = cfData?.data?.viewer?.zones;
+          const events = zones?.[0]?.firewallEventsAdaptive || [];
+
+          // Build summary stats
+          const actionCounts: Record<string, number> = {};
+          const sourceCounts: Record<string, number> = {};
+          const countryCounts: Record<string, number> = {};
+          for (const ev of events) {
+            actionCounts[ev.action] = (actionCounts[ev.action] || 0) + 1;
+            sourceCounts[ev.source] = (sourceCounts[ev.source] || 0) + 1;
+            if (ev.clientCountryName) {
+              countryCounts[ev.clientCountryName] = (countryCounts[ev.clientCountryName] || 0) + 1;
+            }
+          }
+
+          return new Response(
+            JSON.stringify({
+              events,
+              summary: {
+                total: events.length,
+                actions: actionCounts,
+                sources: sourceCounts,
+                countries: countryCounts,
+              },
+            }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } catch (e) {
+          console.error("[CF] Cloudflare events fetch error:", e);
+          return new Response(
+            JSON.stringify({ error: String(e), events: [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
+      // ── Forward Cloudflare events to Discord ────────────
+      case "cloudflare-discord-forward": {
+        if (req.method !== "POST") {
+          return new Response(JSON.stringify({ error: "Method not allowed" }),
+            { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const webhookUrl = await getDiscordWebhookUrl();
+        if (!webhookUrl) {
+          return new Response(
+            JSON.stringify({ error: "No Discord webhook configured" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const { events: fwdEvents } = await req.json();
+        if (!fwdEvents?.length) {
+          return new Response(JSON.stringify({ message: "No events to forward" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        // Build a consolidated embed for batch events
+        const actionMap: Record<string, string> = {
+          block: "🔴 Block", challenge: "🟡 Challenge", js_challenge: "🟡 JS Challenge",
+          managed_challenge: "🟡 Managed Challenge", log: "📝 Log", allow: "🟢 Allow",
+          skip: "⏭️ Skip", bypass: "🔓 Bypass",
+        };
+
+        const topEvents = fwdEvents.slice(0, 10);
+        const eventLines = topEvents.map((ev: Record<string, string>) =>
+          `${actionMap[ev.action] || ev.action} | \`${ev.clientIP}\` → \`${ev.clientRequestPath || "/"}\` (${ev.source})`
+        ).join("\n");
+
+        const cfEmbed = {
+          title: "☁️ Cloudflare Firewall Events",
+          description: eventLines,
+          color: 0xf48120, // Cloudflare orange
+          fields: [
+            { name: "📊 Total Events", value: `${fwdEvents.length}`, inline: true },
+            { name: "⏱️ Period", value: "Last hour", inline: true },
+          ],
+          footer: { text: "Cloudflare → HardHat WAF" },
+          timestamp: new Date().toISOString(),
+        };
+
+        try {
+          const res = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: "HardHat WAF",
+              avatar_url: "https://hardhathosting.work/hardhat-icon.png",
+              embeds: [cfEmbed],
+            }),
+          });
+
+          if (!res.ok) {
+            return new Response(
+              JSON.stringify({ error: `Discord returned ${res.status}` }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          return new Response(JSON.stringify({ message: "Forwarded to Discord" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: String(e) }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });

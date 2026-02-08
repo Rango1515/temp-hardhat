@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import {
   Shield, ShieldAlert, Ban, Activity, Globe, AlertTriangle, Trash2,
   RefreshCw, Loader2, Unlock, Copy, Radio, Settings2, Timer, Bell, ShieldCheck, Plus, X,
+  Cloud, Send,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -72,6 +73,29 @@ interface WhitelistedIP {
   ip_address: string;
   label: string | null;
   created_at: string;
+}
+
+interface CloudflareEvent {
+  action: string;
+  clientIP: string;
+  clientCountryName: string;
+  clientRequestPath: string;
+  clientRequestHTTPHost: string;
+  datetime: string;
+  source: string;
+  userAgent: string;
+  rayName: string;
+}
+
+interface CloudflareData {
+  events: CloudflareEvent[];
+  summary: {
+    total: number;
+    actions: Record<string, number>;
+    sources: Record<string, number>;
+    countries: Record<string, number>;
+  };
+  error?: string;
 }
 
 function CopyIpButton({ ip }: { ip: string }) {
@@ -152,6 +176,11 @@ export default function SecurityMonitor() {
   const [activeTab, setActiveTab] = useState("overview");
   const [alertDismissed, setAlertDismissed] = useState(false);
 
+  // Cloudflare events
+  const [cfData, setCfData] = useState<CloudflareData | null>(null);
+  const [cfLoading, setCfLoading] = useState(false);
+  const [cfForwarding, setCfForwarding] = useState(false);
+
   // Discord webhook dialog
   const [discordOpen, setDiscordOpen] = useState(false);
   const [discordUrl, setDiscordUrl] = useState("");
@@ -200,13 +229,36 @@ export default function SecurityMonitor() {
     if (result.data) setWhitelistedIps(result.data.ips);
   }, [apiCall]);
 
+  const fetchCloudflareEvents = useCallback(async () => {
+    setCfLoading(true);
+    const result = await apiCall<CloudflareData>("voip-security", { params: { action: "cloudflare-events", limit: "50" } });
+    if (result.data) setCfData(result.data);
+    setCfLoading(false);
+  }, [apiCall]);
+
+  const handleForwardCfToDiscord = async () => {
+    if (!cfData?.events?.length) return;
+    setCfForwarding(true);
+    const result = await apiCall("voip-security", {
+      method: "POST",
+      params: { action: "cloudflare-discord-forward" },
+      body: { events: cfData.events },
+    });
+    setCfForwarding(false);
+    if (result.error) {
+      toast({ title: "Error", description: result.error, variant: "destructive" });
+    } else {
+      toast({ title: "Sent to Discord", description: "Cloudflare events forwarded to your Discord channel." });
+    }
+  };
+
   // Initial load — fetches everything once
   const initialLoadDone = useRef(false);
   useEffect(() => {
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
     setLoading(true);
-    Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules(), fetchWhitelist()])
+    Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules(), fetchWhitelist(), fetchCloudflareEvents()])
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -261,9 +313,11 @@ export default function SecurityMonitor() {
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules(), fetchWhitelist()]);
+    await Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules(), fetchWhitelist(), fetchCloudflareEvents()]);
     setLoading(false);
-  }, [fetchDashboard, fetchTrafficLogs, fetchBlockedIps, fetchWafRules, fetchWhitelist]);
+  }, [fetchDashboard, fetchTrafficLogs, fetchBlockedIps, fetchWafRules, fetchWhitelist, fetchCloudflareEvents]);
+
+
 
   const handleAddWhitelist = async () => {
     const ip = whitelistIpInput.trim();
@@ -643,6 +697,96 @@ export default function SecurityMonitor() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* ── Cloudflare Firewall Events ──────────────────── */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-orange-500" /> Cloudflare Firewall Events
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleForwardCfToDiscord}
+                      disabled={cfForwarding || !cfData?.events?.length}
+                    >
+                      {cfForwarding ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
+                      Send to Discord
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={fetchCloudflareEvents} disabled={cfLoading}>
+                      {cfLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {cfData?.error && (
+                  <p className="text-sm text-destructive mb-3">{cfData.error}</p>
+                )}
+
+                {/* Summary badges */}
+                {cfData?.summary && cfData.summary.total > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <Badge variant="outline" className="text-xs">
+                      {cfData.summary.total} events
+                    </Badge>
+                    {Object.entries(cfData.summary.actions).map(([action, count]) => (
+                      <Badge
+                        key={action}
+                        variant={action === "block" ? "destructive" : "secondary"}
+                        className="text-xs"
+                      >
+                        {action}: {count}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Events list */}
+                {(cfData?.events?.length || 0) > 0 ? (
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                    {cfData?.events?.map((ev, i) => {
+                      const actionColor =
+                        ev.action === "block" ? "text-destructive" :
+                        ev.action === "challenge" || ev.action === "managed_challenge" || ev.action === "js_challenge" ? "text-yellow-500" :
+                        "text-muted-foreground";
+                      return (
+                        <div key={ev.rayName || i} className="flex items-center justify-between text-sm p-2 rounded border border-border hover:bg-muted/30">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`font-semibold text-xs uppercase ${actionColor}`}>{ev.action}</span>
+                              <CopyIpButton ip={ev.clientIP} />
+                              <Badge variant="outline" className="text-[10px]">{ev.source}</Badge>
+                              {ev.clientCountryName && (
+                                <span className="text-[10px] text-muted-foreground">{ev.clientCountryName}</span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                              {ev.clientRequestPath || "/"} — {formatTime(ev.datetime)}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="flex-shrink-0 h-7 text-xs"
+                            onClick={() => handleBlockIp(ev.clientIP, `Cloudflare: ${ev.action} via ${ev.source}`)}
+                          >
+                            <Ban className="w-3 h-3 mr-1" /> Block
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    {cfLoading ? "Loading Cloudflare events..." : "No firewall events in the last hour ☁️"}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ── TRAFFIC LOGS TAB ─────────────────────────── */}
