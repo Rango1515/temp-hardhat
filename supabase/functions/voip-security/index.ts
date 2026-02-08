@@ -186,26 +186,34 @@ async function getDbHitCount(ip: string, windowSeconds: number): Promise<number>
   return count || 0;
 }
 
-// ── Progressive block escalation ────────────────────────────────────────────
-async function getEscalatedDuration(ip: string, baseDurationMinutes: number): Promise<number> {
+// ── Progressive block escalation (graduated ladder) ─────────────────────────
+// Only counts EXPIRED blocks (not active/concurrent ones from the same burst)
+// Ladder: 1m → 5m → 15m → 60m → 1440m (24h)
+const ESCALATION_LADDER = [1, 5, 15, 60, 1440]; // minutes
+
+async function getEscalatedDuration(ip: string, _baseDurationMinutes: number): Promise<number> {
   const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
-  const { count: priorBlocks } = await supabase
+  // Only count EXPIRED blocks — not active ones from the current burst
+  const { count: priorExpiredBlocks } = await supabase
     .from("voip_blocked_ips")
     .select("*", { count: "exact", head: true })
     .eq("ip_address", ip)
+    .eq("status", "expired")
     .gte("blocked_at", twentyFourHoursAgo);
 
-  const blockCount = priorBlocks || 0;
+  const step = Math.min(priorExpiredBlocks || 0, ESCALATION_LADDER.length - 1);
+  return ESCALATION_LADDER[step];
+}
 
-  // After 3 auto-blocks in 24h, escalate to 24 hours
-  if (blockCount >= 3) return 24 * 60;
-
-  // Double for each prior block, cap at 24h
-  const escalationFactor = Math.min(
-    Math.pow(2, blockCount),
-    (24 * 60) / baseDurationMinutes
-  );
-  return Math.min(baseDurationMinutes * escalationFactor, 24 * 60);
+// ── Prevent duplicate blocks from concurrent isolates ───────────────────────
+async function hasActiveBlock(ip: string): Promise<boolean> {
+  const { count } = await supabase
+    .from("voip_blocked_ips")
+    .select("*", { count: "exact", head: true })
+    .eq("ip_address", ip)
+    .eq("status", "active")
+    .gt("expires_at", new Date().toISOString());
+  return (count || 0) > 0;
 }
 
 // ── Unified WAF check (DB-primary + in-memory fast path) ────────────────────
@@ -441,6 +449,12 @@ async function blockIp(
   ruleLabel: string,
   context: { endpoint?: string; ua?: string | null; userId?: number | null; source?: string }
 ) {
+  // ── Prevent duplicate blocks from concurrent isolates ──
+  if (await hasActiveBlock(ip)) {
+    console.log(`[WAF] IP ${ip} already has an active block, skipping duplicate`);
+    return;
+  }
+
   const actualDuration = await getEscalatedDuration(ip, rule.block_duration_minutes);
   const expiresAt = new Date(Date.now() + actualDuration * 60_000).toISOString();
 
