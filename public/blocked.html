@@ -414,23 +414,80 @@
       history.pushState(null, '', location.href);
     });
 
+    // Supabase URL for block status checks
+    var SUPABASE_URL = 'https://sqtbqtpudoossunaaofx.supabase.co';
+
+    // Check if IP is still blocked by calling the public endpoint
+    async function checkIfStillBlocked() {
+      try {
+        var res = await fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        var data = await res.json();
+        return data.blocked === true;
+      } catch(e) {
+        return true; // Assume blocked if can't reach server
+      }
+    }
+
+    // On page load, verify the block is real
+    (async function() {
+      var stillBlocked = await checkIfStillBlocked();
+      if (!stillBlocked) {
+        window.location.href = '/';
+        return;
+      }
+    })();
+
+    // Status message element (add dynamically)
+    var statusDiv = document.createElement('p');
+    statusDiv.style.cssText = 'font-size:0.8rem;color:#ef4444;margin-top:0.75rem;min-height:1.2em;text-align:center;';
+    statusDiv.id = 'statusMsg';
+    document.querySelector('.actions').after(statusDiv);
+
     // ── Countdown timer ───────────────────────────────────────────────────
     let seconds = rule.retrySeconds;
     const timerEl = document.getElementById("timer");
     const retryTimerEl = document.getElementById("retryTimer");
     const retryBtn = document.getElementById("retryBtn");
+
     setInterval(() => {
       seconds--;
       if (seconds <= 0) {
         retryBtn.disabled = false;
         retryBtn.classList.remove('btn-disabled');
         retryBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Try Again';
-        retryBtn.onclick = function() { window.location.href = '/'; };
+        retryBtn.onclick = async function() {
+          retryBtn.disabled = true;
+          retryBtn.classList.add('btn-disabled');
+          retryBtn.innerHTML = 'Checking...';
+          statusDiv.textContent = '';
+
+          var stillBlocked = await checkIfStillBlocked();
+          if (stillBlocked) {
+            statusDiv.textContent = 'Your IP is still blocked. Please wait longer.';
+            retryBtn.disabled = false;
+            retryBtn.classList.remove('btn-disabled');
+            retryBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Try Again';
+          } else {
+            window.location.href = '/';
+          }
+        };
         return;
       }
       timerEl.textContent = seconds;
       retryTimerEl.textContent = seconds;
     }, 1000);
+
+    // Periodically check if block has expired (every 15s)
+    setInterval(async function() {
+      var stillBlocked = await checkIfStillBlocked();
+      if (!stillBlocked) {
+        window.location.href = '/';
+      }
+    }, 15000);
 
     // ── Try to detect user's IP (optional, cosmetic) ──────────────────────
     fetch("https://api.ipify.org?format=json")
