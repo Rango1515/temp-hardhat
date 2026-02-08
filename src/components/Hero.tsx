@@ -15,6 +15,8 @@ const Hero = () => {
           src={heroImage}
           alt="Construction site"
           className="w-full h-full object-cover"
+          fetchPriority="high"
+          decoding="async"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/60" />
         <div className="absolute inset-0 hero-bg opacity-70" />
