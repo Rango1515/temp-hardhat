@@ -89,14 +89,19 @@ const partnerNavItems = [
       setFollowupCount((followupResult.data as { followups: unknown[] }).followups.length);
     }
     if (securityResult.data && "count" in securityResult.data) {
-      setSecurityAlertCount((securityResult.data as { count: number }).count);
+      // If user has dismissed alerts this session, suppress the badge
+      const alertsCleared = sessionStorage.getItem("security_alerts_cleared") === "true";
+      setSecurityAlertCount(alertsCleared ? 0 : (securityResult.data as { count: number }).count);
     }
   }, [apiCall, isAdmin]);
 
   useEffect(() => {
     checkBadges();
     const interval = setInterval(checkBadges, 60000);
-    return () => clearInterval(interval);
+    // Listen for security alerts being dismissed so badge clears instantly
+    const onCleared = () => setSecurityAlertCount(0);
+    window.addEventListener("security-alerts-cleared", onCleared);
+    return () => { clearInterval(interval); window.removeEventListener("security-alerts-cleared", onCleared); };
   }, [checkBadges]);
  
   const navItems = isAdmin
