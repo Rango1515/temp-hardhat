@@ -1,14 +1,27 @@
 import { useEffect, useRef } from "react";
 
+const BLOCK_STORAGE_KEY = "waf_block_until";
+
 /**
  * Lightweight public page tracker — fires a single request to voip-security
  * on mount to log the visit. No auth required.
  * If the WAF blocks the IP, redirects to the appropriate block page.
+ * Uses localStorage to persist block state so refreshing can't bypass it.
  */
 export function usePageTracker() {
   const hasFired = useRef(false);
 
   useEffect(() => {
+    // ── Check localStorage first: if still blocked, redirect immediately ──
+    const blockUntil = localStorage.getItem(BLOCK_STORAGE_KEY);
+    if (blockUntil && Date.now() < parseInt(blockUntil, 10)) {
+      window.location.href = "/blocked.html";
+      return;
+    } else if (blockUntil) {
+      // Block expired, clean up
+      localStorage.removeItem(BLOCK_STORAGE_KEY);
+    }
+
     if (hasFired.current) return;
     hasFired.current = true;
 
@@ -22,7 +35,6 @@ export function usePageTracker() {
       userAgent: navigator.userAgent,
     });
 
-    // Use fetch instead of sendBeacon so we can read the response
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -31,14 +43,20 @@ export function usePageTracker() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data?.status === "blocked" && data?.rule) {
-          // Redirect to the WAF block page with the rule name
-          const ruleSlug = data.rule
+        // Handle both the log-public "blocked" response and the 403 early-exit response
+        if ((data?.status === "blocked" && data?.rule) || data?.blocked === true) {
+          const rule = data.rule || "rate_limited";
+          const duration = data.duration || 5;
+          const ruleSlug = rule
             .toLowerCase()
             .replace(/\s*\(cross-isolate\)\s*/g, "")
             .replace(/\s+/g, "_")
             .replace(/[^a-z_]/g, "");
-          const duration = data.duration || "";
+
+          // Persist block in localStorage so refresh can't bypass
+          const blockExpiry = Date.now() + duration * 60 * 1000;
+          localStorage.setItem(BLOCK_STORAGE_KEY, String(blockExpiry));
+
           const params = new URLSearchParams({ rule: ruleSlug });
           if (duration) params.set("duration", String(duration));
           window.location.href = `/blocked.html?${params.toString()}`;
