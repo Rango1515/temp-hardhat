@@ -245,7 +245,8 @@ export default function SecurityMonitor() {
   const [whitelistLabel, setWhitelistLabel] = useState("");
 
   const [activeTab, setActiveTab] = useState("overview");
-  const [alertDismissed, setAlertDismissed] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useState(() => sessionStorage.getItem("waf_alert_dismissed") === "true");
+  const dismissAlert = useCallback(() => { setAlertDismissed(true); sessionStorage.setItem("waf_alert_dismissed", "true"); }, []);
 
   // Cloudflare events
   const [cfData, setCfData] = useState<CloudflareData | null>(null);
@@ -254,7 +255,8 @@ export default function SecurityMonitor() {
 
   // DDoS detection from Cloudflare
   const [cfDdosAlert, setCfDdosAlert] = useState<DdosAlert | null>(null);
-  const [cfDdosDismissed, setCfDdosDismissed] = useState(false);
+  const [cfDdosDismissed, setCfDdosDismissed] = useState(() => sessionStorage.getItem("cf_ddos_dismissed") === "true");
+  const dismissDdos = useCallback(() => { setCfDdosDismissed(true); sessionStorage.setItem("cf_ddos_dismissed", "true"); ddosAlertSentRef.current = false; }, []);
   const ddosAlertSentRef = useRef(false); // prevent duplicate Discord sends
 
   // Discord webhook dialog
@@ -749,8 +751,7 @@ export default function SecurityMonitor() {
             <CardContent className="p-4">
               <button
                 onClick={async () => {
-                  setAlertDismissed(true);
-                  // Also clear the suspicious logs that feed the sidebar badge
+                  dismissAlert();
                   await apiCall("voip-security", { method: "DELETE", params: { action: "clear-logs", target: "suspicious" } });
                   fetchDashboard();
                 }}
@@ -787,10 +788,7 @@ export default function SecurityMonitor() {
           <Card className="border-destructive bg-destructive/15 relative animate-pulse-once">
             <CardContent className="p-4">
               <button
-                onClick={() => {
-                  setCfDdosDismissed(true);
-                  ddosAlertSentRef.current = false; // allow re-detect on next refresh
-                }}
+                onClick={dismissDdos}
                 className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-background/50"
                 aria-label="Dismiss DDoS alert"
               >
@@ -842,10 +840,7 @@ export default function SecurityMonitor() {
                   }}>
                     <Ban className="w-4 h-4 mr-1" /> Block All Top IPs
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => {
-                    setCfDdosDismissed(true);
-                    ddosAlertSentRef.current = false;
-                  }}>
+                  <Button size="sm" variant="outline" onClick={dismissDdos}>
                     Dismiss
                   </Button>
                 </div>
