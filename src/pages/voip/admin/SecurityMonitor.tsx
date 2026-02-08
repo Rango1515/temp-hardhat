@@ -245,7 +245,9 @@ export default function SecurityMonitor() {
   const [whitelistLabel, setWhitelistLabel] = useState("");
 
   const [activeTab, setActiveTab] = useState("overview");
+  const [timelineRange, setTimelineRange] = useState<"1h" | "24h" | "all">("1h");
   const [alertDismissed, setAlertDismissed] = useState(() => sessionStorage.getItem("waf_alert_dismissed") === "true");
+  const lastAlertCount = useRef(0);
   const dismissAlert = useCallback(() => { setAlertDismissed(true); sessionStorage.setItem("waf_alert_dismissed", "true"); sessionStorage.setItem("security_alerts_cleared", "true"); window.dispatchEvent(new Event("security-alerts-cleared")); }, []);
 
   // Cloudflare events
@@ -275,25 +277,28 @@ export default function SecurityMonitor() {
 
   // ── Data fetchers ───────────────────────────────────────────────
   const fetchDashboard = useCallback(async (silent = false) => {
-    const result = await apiCall<DashboardData>("voip-security", { params: { action: "dashboard" } });
+    const result = await apiCall<DashboardData>("voip-security", { params: { action: "dashboard", timeline_range: timelineRange } });
     if (result.data) {
       setDashboard(prev => {
-        // Notify on new alerts (silent refresh only)
-        if (silent && prev) {
-          const prevAlerts = prev.recentAlerts?.length || 0;
-          const newAlerts = result.data!.recentAlerts?.length || 0;
-          const prevBlocked = prev.blockedCount || 0;
-          const newBlocked = result.data!.blockedCount || 0;
-          if (newAlerts > prevAlerts) {
-            toast({ title: "🚨 New Security Alert", description: `${newAlerts - prevAlerts} new alert(s) detected.`, variant: "destructive" });
-          } else if (newBlocked > prevBlocked) {
-            toast({ title: "🛡️ IP Blocked", description: `${newBlocked - prevBlocked} new IP(s) auto-blocked by WAF.` });
-          }
+        const prevAlerts = prev?.recentAlerts?.length || 0;
+        const newAlerts = result.data!.recentAlerts?.length || 0;
+        const prevBlocked = prev?.blockedCount || 0;
+        const newBlocked = result.data!.blockedCount || 0;
+
+        // Auto-show alert banner when NEW alerts appear (even if previously dismissed)
+        if (silent && newAlerts > lastAlertCount.current) {
+          setAlertDismissed(false);
+          sessionStorage.removeItem("waf_alert_dismissed");
+          toast({ title: "🚨 New Security Alert", description: `${newAlerts - lastAlertCount.current} new alert(s) detected.`, variant: "destructive" });
+        } else if (silent && newBlocked > prevBlocked) {
+          toast({ title: "🛡️ IP Blocked", description: `${newBlocked - prevBlocked} new IP(s) auto-blocked by WAF.` });
         }
+        lastAlertCount.current = newAlerts;
+
         return result.data!;
       });
     }
-  }, [apiCall, toast]);
+  }, [apiCall, toast, timelineRange]);
 
   const fetchTrafficLogs = useCallback(async () => {
     const params: Record<string, string> = {
@@ -394,14 +399,20 @@ export default function SecurityMonitor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-refresh dashboard + Cloudflare every 20s (silent — no loading spinner, just toast on changes)
+  // Auto-refresh dashboard + Cloudflare every 10s (silent — no loading spinner, just toast on changes)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchDashboard(true);
       fetchCloudflareEvents(true);
-    }, 20000);
+      fetchBlockedIps(); // Also refresh blocked IPs for real-time updates
+    }, 10000);
     return () => clearInterval(interval);
-  }, [fetchDashboard, fetchCloudflareEvents]);
+  }, [fetchDashboard, fetchCloudflareEvents, fetchBlockedIps]);
+
+  // Refetch dashboard when timeline range changes
+  useEffect(() => {
+    fetchDashboard();
+  }, [timelineRange]);
 
   // Refetch traffic logs ONLY when filters change (not on initial mount — handled above)
   const filtersChanged = useRef(false);
@@ -967,9 +978,24 @@ export default function SecurityMonitor() {
             {/* Unified Traffic Timeline — WAF + Cloudflare merged */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-primary" /> Traffic Timeline (Last Hour)
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-primary" /> Traffic Timeline
+                  </CardTitle>
+                  <div className="flex gap-1">
+                    {(["1h", "24h", "all"] as const).map((range) => (
+                      <Button
+                        key={range}
+                        variant={timelineRange === range ? "default" : "outline"}
+                        size="sm"
+                        className="h-7 text-xs px-2.5"
+                        onClick={() => setTimelineRange(range)}
+                      >
+                        {range === "1h" ? "Last Hour" : range === "24h" ? "24 Hours" : "All Time"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </CardHeader>
               <CardContent>
                 {((dashboard?.timeline?.length || 0) > 0 || (cfData?.httpTimeline?.length || 0) > 0) ? (
