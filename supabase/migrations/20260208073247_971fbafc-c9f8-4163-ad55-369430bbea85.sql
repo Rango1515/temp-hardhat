@@ -1,0 +1,31 @@
+
+-- Enable RLS on all voip_* tables that currently have it disabled
+ALTER TABLE public.voip_activity_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_admin_audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_api_keys ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_calls ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_chat_channel_reads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_chat_channels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_chat_user_status ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_commissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_duplicate_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_lead_uploads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_leads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_number_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_partner_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_partner_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_partner_token_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_partner_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_phone_numbers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_refresh_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_revenue_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_signup_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_support_ticket_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_support_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_twilio_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_user_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_user_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.voip_worker_lead_history ENABLE ROW LEVEL SECURITY;
