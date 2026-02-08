@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import {
   Shield, ShieldAlert, Ban, Activity, Globe, AlertTriangle, Trash2,
   RefreshCw, Loader2, Unlock, Copy, Radio, Settings2, Timer, Bell, ShieldCheck, Plus, X,
-  Cloud, Send,
+  Cloud, Send, Key, Eye, EyeOff,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -264,6 +264,12 @@ export default function SecurityMonitor() {
   const [discordSource, setDiscordSource] = useState("");
   const [discordSaving, setDiscordSaving] = useState(false);
   const [discordTesting, setDiscordTesting] = useState(false);
+
+  // Cloudflare config dialog
+  const [cfConfigOpen, setCfConfigOpen] = useState(false);
+  const [cfConfig, setCfConfig] = useState<{ apiToken: string; apiTokenFull: string; zoneId: string; zoneIdFull: string; configured: boolean } | null>(null);
+  const [cfShowToken, setCfShowToken] = useState(false);
+  const [cfShowZone, setCfShowZone] = useState(false);
 
   // ── Data fetchers ───────────────────────────────────────────────
   const fetchDashboard = useCallback(async () => {
@@ -535,6 +541,22 @@ export default function SecurityMonitor() {
     if (discordOpen) fetchDiscordWebhook();
   }, [discordOpen, fetchDiscordWebhook]);
 
+  // Fetch CF config when dialog opens
+  const fetchCfConfig = useCallback(async () => {
+    const result = await apiCall<{ apiToken: string; apiTokenFull: string; zoneId: string; zoneIdFull: string; configured: boolean }>(
+      "voip-security", { params: { action: "cloudflare-config" } }
+    );
+    if (result.data) setCfConfig(result.data);
+  }, [apiCall]);
+
+  useEffect(() => {
+    if (cfConfigOpen) {
+      setCfShowToken(false);
+      setCfShowZone(false);
+      fetchCfConfig();
+    }
+  }, [cfConfigOpen, fetchCfConfig]);
+
   const filterByIp = (ip: string) => {
     setTrafficIpFilter(ip);
     setTrafficPage(1);
@@ -622,6 +644,76 @@ export default function SecurityMonitor() {
               <Button size="sm" onClick={handleSaveDiscordWebhook} disabled={discordSaving || !discordUrl.trim()}>
                 {discordSaving ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : null}
                 Save Webhook
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cloudflare API Key Dialog */}
+        <Dialog open={cfConfigOpen} onOpenChange={setCfConfigOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Key className="w-5 h-5" /> Cloudflare API Configuration
+              </DialogTitle>
+              <DialogDescription>
+                Your Cloudflare API credentials used for traffic analytics and firewall events.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              {/* API Token */}
+              <div className="rounded-lg border border-border p-3 space-y-1">
+                <Label className="text-xs text-muted-foreground">API Token</Label>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-muted px-2 py-1.5 rounded flex-1 font-mono truncate select-all">
+                    {cfShowToken ? (cfConfig?.apiTokenFull || "—") : (cfConfig?.apiToken || "—")}
+                  </code>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCfShowToken(!cfShowToken)}>
+                    {cfShowToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => {
+                    navigator.clipboard.writeText(cfConfig?.apiTokenFull || "");
+                    toast({ title: "Copied", description: "API Token copied to clipboard" });
+                  }}>
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Zone ID */}
+              <div className="rounded-lg border border-border p-3 space-y-1">
+                <Label className="text-xs text-muted-foreground">Zone ID</Label>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-muted px-2 py-1.5 rounded flex-1 font-mono truncate select-all">
+                    {cfShowZone ? (cfConfig?.zoneIdFull || "—") : (cfConfig?.zoneId || "—")}
+                  </code>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setCfShowZone(!cfShowZone)}>
+                    {cfShowZone ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => {
+                    navigator.clipboard.writeText(cfConfig?.zoneIdFull || "");
+                    toast({ title: "Copied", description: "Zone ID copied to clipboard" });
+                  }}>
+                    <Copy className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <Badge variant={cfConfig?.configured ? "default" : "destructive"} className="text-xs">
+                  {cfConfig?.configured ? "✓ Configured" : "✗ Not Configured"}
+                </Badge>
+                {!cfConfig?.configured && (
+                  <span className="text-xs text-muted-foreground">Update credentials via backend secrets</span>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setCfConfigOpen(false)}>
+                Close
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -850,47 +942,46 @@ export default function SecurityMonitor() {
 
           {/* ── OVERVIEW TAB ────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Cloudflare HTTP Traffic Timeline */}
-            {(cfData?.httpTimeline?.length || 0) > 0 && (
-              <Card className="border-orange-500/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Cloud className="w-4 h-4 text-orange-500" /> Cloudflare Traffic (Last Hour)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={(cfData?.httpTimeline || []).map(p => ({
-                        time: new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        requests: p.requests,
-                      }))}>
-                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                        <XAxis dataKey="time" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                        <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
-                        <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
-                        <Area type="monotone" dataKey="requests" stroke="#f97316" fill="rgba(249, 115, 22, 0.2)" name="CF Requests" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* WAF Traffic Timeline */}
+            {/* Unified Traffic Timeline — WAF + Cloudflare merged */}
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-base">WAF Traffic Timeline (Last Hour)</CardTitle></CardHeader>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-primary" /> Traffic Timeline (Last Hour)
+                </CardTitle>
+              </CardHeader>
               <CardContent>
-                {(dashboard?.timeline?.length || 0) > 0 ? (
-                  <div className="h-64">
+                {((dashboard?.timeline?.length || 0) > 0 || (cfData?.httpTimeline?.length || 0) > 0) ? (
+                  <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={dashboard?.timeline || []}>
+                      <AreaChart data={(() => {
+                        // Merge WAF timeline and CF timeline by time key
+                        const timeMap = new Map<string, { time: string; wafTotal: number; wafSuspicious: number; cfRequests: number }>();
+
+                        // Add WAF data
+                        for (const p of (dashboard?.timeline || [])) {
+                          timeMap.set(p.time, { time: p.time, wafTotal: p.total, wafSuspicious: p.suspicious, cfRequests: 0 });
+                        }
+
+                        // Add CF data (normalize time key to match)
+                        for (const p of (cfData?.httpTimeline || [])) {
+                          const timeKey = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                          const existing = timeMap.get(timeKey);
+                          if (existing) {
+                            existing.cfRequests = p.requests;
+                          } else {
+                            timeMap.set(timeKey, { time: timeKey, wafTotal: 0, wafSuspicious: 0, cfRequests: p.requests });
+                          }
+                        }
+
+                        return Array.from(timeMap.values()).sort((a, b) => a.time.localeCompare(b.time));
+                      })()}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                         <XAxis dataKey="time" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                         <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                         <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
-                        <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.2)" name="Total" />
-                        <Area type="monotone" dataKey="suspicious" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive) / 0.2)" name="Suspicious" />
+                        <Area type="monotone" dataKey="cfRequests" stroke="#f97316" fill="rgba(249, 115, 22, 0.15)" name="CF Requests" />
+                        <Area type="monotone" dataKey="wafTotal" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.2)" name="WAF Total" />
+                        <Area type="monotone" dataKey="wafSuspicious" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive) / 0.2)" name="WAF Suspicious" />
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
@@ -969,6 +1060,9 @@ export default function SecurityMonitor() {
                     <Button variant="outline" size="sm" onClick={fetchCloudflareEvents} disabled={cfLoading}>
                       {cfLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
                       Refresh
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setCfConfigOpen(true)}>
+                      <Key className="w-3 h-3 mr-1" /> API Key
                     </Button>
                   </div>
                 </div>

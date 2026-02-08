@@ -1565,6 +1565,29 @@ serve(async (req) => {
         }
       }
 
+      // ── Cloudflare config viewer (masked) ───────────
+      case "cloudflare-config": {
+        const cfToken = Deno.env.get("CLOUDFLARE_API_TOKEN") || "";
+        const cfZone = Deno.env.get("CLOUDFLARE_ZONE_ID") || "";
+
+        const maskValue = (val: string) => {
+          if (!val) return "(not set)";
+          if (val.length <= 8) return "****" + val.slice(-4);
+          return val.slice(0, 4) + "····" + val.slice(-4);
+        };
+
+        return new Response(
+          JSON.stringify({
+            apiToken: maskValue(cfToken),
+            zoneId: maskValue(cfZone),
+            apiTokenFull: cfToken,
+            zoneIdFull: cfZone,
+            configured: !!(cfToken && cfZone),
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
