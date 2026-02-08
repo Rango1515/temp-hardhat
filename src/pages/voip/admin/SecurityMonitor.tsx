@@ -246,7 +246,7 @@ export default function SecurityMonitor() {
   const [whitelistLabel, setWhitelistLabel] = useState("");
 
   const [activeTab, setActiveTab] = useState("overview");
-  const [timelineRange, setTimelineRange] = useState<"1h" | "24h" | "all">("1h");
+  const [timelineRange, setTimelineRange] = useState<"1h" | "24h">("1h");
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(() => sessionStorage.getItem("waf_alert_dismissed") === "true");
   const lastAlertCount = useRef(0);
@@ -995,7 +995,7 @@ export default function SecurityMonitor() {
                     <Activity className="w-4 h-4 text-primary" /> Traffic Timeline
                   </CardTitle>
                   <div className="flex gap-1">
-                    {(["1h", "24h", "all"] as const).map((range) => (
+                    {(["1h", "24h"] as const).map((range) => (
                       <Button
                         key={range}
                         variant={timelineRange === range ? "default" : "outline"}
@@ -1003,7 +1003,7 @@ export default function SecurityMonitor() {
                         className="h-7 text-xs px-2.5"
                         onClick={() => setTimelineRange(range)}
                       >
-                        {range === "1h" ? "Last Hour" : range === "24h" ? "24 Hours" : "All Time"}
+                        {range === "1h" ? "Last Hour" : "24 Hours"}
                       </Button>
                     ))}
                   </div>
@@ -1022,7 +1022,7 @@ export default function SecurityMonitor() {
                         const timeMap = new Map<string, { sortKey: number; time: string; wafTotal: number; wafSuspicious: number; cfRequests: number }>();
 
                         const formatTimeKey = (raw: string): { key: string; sort: number } => {
-                          if (timelineRange === "all" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                          if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
                             const d = new Date(raw + "T00:00:00");
                             return { key: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), sort: d.getTime() };
                           }
