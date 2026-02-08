@@ -23,16 +23,19 @@ export function useAuthPageTracker() {
       const expiryMs = parseInt(blockUntil, 10);
       const msRemaining = expiryMs - Date.now();
       
-      if (msRemaining > 2000) {
-        // Only redirect if block has more than 2 seconds remaining
+      if (msRemaining > 5000) {
+        // Only redirect if block has more than 5 seconds remaining
         // This prevents redirect loops when block is about to expire
         window.location.href = "/blocked.html";
         return;
       }
-      // Block expired or about to expire — clean up
-      localStorage.removeItem(BLOCK_STORAGE_KEY);
-      localStorage.removeItem(BLOCK_RULE_KEY);
-      localStorage.removeItem(BLOCK_DURATION_KEY);
+      if (msRemaining <= 0) {
+        // Block fully expired — clean up
+        localStorage.removeItem(BLOCK_STORAGE_KEY);
+        localStorage.removeItem(BLOCK_RULE_KEY);
+        localStorage.removeItem(BLOCK_DURATION_KEY);
+      }
+      // If between 0-5s remaining, don't redirect — let it expire naturally
     }
 
     // ── Fire page load log (skipped by WAF — no blocking risk) ──
