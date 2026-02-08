@@ -189,7 +189,9 @@ async function getEscalatedDuration(ip: string, baseDurationMinutes: number): Pr
   return Math.min(baseDurationMinutes * escalationFactor, 24 * 60);
 }
 
-// ── Unified WAF check (in-memory + DB fallback + fingerprint) ───────────────
+// ── Unified WAF check (DB-primary + in-memory fast path) ────────────────────
+// NOTE: Edge function isolates cold-start on nearly every request, so in-memory
+// counters are almost always 0-1. We MUST use DB counts as the primary method.
 async function checkWafRules(
   ip: string,
   ua: string | null,
@@ -207,21 +209,20 @@ async function checkWafRules(
     const windowMs = rule.time_window_seconds * 1000;
     const memoryCount = countHitsInWindow(ip, windowMs);
 
-    // Direct trigger from in-memory
+    // Fast path: in-memory trigger (works when same isolate handles burst)
     if (memoryCount > rule.max_requests) {
       triggered = rule;
       ruleLabel = rule.name;
       break;
     }
 
-    // DB fallback: only query if memory shows >50% of threshold (reduces unnecessary DB queries)
-    if (memoryCount > rule.max_requests * 0.5) {
-      const dbCount = await getDbHitCount(ip, rule.time_window_seconds);
-      if (dbCount > rule.max_requests) {
-        triggered = rule;
-        ruleLabel = `${rule.name} (cross-isolate)`;
-        break;
-      }
+    // Primary check: ALWAYS query DB for accurate cross-isolate counting
+    // This is essential because cold starts reset in-memory counters
+    const dbCount = await getDbHitCount(ip, rule.time_window_seconds);
+    if (dbCount > rule.max_requests) {
+      triggered = rule;
+      ruleLabel = `${rule.name} (cross-isolate)`;
+      break;
     }
   }
 

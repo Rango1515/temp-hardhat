@@ -5,19 +5,23 @@ const BLOCK_STORAGE_KEY = "waf_block_until";
 /**
  * Lightweight public page tracker — fires a single request to voip-security
  * on mount to log the visit. No auth required.
- * If the WAF blocks the IP, redirects to the appropriate block page.
- * Uses localStorage to persist block state so refreshing can't bypass it.
+ * If the WAF blocks the IP, sets localStorage and redirects to block page.
+ * Also checks localStorage on load to prevent bypass via refresh.
  */
 export function usePageTracker() {
   const hasFired = useRef(false);
 
   useEffect(() => {
     // ── Check localStorage first: if still blocked, redirect immediately ──
+    // This is the PRIMARY enforcement — no API call needed, can't be bypassed
     const blockUntil = localStorage.getItem(BLOCK_STORAGE_KEY);
-    if (blockUntil && Date.now() < parseInt(blockUntil, 10)) {
-      window.location.href = "/blocked.html";
-      return;
-    } else if (blockUntil) {
+    if (blockUntil) {
+      const expiryMs = parseInt(blockUntil, 10);
+      if (Date.now() < expiryMs) {
+        // Still blocked — redirect to block page (no API call = no extra request)
+        window.location.href = "/blocked.html";
+        return;
+      }
       // Block expired, clean up
       localStorage.removeItem(BLOCK_STORAGE_KEY);
     }
@@ -45,21 +49,11 @@ export function usePageTracker() {
       .then((data) => {
         // Handle both the log-public "blocked" response and the 403 early-exit response
         if ((data?.status === "blocked" && data?.rule) || data?.blocked === true) {
-          const rule = data.rule || "rate_limited";
-          const duration = data.duration || 5;
-          const ruleSlug = rule
-            .toLowerCase()
-            .replace(/\s*\(cross-isolate\)\s*/g, "")
-            .replace(/\s+/g, "_")
-            .replace(/[^a-z_]/g, "");
-
-          // Persist block in localStorage so refresh can't bypass
+          const duration = data.duration || 1; // minutes
+          // Persist block in localStorage — this is the lock that survives refresh
           const blockExpiry = Date.now() + duration * 60 * 1000;
           localStorage.setItem(BLOCK_STORAGE_KEY, String(blockExpiry));
-
-          const params = new URLSearchParams({ rule: ruleSlug });
-          if (duration) params.set("duration", String(duration));
-          window.location.href = `/blocked.html?${params.toString()}`;
+          window.location.href = "/blocked.html";
         }
       })
       .catch(() => {
