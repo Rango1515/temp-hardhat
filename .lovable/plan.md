@@ -1,160 +1,108 @@
 
 
-# Harden WAF Against DDoS Attacks + Speed Up Website
+# WAF Overhaul: Lenient Rules, Friendly Block Page, Timeline Fix, and Escalation System
 
-## Overview
+## Problem Summary
 
-Two areas to address: (1) making the WAF actually block DDoS attacks like HTTP floods, TLS floods, and rapid refreshing, and (2) making the website load and feel faster.
-
----
-
-## Part 1: WAF Hardening Against DDoS / Flood Attacks
-
-### Current Gap
-
-The WAF rules exist in the database but have a critical weakness: **in-memory counters reset on every cold start** of the edge function. Supabase edge functions spin up multiple isolates and can cold-start frequently, meaning a flood attack will spread across isolates and each one starts counting from zero. This makes the rate limiter mostly ineffective against real attacks.
-
-### Fixes
-
-**A) Add a database-backed rate counter as a fallback**
-- After the in-memory check, also query `voip_request_logs` to count recent requests from the same IP within the WAF rule window
-- This catches attackers across isolate restarts and multiple edge workers
-- Only do this heavier check if the in-memory counter shows more than 50% of the threshold (avoids unnecessary DB queries for normal traffic)
-
-**B) Early-exit blocked IP check with response caching**
-- Move the blocked IP check to the very top of the handler (before parsing JSON body)
-- Return a minimal static `403 Forbidden` response for blocked IPs (no JSON parsing, no DB calls)
-- This makes blocked IP responses near-instant and saves compute
-
-**C) Add a "Connection Flood" WAF rule**
-- Create a new default WAF rule: "Connection Flood" -- more than 20 requests in 5 seconds from one IP triggers a 5-minute block
-- This catches the rapid F5-refresh / automated tool attacks shown in the screenshot
-
-**D) Add "TLS Fingerprint" tracking**
-- Store the `user-agent` + IP combination as a fingerprint
-- When the same fingerprint exceeds thresholds even faster than the normal rate limit, treat it as an automated tool
-- Log it with a specific `rule_triggered` value like "automated_tool_detected"
-
-**E) Add progressive block escalation**
-- If an IP gets auto-blocked more than twice in 24 hours, double the block duration each time
-- After 3 auto-blocks, escalate to a 24-hour block
-- This prevents the "refresh flood, wait for block to expire, repeat" pattern
-
-### Files Changed
-- `supabase/functions/voip-security/index.ts` -- all WAF logic changes
-- Database migration -- add the new "Connection Flood" WAF rule
+1. **WAF rules are too strict** -- the "Rate Flood" rule triggers at just 10 requests per 100 seconds, meaning normal browsing can trigger a block. The "Connection Flood" triggers at 20 requests per 5 seconds, which is also too aggressive for page navigation.
+2. **Block page is harsh** -- shows "403 Access Blocked" with long durations. Normal users who accidentally trip a rule get treated like attackers.
+3. **"All Time" graph is broken** -- the timeline query caps at 1,000 rows and uses 7 days max. The time key normalization collapses all dates into `HH:mm` format, so multi-day data overlaps onto the same time slots, flattening the chart.
+4. **Escalation system exists in code** but lacks visibility -- there's no way to filter escalated events in the dashboard, no visual indicator, and no dedicated section.
 
 ---
 
-## Part 2: Website Speed Improvements
+## 1. Fix WAF Rules (Database Update)
 
-### Current Bottlenecks Identified
+Update the `voip_waf_rules` table to use sensible thresholds that won't block normal users:
 
-1. **Google Fonts loaded synchronously** -- `@import url('https://fonts.googleapis.com/css2?...')` in `index.css` blocks rendering until the font CSS is downloaded
-2. **Hero image is a large JPG imported as ES module** -- `hero-construction.jpg` loads synchronously and blocks first paint
-3. **VoipAuthProvider wraps the entire app** including public pages -- public visitors (hardhathosting.work) still run token checks, heartbeats, and idle detection even though they don't need authentication
-4. **Too many IntersectionObservers** -- each `AnimatedSection` creates its own observer instead of sharing one
+| Rule | Current | New | Rationale |
+|------|---------|-----|-----------|
+| Rate Flood (id=1) | 10 req / 100s, block 1m | **100 req / 10s**, block 1m | Only triggers on genuine floods (~10 req/sec sustained) |
+| Sustained Flood (id=2) | 300 req / 60s, block 60m | **500 req / 60s**, block 30m | Higher bar, shorter punishment |
+| Brute Force Login (id=3) | 15 fails / 120s, block 15m | **10 fails / 120s**, block 15m | Tighten login protection (strict) |
+| Sensitive Endpoint Abuse (id=4) | 30 req / 30s, block 15m | **60 req / 30s**, block 10m | Moderate for API endpoints |
+| Connection Flood (id=5) | 20 req / 5s, block 5m | **50 req / 5s**, block 1m | Only true floods, short cooldown |
 
-### Fixes
+Additionally, in the edge function:
+- Skip WAF checks entirely for `PAGE_LOAD` requests from authenticated users (browsing pages should never trigger blocks)
+- Only count API calls and public page visits toward rate limits
+- Reduce the fingerprint threshold from 15 to 30 requests in 5 seconds
 
-**A) Move Google Fonts to HTML `<link>` with preconnect (non-blocking)**
-- Remove the `@import` from `index.css`
-- Add `<link rel="preconnect">` and `<link rel="stylesheet">` with `display=swap` to `index.html`
-- This prevents render-blocking on font load
+## 2. Friendly Block Page + Short Cooldowns
 
-**B) Lazy-load the hero image**
-- Add `loading="lazy"` or use CSS `background-image` for the hero
-- Add `fetchpriority="high"` and `decoding="async"` to optimize the critical image
-- Consider adding a low-quality placeholder while loading
+Update `public/blocked.html`:
+- Change the default title/heading to a friendlier tone: "Whoa, slow down!" instead of "Access Temporarily Blocked"
+- Show the message: "Too many requests detected. Please wait a moment and try again."
+- For short blocks (under 2 minutes), show a simplified view with just the countdown and a retry button
+- Auto-redirect home as soon as the countdown expires (already partially implemented)
+- Remove the aggressive "navigation lock" (`beforeunload` trap) for short blocks -- only keep it for blocks over 5 minutes
 
-**C) Skip auth overhead on public pages**
-- The `VoipAuthProvider` currently wraps everything and runs heartbeats + idle detection on every page
-- These effects already guard with `if (!token || !user) return;`, so the overhead is minimal, but we can further optimize by deferring the initial localStorage parse and reducing re-renders
+Update block durations in the edge function:
+- Default first-offense auto-blocks start at **30 seconds to 1 minute** (not 5-15 minutes)
+- Escalation still increases duration for repeat offenders
 
-**D) Reduce animation overhead**
-- Add `will-change: transform, opacity` only during animation (already present)
-- Use a shared `IntersectionObserver` for all animated sections to reduce observer count
+## 3. Fix the "All Time" Timeline Graph
 
-### Files Changed
-- `index.html` -- add preconnect + stylesheet links for Google Fonts
-- `src/index.css` -- remove the `@import` for Google Fonts
-- `src/components/Hero.tsx` -- add image optimization attributes
-- `src/hooks/useScrollAnimation.ts` -- (optional) share a single observer instance
+The current issues:
+- The query uses `.limit(1000)` which truncates data for busy periods
+- All time ranges normalize to `HH:mm` format, so multi-day "All Time" data collapses into 24 hours
+- "All Time" only looks back 7 days
+
+Fixes in the edge function (`dashboard` action):
+- For "All Time" range, bucket by **day** (not hour) and use `YYYY-MM-DD` as the key
+- For "24h" range, bucket by **hour** and use `YYYY-MM-DDTHH` as the key
+- Increase the query limit to 5,000 for "all" range to capture more data
+- Return the full ISO timestamp so the frontend can display dates properly
+
+Fixes in the frontend (`SecurityMonitor.tsx`):
+- Update the `normalizeTime` function to handle day-level buckets for "All Time"
+- Show date labels (e.g., "Feb 5", "Feb 6") on the X-axis for "All Time" instead of hours
+- Add a "No data" fallback state
+- Add loading indicator when switching ranges
+
+## 4. Escalation System Improvements
+
+The escalation logic already exists in `getEscalatedDuration()` (doubling block time for repeat offenders, capping at 24h). What's missing is visibility.
+
+### Backend changes (edge function):
+- Add an `escalated` filter to the `traffic-logs` action so you can query `?status=escalated`
+- In the `dashboard` action, add an `escalatedCount` field counting blocks where duration was escalated
+- Mark security log entries with `status: "escalated"` when the block duration exceeds the base duration
+
+### Frontend changes (SecurityMonitor.tsx):
+- Add "Escalated" as a filter option in the traffic logs dropdown (alongside All, Suspicious, Blocked)
+- Add an "Escalated" stat card showing the count of escalated blocks
+- In the Recent Security Alerts card, show an "ESCALATED" badge (in red) on entries where `details.escalated === true`
+- In the Blocked IPs list, show an "Escalated" badge when the block reason contains "escalated"
 
 ---
 
 ## Technical Details
 
-### Database-backed rate counting (edge function)
-```typescript
-// After in-memory check, verify with DB for cross-isolate accuracy
-async function getDbHitCount(ip: string, windowSeconds: number): Promise<number> {
-  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
-  const { count } = await supabase
-    .from("voip_request_logs")
-    .select("*", { count: "exact", head: true })
-    .eq("ip_address", ip)
-    .gte("timestamp", since);
-  return count || 0;
-}
-```
+### Files to modify:
 
-### Progressive block escalation
-```typescript
-// Check how many times this IP was blocked in last 24h
-const { count: priorBlocks } = await supabase
-  .from("voip_blocked_ips")
-  .select("*", { count: "exact", head: true })
-  .eq("ip_address", ip)
-  .gte("blocked_at", twentyFourHoursAgo);
+1. **Database** -- SQL update to `voip_waf_rules` table (5 UPDATE statements to adjust thresholds)
 
-// Escalate: 2x for each prior block, max 24 hours
-const escalationFactor = Math.min(Math.pow(2, priorBlocks || 0), 24 * 60 / rule.block_duration_minutes);
-const actualDuration = rule.block_duration_minutes * escalationFactor;
-```
+2. **`supabase/functions/voip-security/index.ts`**:
+   - `log-request` handler: skip WAF check when method is `PAGE_LOAD` (browsing pages should not count toward rate limits)
+   - `dashboard` handler: fix timeline bucketing for "all" range (use day-level buckets), increase query limit, add `escalatedCount`
+   - `traffic-logs` handler: add `escalated` status filter
+   - `blockIp()` function: use `status: "escalated"` in security logs when duration is escalated
+   - Fingerprint threshold: increase from 15 to 30
 
-### Early-exit for blocked IPs (before JSON parsing)
-```typescript
-// At the very top of serve(), before action routing
-const reqIp = extractIp(req);
-if (await isIpBlocked(reqIp)) {
-  return new Response("Forbidden", { status: 403, headers: corsHeaders });
-}
-```
+3. **`public/blocked.html`**:
+   - Friendlier default messaging
+   - Simplified view for short blocks (under 2 minutes)
+   - Remove navigation lock for short blocks
+   - Auto-retry button that checks server status
 
-### Font loading optimization (index.html)
-```html
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Bebas+Neue&display=swap" rel="stylesheet" />
-```
+4. **`src/pages/voip/admin/SecurityMonitor.tsx`**:
+   - Timeline chart: handle day-level keys for "All Time", format X-axis labels by range
+   - Add "Escalated" filter option to traffic logs
+   - Add escalated count stat card
+   - Show escalated badges on alerts and blocked IPs
+   - Add loading state when switching timeline ranges
 
-### Hero image optimization
-```tsx
-<img
-  src={heroImage}
-  alt="Construction site"
-  className="w-full h-full object-cover"
-  fetchPriority="high"
-  decoding="async"
-/>
-```
-
-### New WAF Rule (migration)
-```sql
-INSERT INTO voip_waf_rules (name, description, rule_type, max_requests, time_window_seconds, block_duration_minutes, scope, enabled)
-VALUES ('Connection Flood', 'More than 20 requests in 5 seconds from one IP', 'rate_limit', 20, 5, 5, 'all', true);
-```
-
----
-
-## Summary of All File Changes
-
-| File | Change |
-|------|--------|
-| `supabase/functions/voip-security/index.ts` | Early-exit blocked IPs, DB-backed rate counting, progressive escalation, cross-isolate accuracy |
-| `index.html` | Add font preconnect + stylesheet links |
-| `src/index.css` | Remove `@import` for Google Fonts |
-| `src/components/Hero.tsx` | Add `fetchPriority="high"` and `decoding="async"` to hero image |
-| Database migration | Add "Connection Flood" WAF rule (20 req / 5s) |
+5. **`src/hooks/useAuthPageTracker.ts`**:
+   - Change the endpoint method from `PAGE_LOAD` to a distinct non-WAF-counted type, or skip the WAF entirely for page navigation
 
