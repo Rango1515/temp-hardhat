@@ -113,7 +113,7 @@ serve(async (req) => {
   if (action === "log-public" && req.method === "POST") {
     try {
       const body = await req.json();
-      const { page, referrer, userAgent: ua } = body;
+      const { page, referrer, userAgent: ua, hostname: clientHostname } = body;
       const ip = extractIp(req);
 
       // Fast block check
@@ -171,13 +171,14 @@ serve(async (req) => {
       }
 
       // Always log public page visits (they're infrequent compared to API calls)
+      // Store hostname in referer column to distinguish production vs preview traffic
       const { error: insertErr } = await supabase.from("voip_request_logs").insert({
         ip_address: ip,
         method: "GET",
         path: page || "/",
         status_code: 200,
         user_agent: ua || null,
-        referer: referrer || null,
+        referer: clientHostname || referrer || null,
         is_suspicious: !!triggered,
         is_blocked: false,
         rule_triggered: triggered?.name || null,
