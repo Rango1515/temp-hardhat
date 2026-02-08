@@ -775,6 +775,13 @@ serve(async (req) => {
 
         console.log(`[WAF] IP ${ip} manually blocked by admin ${userId}`);
 
+        // Send Discord alert for manual blocks too
+        const durationMinutes = duration === "5min" ? 5 : duration === "15min" ? 15 : duration === "1hour" ? 60 : duration === "24hours" ? 1440 : 0;
+        sendDiscordAlert(ip, "Manual Admin Block", durationMinutes, {
+          endpoint: "admin/security",
+          source: "manual_block",
+        });
+
         return new Response(JSON.stringify({ message: `IP ${ip} blocked` }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -913,14 +920,90 @@ serve(async (req) => {
         break;
       }
 
+      // ── Test Discord webhook ─────────────────────────────
+      case "test-discord": {
+        if (req.method !== "POST") {
+          return new Response(JSON.stringify({ error: "Method not allowed" }),
+            { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const webhookUrl = await getDiscordWebhookUrl();
+        if (!webhookUrl) {
+          return new Response(
+            JSON.stringify({ error: "No Discord webhook URL configured. Please save one first." }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Send a test embed directly
+        const testEmbed = {
+          title: "🧪 WAF Test Alert",
+          description: "This is a test alert from the HardHat Hosting Security Monitor. If you see this, your Discord webhook is working correctly!",
+          color: 0x00cc66, // Green for test
+          fields: [
+            { name: "🌐 IP Address", value: "`0.0.0.0` (test)", inline: true },
+            { name: "📛 Rule", value: "Test Alert", inline: true },
+            { name: "⏱️ Duration", value: "N/A", inline: true },
+            { name: "🎯 Endpoint", value: "`/security-monitor`", inline: true },
+            { name: "📡 Source", value: "admin_test", inline: true },
+            { name: "✅ Status", value: "Webhook is working!", inline: true },
+          ],
+          footer: { text: "HardHat Hosting WAF" },
+          timestamp: new Date().toISOString(),
+        };
+
+        try {
+          const res = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: "HardHat WAF",
+              avatar_url: "https://hardhathosting.work/hardhat-icon.png",
+              embeds: [testEmbed],
+            }),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            console.error(`[WAF] Discord test failed: ${res.status} ${errText}`);
+            return new Response(
+              JSON.stringify({ error: `Discord returned ${res.status}: ${errText.slice(0, 200)}` }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          console.log("[WAF] Discord test alert sent successfully");
+          return new Response(
+            JSON.stringify({ message: "Test alert sent to Discord!" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } catch (e) {
+          console.error("[WAF] Discord test error:", e);
+          return new Response(
+            JSON.stringify({ error: `Webhook request failed: ${String(e)}` }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
+
       // ── Suspicious count (sidebar badge) ────────────────
       case "suspicious-count": {
-        const fiveMinAgo = new Date(Date.now() - 300000).toISOString();
-        const { count } = await supabase.from("voip_security_logs")
-          .select("*", { count: "exact", head: true })
-          .eq("status", "suspicious").gte("timestamp", fiveMinAgo);
+        const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
 
-        return new Response(JSON.stringify({ count: count || 0 }),
+        // Count suspicious request logs (last hour) + active blocked IPs
+        const [suspiciousResult, blockedResult] = await Promise.all([
+          supabase.from("voip_request_logs")
+            .select("*", { count: "exact", head: true })
+            .eq("is_suspicious", true)
+            .gte("timestamp", oneHourAgo),
+          supabase.from("voip_blocked_ips")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "active"),
+        ]);
+
+        const total = (suspiciousResult.count || 0) + (blockedResult.count || 0);
+
+        return new Response(JSON.stringify({ count: total }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
