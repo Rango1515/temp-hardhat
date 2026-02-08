@@ -134,6 +134,16 @@ function shouldSample(): boolean {
   return Math.random() < (1 / SAMPLE_RATE);
 }
 
+// Extract a clean rule slug from WAF reason strings like "WAF Rule: Rate Flood (escalated to 60m)"
+function extractRuleSlug(reason: string): string {
+  const match = reason.match(/WAF Rule:\s*([^(]+)/);
+  if (match) {
+    return match[1].trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z_]/g, "");
+  }
+  // Fallback: try the raw reason
+  return reason.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z_]/g, "").slice(0, 30) || "unknown";
+}
+
 // ── DB-backed rate counting (cross-isolate accuracy) ────────────────────────
 async function getDbHitCount(ip: string, windowSeconds: number): Promise<number> {
   const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
@@ -273,7 +283,22 @@ serve(async (req) => {
   // ── EARLY EXIT: Check blocked IP before ANYTHING else ─────────────────
   const reqIp = extractIp(req);
   if (await isIpBlocked(reqIp)) {
-    return new Response("Forbidden", { status: 403, headers: corsHeaders });
+    // Look up the block reason to return the rule name
+    const { data: blockRecord } = await supabase
+      .from("voip_blocked_ips")
+      .select("reason, rule_id")
+      .eq("ip_address", reqIp)
+      .eq("status", "active")
+      .order("blocked_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const ruleSlug = extractRuleSlug(blockRecord?.reason || "");
+
+    return new Response(
+      JSON.stringify({ error: "Forbidden", blocked: true, rule: ruleSlug }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 
   const url = new URL(req.url);
@@ -319,8 +344,14 @@ serve(async (req) => {
       });
       if (insertErr) console.error("[WAF] Public log insert error:", JSON.stringify(insertErr));
 
+      const responseBody: Record<string, unknown> = { status: triggered ? "blocked" : "ok" };
+      if (triggered) {
+        responseBody.rule = ruleLabel || triggered.name;
+        responseBody.duration = triggered.block_duration_minutes;
+      }
+
       return new Response(
-        JSON.stringify({ status: triggered ? "blocked" : "ok" }),
+        JSON.stringify(responseBody),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch (e) {
