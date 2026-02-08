@@ -345,9 +345,12 @@ export default function SecurityMonitor() {
       // Run DDoS detection on fresh data
       const ddos = detectCfDdos(result.data);
       setCfDdosAlert(ddos);
-      // Auto-send DDoS alert to Discord (only once per session until dismissed)
-      if (ddos && !ddosAlertSentRef.current) {
+      // Auto-send DDoS alert to Discord — throttled by both ref AND sessionStorage
+      const lastClientDdosSend = parseInt(sessionStorage.getItem("ddos_discord_sent_at") || "0", 10);
+      const ddosClientCooldown = 10 * 60 * 1000; // 10 minutes
+      if (ddos && !ddosAlertSentRef.current && (Date.now() - lastClientDdosSend) > ddosClientCooldown) {
         ddosAlertSentRef.current = true;
+        sessionStorage.setItem("ddos_discord_sent_at", Date.now().toString());
         apiCall("voip-security", {
           method: "POST",
           params: { action: "cloudflare-ddos-discord" },

@@ -11,7 +11,7 @@ const SENSITIVE_ENDPOINTS = ["voip-leads", "voip-auth", "voip-admin", "voip-admi
 // ── Discord alert throttle (per IP, prevent webhook spam during floods) ─────
 // Map<ip, timestamp_ms_of_last_alert>
 const discordAlertThrottle: Map<string, number> = new Map();
-const DISCORD_THROTTLE_MS = 5 * 60 * 1000; // 5 minute cooldown per IP
+const DISCORD_THROTTLE_MS = 10 * 60 * 1000; // 10 minute cooldown per IP
 // ── DDoS detection (multiple unique IPs blocked in short window) ────────────
 // Track recently blocked IPs within a rolling window
 const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
