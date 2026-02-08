@@ -254,8 +254,8 @@ async function checkWafRules(
   if (!triggered && ua) {
     const fp = buildFingerprint(ip, ua);
     const fpCount5s = countFingerprintHitsInWindow(fp, 5000);
-    // If same fingerprint fires >15 requests in 5 seconds, it's an automated tool
-    if (fpCount5s > 15) {
+    // If same fingerprint fires >30 requests in 5 seconds, it's an automated tool
+    if (fpCount5s > 30) {
       // Find the most restrictive applicable rule
       const floodRule = rules.find(r => r.scope === "all" && r.rule_type === "rate_limit" && r.enabled);
       if (floodRule) {
@@ -459,11 +459,12 @@ async function blockIp(
   blockedCacheTime = 0;
 
   // Log to security_logs for the alert banner
+  const isEscalated = actualDuration > rule.block_duration_minutes;
   await supabase.from("voip_security_logs").insert({
     ip_address: ip,
     endpoint: context.endpoint || "/",
     user_agent: context.ua || null,
-    status: "suspicious",
+    status: isEscalated ? "escalated" : "suspicious",
     user_id: context.userId || null,
     rule_triggered: ruleLabel,
     details: {
@@ -471,7 +472,7 @@ async function blockIp(
       auto_blocked: true,
       block_duration_minutes: actualDuration,
       base_duration_minutes: rule.block_duration_minutes,
-      escalated: actualDuration > rule.block_duration_minutes,
+      escalated: isEscalated,
     },
   });
 
@@ -682,10 +683,33 @@ serve(async (req) => {
       const { endpoint, method: reqMethod, userAgent, isFailedLogin, statusCode, responseMs } = body;
       const ip = reqIp;
 
+      // Skip WAF checks entirely for PAGE_LOAD requests (authenticated browsing)
+      // Normal page navigation should NEVER trigger blocks
+      const isPageLoad = reqMethod === "PAGE_LOAD";
+      if (isPageLoad) {
+        // Just log it (sampled) and return ok — no WAF checks
+        if (shouldSample()) {
+          await supabase.from("voip_request_logs").insert({
+            ip_address: ip,
+            method: reqMethod,
+            path: endpoint || "unknown",
+            status_code: 200,
+            user_agent: userAgent,
+            user_id: userId,
+            is_suspicious: false,
+            is_blocked: false,
+          }).catch(() => {});
+        }
+        return new Response(
+          JSON.stringify({ status: "normal", blocked: false }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       // Record hit in memory (include UA for fingerprinting)
       recordHit(ip, userAgent);
 
-      // Check WAF rules
+      // Check WAF rules — only for API calls, not page loads
       const isSensitive = SENSITIVE_ENDPOINTS.some(e => (endpoint || "").includes(e));
       const { triggered, ruleLabel } = await checkWafRules(ip, userAgent, isSensitive, !!isFailedLogin);
 
@@ -704,10 +728,8 @@ serve(async (req) => {
         });
       }
 
-      // Always log page loads (PAGE_LOAD method) so DB counts are accurate for WAF
       // Sample normal API requests at 1-in-5 to reduce write volume
-      const isPageLoad = reqMethod === "PAGE_LOAD";
-      const shouldLog = triggered || isFailedLogin || isPageLoad || shouldSample();
+      const shouldLog = triggered || isFailedLogin || shouldSample();
 
       if (shouldLog) {
         const { error: logErr } = await supabase.from("voip_request_logs").insert({
@@ -802,14 +824,17 @@ serve(async (req) => {
 
         // Timeline — dynamic range based on parameter
         let timelineSince: string;
-        let bucketFormat: "minute" | "hour" = "minute";
+        let bucketFormat: "minute" | "hour" | "day" = "minute";
+        let queryLimit = 1000;
         if (timelineRange === "24h") {
           timelineSince = twentyFourHoursAgo;
           bucketFormat = "hour";
+          queryLimit = 2000;
         } else if (timelineRange === "all") {
-          // All time = last 7 days (capped by retention)
-          timelineSince = new Date(Date.now() - 7 * 86400000).toISOString();
-          bucketFormat = "hour";
+          // All time = last 30 days (matches retention)
+          timelineSince = new Date(Date.now() - 30 * 86400000).toISOString();
+          bucketFormat = "day";
+          queryLimit = 5000;
         } else {
           timelineSince = new Date(Date.now() - 3600000).toISOString();
           bucketFormat = "minute";
@@ -820,31 +845,42 @@ serve(async (req) => {
           .select("timestamp, is_suspicious")
           .gte("timestamp", timelineSince)
           .order("timestamp", { ascending: true })
-          .limit(1000);
+          .limit(queryLimit);
 
         const timeline: Record<string, { total: number; suspicious: number }> = {};
         (timelineLogs || []).forEach(l => {
-          // Bucket by minute or hour depending on range
-          const bucket = bucketFormat === "minute"
-            ? l.timestamp.slice(0, 16) // "YYYY-MM-DDTHH:mm"
-            : l.timestamp.slice(0, 13); // "YYYY-MM-DDTHH"
+          // Bucket by minute, hour, or day depending on range
+          let bucket: string;
+          if (bucketFormat === "minute") {
+            bucket = l.timestamp.slice(0, 16); // "YYYY-MM-DDTHH:mm"
+          } else if (bucketFormat === "hour") {
+            bucket = l.timestamp.slice(0, 13); // "YYYY-MM-DDTHH"
+          } else {
+            bucket = l.timestamp.slice(0, 10); // "YYYY-MM-DD"
+          }
           if (!timeline[bucket]) timeline[bucket] = { total: 0, suspicious: 0 };
           timeline[bucket].total++;
           if (l.is_suspicious) timeline[bucket].suspicious++;
         });
         const timelineArray = Object.entries(timeline).map(([time, data]) => ({
-          time: bucketFormat === "minute"
-            ? (time.split("T")[1] || time)
-            : (time.split("T")[1] ? time.split("T")[1] + ":00" : time),
+          time, // Return full bucket key — frontend will format it
           total: data.total,
           suspicious: data.suspicious,
         }));
+
+        // Count escalated blocks in last 24h
+        const { count: escalatedCount } = await supabase
+          .from("voip_security_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "escalated")
+          .gte("timestamp", twentyFourHoursAgo);
 
         return new Response(
           JSON.stringify({
             totalRequests: totalRequests || 0,
             suspiciousCount: suspiciousCount || 0,
             blockedCount: blockedCount || 0,
+            escalatedCount: escalatedCount || 0,
             topIPs,
             recentAlerts: recentAlerts || [],
             timeline: timelineArray,
@@ -866,6 +902,7 @@ serve(async (req) => {
 
         if (statusFilter === "suspicious") query = query.eq("is_suspicious", true);
         else if (statusFilter === "blocked") query = query.eq("is_blocked", true);
+        else if (statusFilter === "escalated") query = query.eq("action_taken", "auto_blocked").eq("is_suspicious", true);
         if (ipFilter) query = query.eq("ip_address", ipFilter);
         if (endpointFilter) query = query.ilike("path", `%${endpointFilter.replace(/%/g, "\\%").replace(/_/g, "\\_")}%`);
 
