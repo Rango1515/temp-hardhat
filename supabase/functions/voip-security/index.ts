@@ -8,14 +8,13 @@ import { verifyJWT, extractToken } from "../_shared/auth.ts";
 const ipHits: Map<string, number[]> = new Map();
 const SENSITIVE_ENDPOINTS = ["voip-leads", "voip-auth", "voip-admin", "voip-admin-ext", "voip-leads-ext"];
 
-// ── Discord alert throttle (per IP, prevent webhook spam during floods) ─────
-// Map<ip, timestamp_ms_of_last_alert>
-const discordAlertThrottle: Map<string, number> = new Map();
-const DISCORD_THROTTLE_MS = 10 * 60 * 1000; // 10 minute cooldown per IP
+// ── Discord alert throttle ──────────────────────────────────────────────────
+// DB-backed throttle: stores last alert time in voip_app_config to survive cold starts
+// Key format: "discord_alert_{ip}" → timestamp ISO string
+const DISCORD_THROTTLE_MS = 2 * 60 * 1000; // 2 minute cooldown per IP
 // ── DDoS detection (multiple unique IPs blocked in short window) ────────────
 // Track recently blocked IPs within a rolling window
 const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
-let lastDdosAlertTime = 0;
 const DDOS_WINDOW_MS = 60_000; // 1-minute window
 const DDOS_IP_THRESHOLD = 5; // 5+ unique IPs blocked in 1 minute = DDoS
 const DDOS_ALERT_COOLDOWN_MS = 600_000; // 10 minute buffer between DDoS Discord alerts
@@ -280,7 +279,7 @@ async function getDiscordWebhookUrl(): Promise<string | null> {
   return Deno.env.get("DISCORD_WEBHOOK_URL") || null;
 }
 
-// ── Discord webhook alert (with per-IP throttle) ────────────────────────────
+// ── Discord webhook alert (with DB-backed per-IP throttle) ──────────────────
 async function sendDiscordAlert(
   ip: string,
   ruleLabel: string,
@@ -288,12 +287,23 @@ async function sendDiscordAlert(
   context: { endpoint?: string; ua?: string | null; source?: string },
   options?: { force?: boolean }
 ) {
-  // Throttle: skip if we already alerted for this IP recently (unless forced)
+  // DB-backed throttle: check voip_app_config for last alert time (survives cold starts)
+  const throttleKey = `discord_alert_${ip.replace(/[^a-zA-Z0-9._:-]/g, "_")}`;
+
   if (!options?.force) {
-    const lastAlertTime = discordAlertThrottle.get(ip);
-    if (lastAlertTime && (Date.now() - lastAlertTime) < DISCORD_THROTTLE_MS) {
-      console.log(`[WAF] Discord alert throttled for IP ${ip} (last alert ${Math.round((Date.now() - lastAlertTime) / 1000)}s ago)`);
-      return;
+    const { data: existing } = await supabase
+      .from("voip_app_config")
+      .select("value, updated_at")
+      .eq("key", throttleKey)
+      .maybeSingle();
+
+    if (existing) {
+      const lastAlertMs = new Date(existing.updated_at).getTime();
+      const elapsed = Date.now() - lastAlertMs;
+      if (elapsed < DISCORD_THROTTLE_MS) {
+        console.log(`[WAF] Discord alert throttled for IP ${ip} (last alert ${Math.round(elapsed / 1000)}s ago, DB-backed)`);
+        return;
+      }
     }
   }
 
@@ -303,19 +313,16 @@ async function sendDiscordAlert(
     return;
   }
 
-  // Record this alert time BEFORE sending (prevents concurrent sends)
-  discordAlertThrottle.set(ip, Date.now());
-
-  // Clean up old throttle entries (keep map small)
-  if (discordAlertThrottle.size > 200) {
-    const cutoff = Date.now() - DISCORD_THROTTLE_MS;
-    for (const [k, v] of discordAlertThrottle.entries()) {
-      if (v < cutoff) discordAlertThrottle.delete(k);
-    }
-  }
+  // Record this alert time in DB BEFORE sending (prevents concurrent isolate sends)
+  await supabase
+    .from("voip_app_config")
+    .upsert(
+      { key: throttleKey, value: new Date().toISOString(), updated_at: new Date().toISOString() },
+      { onConflict: "key" }
+    );
 
   const isEscalated = durationMinutes > 15;
-  const color = isEscalated ? 0xff0000 : 0xff6600; // Red for escalated, orange for normal
+  const color = isEscalated ? 0xff0000 : 0xff6600;
 
   const embed = {
     title: "🚨 WAF Auto-Block Triggered",
@@ -460,18 +467,36 @@ async function blockIp(
 
   const uniqueBlockedCount = recentBlockedIps.size;
 
-  if (uniqueBlockedCount >= DDOS_IP_THRESHOLD && (now - lastDdosAlertTime) > DDOS_ALERT_COOLDOWN_MS) {
-    // DDoS detected! Send a single consolidated alert instead of per-IP
-    lastDdosAlertTime = now;
+  // DB-backed DDoS cooldown check
+  const ddosThrottleKey = "discord_ddos_last_alert";
+  let ddosCooldownOk = true;
+  if (uniqueBlockedCount >= DDOS_IP_THRESHOLD) {
+    const { data: ddosRec } = await supabase
+      .from("voip_app_config")
+      .select("updated_at")
+      .eq("key", ddosThrottleKey)
+      .maybeSingle();
+    if (ddosRec) {
+      const elapsed = now - new Date(ddosRec.updated_at).getTime();
+      ddosCooldownOk = elapsed > DDOS_ALERT_COOLDOWN_MS;
+    }
+  }
 
-    // Collect all the IPs for the alert
+  if (uniqueBlockedCount >= DDOS_IP_THRESHOLD && ddosCooldownOk) {
+    // DDoS detected! Record cooldown in DB then send consolidated alert
+    await supabase
+      .from("voip_app_config")
+      .upsert(
+        { key: ddosThrottleKey, value: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+
     const attackingIps = Array.from(recentBlockedIps.keys()).slice(0, 20);
-
     await sendDdosDiscordAlert(uniqueBlockedCount, attackingIps, ruleLabel, context);
 
     console.warn(`[WAF] 🚨 DDoS DETECTED: ${uniqueBlockedCount} unique IPs blocked in last 60s`);
   } else if (uniqueBlockedCount < DDOS_IP_THRESHOLD) {
-    // Normal single-IP block — send individual alert (throttled per-IP)
+    // Normal single-IP block — send individual alert (throttled per-IP via DB)
     await sendDiscordAlert(ip, ruleLabel, actualDuration, context);
   }
   // If DDoS threshold met but cooldown active, skip individual alert too (already notified)
