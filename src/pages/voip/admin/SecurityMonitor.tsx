@@ -272,10 +272,26 @@ export default function SecurityMonitor() {
   const [cfShowZone, setCfShowZone] = useState(false);
 
   // ── Data fetchers ───────────────────────────────────────────────
-  const fetchDashboard = useCallback(async () => {
+  const fetchDashboard = useCallback(async (silent = false) => {
     const result = await apiCall<DashboardData>("voip-security", { params: { action: "dashboard" } });
-    if (result.data) setDashboard(result.data);
-  }, [apiCall]);
+    if (result.data) {
+      setDashboard(prev => {
+        // Notify on new alerts (silent refresh only)
+        if (silent && prev) {
+          const prevAlerts = prev.recentAlerts?.length || 0;
+          const newAlerts = result.data!.recentAlerts?.length || 0;
+          const prevBlocked = prev.blockedCount || 0;
+          const newBlocked = result.data!.blockedCount || 0;
+          if (newAlerts > prevAlerts) {
+            toast({ title: "🚨 New Security Alert", description: `${newAlerts - prevAlerts} new alert(s) detected.`, variant: "destructive" });
+          } else if (newBlocked > prevBlocked) {
+            toast({ title: "🛡️ IP Blocked", description: `${newBlocked - prevBlocked} new IP(s) auto-blocked by WAF.` });
+          }
+        }
+        return result.data!;
+      });
+    }
+  }, [apiCall, toast]);
 
   const fetchTrafficLogs = useCallback(async () => {
     const params: Record<string, string> = {
@@ -311,11 +327,19 @@ export default function SecurityMonitor() {
     if (result.data) setWhitelistedIps(result.data.ips);
   }, [apiCall]);
 
-  const fetchCloudflareEvents = useCallback(async () => {
-    setCfLoading(true);
+  const fetchCloudflareEvents = useCallback(async (silent = false) => {
+    if (!silent) setCfLoading(true);
     const result = await apiCall<CloudflareData>("voip-security", { params: { action: "cloudflare-events", limit: "100" } });
     if (result.data) {
-      setCfData(result.data);
+      setCfData(prev => {
+        // Detect if there are new events compared to before
+        const prevTotal = prev?.summary?.total || 0;
+        const newTotal = result.data!.summary?.total || 0;
+        if (silent && newTotal > prevTotal) {
+          toast({ title: "📡 New Security Data", description: `${newTotal - prevTotal} new Cloudflare event(s) detected.` });
+        }
+        return result.data!;
+      });
       // Run DDoS detection on fresh data
       const ddos = detectCfDdos(result.data);
       setCfDdosAlert(ddos);
@@ -335,8 +359,8 @@ export default function SecurityMonitor() {
         }).catch(() => {});
       }
     }
-    setCfLoading(false);
-  }, [apiCall]);
+    if (!silent) setCfLoading(false);
+  }, [apiCall, toast]);
 
   const handleForwardCfToDiscord = async () => {
     if (!cfData?.events?.length) return;
@@ -365,11 +389,11 @@ export default function SecurityMonitor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-refresh dashboard + Cloudflare every 20s (DDoS detection stays live)
+  // Auto-refresh dashboard + Cloudflare every 20s (silent — no loading spinner, just toast on changes)
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchDashboard();
-      fetchCloudflareEvents();
+      fetchDashboard(true);
+      fetchCloudflareEvents(true);
     }, 20000);
     return () => clearInterval(interval);
   }, [fetchDashboard, fetchCloudflareEvents]);
@@ -774,11 +798,11 @@ export default function SecurityMonitor() {
               </button>
               <div className="flex flex-col gap-3 pr-6">
                 <div className="flex items-center gap-3">
-                  <Cloud className="w-8 h-8 text-destructive animate-pulse flex-shrink-0" />
+                  <ShieldAlert className="w-8 h-8 text-destructive animate-pulse flex-shrink-0" />
                   <div className="flex-1">
-                    <p className="font-bold text-destructive text-lg">🔴 Cloudflare DDoS Attack Detected</p>
+                    <p className="font-bold text-destructive text-lg">🔴 DDoS Attack Detected</p>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                      <strong>{cfDdosAlert.totalEvents}</strong> block/challenge events from <strong>{cfDdosAlert.uniqueIps}</strong> unique IPs detected in the last hour via Cloudflare.
+                      <strong>{cfDdosAlert.totalEvents}</strong> block/challenge events from <strong>{cfDdosAlert.uniqueIps}</strong> unique IPs detected in the last hour.
                     </p>
                   </div>
                 </div>
@@ -1057,7 +1081,7 @@ export default function SecurityMonitor() {
                       {cfForwarding ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
                       Send to Discord
                     </Button>
-                    <Button variant="outline" size="sm" onClick={fetchCloudflareEvents} disabled={cfLoading}>
+                    <Button variant="outline" size="sm" onClick={() => fetchCloudflareEvents()} disabled={cfLoading}>
                       {cfLoading ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RefreshCw className="w-3 h-3 mr-1" />}
                       Refresh
                     </Button>
