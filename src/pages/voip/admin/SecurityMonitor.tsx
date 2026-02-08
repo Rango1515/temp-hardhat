@@ -246,7 +246,7 @@ export default function SecurityMonitor() {
 
   const [activeTab, setActiveTab] = useState("overview");
   const [alertDismissed, setAlertDismissed] = useState(() => sessionStorage.getItem("waf_alert_dismissed") === "true");
-  const dismissAlert = useCallback(() => { setAlertDismissed(true); sessionStorage.setItem("waf_alert_dismissed", "true"); }, []);
+  const dismissAlert = useCallback(() => { setAlertDismissed(true); sessionStorage.setItem("waf_alert_dismissed", "true"); sessionStorage.setItem("security_alerts_cleared", "true"); window.dispatchEvent(new Event("security-alerts-cleared")); }, []);
 
   // Cloudflare events
   const [cfData, setCfData] = useState<CloudflareData | null>(null);
@@ -256,7 +256,7 @@ export default function SecurityMonitor() {
   // DDoS detection from Cloudflare
   const [cfDdosAlert, setCfDdosAlert] = useState<DdosAlert | null>(null);
   const [cfDdosDismissed, setCfDdosDismissed] = useState(() => sessionStorage.getItem("cf_ddos_dismissed") === "true");
-  const dismissDdos = useCallback(() => { setCfDdosDismissed(true); sessionStorage.setItem("cf_ddos_dismissed", "true"); ddosAlertSentRef.current = false; }, []);
+  const dismissDdos = useCallback(() => { setCfDdosDismissed(true); sessionStorage.setItem("cf_ddos_dismissed", "true"); sessionStorage.setItem("security_alerts_cleared", "true"); window.dispatchEvent(new Event("security-alerts-cleared")); ddosAlertSentRef.current = false; }, []);
   const ddosAlertSentRef = useRef(false); // prevent duplicate Discord sends
 
   // Discord webhook dialog
