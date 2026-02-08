@@ -727,13 +727,14 @@ export default function SecurityMonitor() {
         )}
 
 
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10"><Activity className="w-5 h-5 text-primary" /></div>
               <div>
                 <p className="text-2xl font-bold text-foreground">{dashboard?.totalRequests || 0}</p>
-                <p className="text-xs text-muted-foreground">Requests (24h)</p>
+                <p className="text-xs text-muted-foreground">WAF Requests (24h)</p>
               </div>
             </CardContent>
           </Card>
@@ -772,6 +773,54 @@ export default function SecurityMonitor() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Cloudflare Stats Row */}
+        {cfData?.summary && cfData.summary.total > 0 && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="border-orange-500/30">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10"><Cloud className="w-5 h-5 text-orange-500" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{cfData.summary.total}</p>
+                  <p className="text-xs text-muted-foreground">CF Events (1h)</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-destructive/30">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-destructive/10"><ShieldAlert className="w-5 h-5 text-destructive" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {(cfData.summary.actions?.block || 0) + (cfData.summary.actions?.drop || 0)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">CF Blocks</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-yellow-500/30">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-yellow-500/10"><Shield className="w-5 h-5 text-yellow-500" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {(cfData.summary.actions?.challenge || 0) + (cfData.summary.actions?.managed_challenge || 0) + (cfData.summary.actions?.js_challenge || 0)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">CF Challenges</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-orange-500/30">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-orange-500/10"><Globe className="w-5 h-5 text-orange-500" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {new Set(cfData.events.map(e => e.clientIP)).size}
+                  </p>
+                  <p className="text-xs text-muted-foreground">CF Unique IPs</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
