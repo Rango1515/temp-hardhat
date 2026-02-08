@@ -2,6 +2,7 @@ import { useState } from "react";
 import { VoipHeader } from "./VoipHeader";
 import { VoipSidebar } from "./VoipSidebar";
 import { cn } from "@/lib/utils";
+import { useAuthPageTracker } from "@/hooks/useAuthPageTracker";
 
 interface VoipLayoutProps {
   children: React.ReactNode;
@@ -9,6 +10,7 @@ interface VoipLayoutProps {
 
 export function VoipLayout({ children }: VoipLayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  useAuthPageTracker();
 
   return (
     <div className="min-h-screen bg-background flex">
