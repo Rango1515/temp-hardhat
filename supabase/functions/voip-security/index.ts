@@ -11,7 +11,13 @@ const SENSITIVE_ENDPOINTS = ["voip-leads", "voip-auth", "voip-admin", "voip-admi
 // ── Discord alert throttle (per IP, prevent webhook spam during floods) ─────
 // Map<ip, timestamp_ms_of_last_alert>
 const discordAlertThrottle: Map<string, number> = new Map();
-const DISCORD_THROTTLE_MS = 5 * 60 * 1000; // 5 minute cooldown per IP
+// ── DDoS detection (multiple unique IPs blocked in short window) ────────────
+// Track recently blocked IPs within a rolling window
+const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
+let lastDdosAlertTime = 0;
+const DDOS_WINDOW_MS = 60_000; // 1-minute window
+const DDOS_IP_THRESHOLD = 5; // 5+ unique IPs blocked in 1 minute = DDoS
+const DDOS_ALERT_COOLDOWN_MS = 10 * 60_000; // Only send DDoS alert every 10 minutes
 
 // ── Fingerprint tracking (IP + User-Agent combo) ────────────────────────────
 // Map<fingerprint, Array<timestamp_ms>>
@@ -324,6 +330,57 @@ async function sendDiscordAlert(
   }
 }
 
+// ── DDoS consolidated Discord alert ─────────────────────────────────────────
+async function sendDdosDiscordAlert(
+  uniqueIpCount: number,
+  attackingIps: string[],
+  lastRule: string,
+  context: { endpoint?: string; ua?: string | null; source?: string }
+) {
+  const webhookUrl = await getDiscordWebhookUrl();
+  if (!webhookUrl) return;
+
+  const ipList = attackingIps.map(ip => `\`${ip}\``).join(", ");
+  const truncated = attackingIps.length < uniqueIpCount ? ` (+${uniqueIpCount - attackingIps.length} more)` : "";
+
+  const embed = {
+    title: "🔴 DDoS Attack Detected",
+    description: `**${uniqueIpCount} unique IPs** have been automatically blocked in the last 60 seconds. This indicates a coordinated distributed attack.`,
+    color: 0xcc0000, // Dark red
+    fields: [
+      { name: "🌐 Attacking IPs", value: ipList + truncated, inline: false },
+      { name: "📛 Primary Rule", value: lastRule, inline: true },
+      { name: "🎯 Target", value: `\`${context.endpoint || "/"}\``, inline: true },
+      { name: "🛡️ Status", value: "All IPs auto-blocked with escalation", inline: true },
+      { name: "📊 Scale", value: `${uniqueIpCount} unique sources / 60s`, inline: true },
+      { name: "📡 Source", value: context.source || "unknown", inline: true },
+      { name: "⚡ Action", value: "Progressive blocks applied", inline: true },
+    ],
+    footer: { text: "HardHat Hosting WAF — DDoS Protection" },
+    timestamp: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "HardHat WAF",
+        avatar_url: "https://hardhathosting.work/hardhat-icon.png",
+        content: "@everyone 🚨 **DDoS ATTACK IN PROGRESS**", // Ping everyone for DDoS
+        embeds: [embed],
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[WAF] DDoS Discord alert failed: ${res.status}`);
+    } else {
+      console.log(`[WAF] DDoS Discord alert sent (${uniqueIpCount} IPs)`);
+    }
+  } catch (e) {
+    console.error("[WAF] DDoS Discord alert error:", e);
+  }
+}
+
 // ── Block an IP with escalation ─────────────────────────────────────────────
 async function blockIp(
   ip: string,
@@ -365,8 +422,33 @@ async function blockIp(
     },
   });
 
-  // Send Discord webhook alert (fire and forget)
-  sendDiscordAlert(ip, ruleLabel, actualDuration, context);
+  // ── DDoS detection: track this block and check for mass-block pattern ──
+  const now = Date.now();
+  recentBlockedIps.set(ip, now);
+
+  // Prune old entries outside the window
+  const cutoff = now - DDOS_WINDOW_MS;
+  for (const [blockedIp, ts] of recentBlockedIps.entries()) {
+    if (ts < cutoff) recentBlockedIps.delete(blockedIp);
+  }
+
+  const uniqueBlockedCount = recentBlockedIps.size;
+
+  if (uniqueBlockedCount >= DDOS_IP_THRESHOLD && (now - lastDdosAlertTime) > DDOS_ALERT_COOLDOWN_MS) {
+    // DDoS detected! Send a single consolidated alert instead of per-IP
+    lastDdosAlertTime = now;
+
+    // Collect all the IPs for the alert
+    const attackingIps = Array.from(recentBlockedIps.keys()).slice(0, 20);
+
+    sendDdosDiscordAlert(uniqueBlockedCount, attackingIps, ruleLabel, context);
+
+    console.warn(`[WAF] 🚨 DDoS DETECTED: ${uniqueBlockedCount} unique IPs blocked in last 60s`);
+  } else if (uniqueBlockedCount < DDOS_IP_THRESHOLD) {
+    // Normal single-IP block — send individual alert (throttled per-IP)
+    sendDiscordAlert(ip, ruleLabel, actualDuration, context);
+  }
+  // If DDoS threshold met but cooldown active, skip individual alert too (already notified)
 
   console.warn(`[WAF] IP ${ip} auto-blocked by "${ruleLabel}" for ${actualDuration}m (base: ${rule.block_duration_minutes}m)`);
 }
