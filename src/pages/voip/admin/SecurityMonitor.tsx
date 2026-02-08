@@ -87,6 +87,12 @@ interface CloudflareEvent {
   rayName: string;
 }
 
+interface CfHttpTimelinePoint {
+  time: string;
+  requests: number;
+  bytes: number;
+}
+
 interface CloudflareData {
   events: CloudflareEvent[];
   summary: {
@@ -94,6 +100,12 @@ interface CloudflareData {
     actions: Record<string, number>;
     sources: Record<string, number>;
     countries: Record<string, number>;
+  };
+  httpTimeline?: CfHttpTimelinePoint[];
+  httpSummary?: {
+    totalRequests: number;
+    totalBytes: number;
+    dataPoints: number;
   };
   error?: string;
 }
@@ -774,15 +786,17 @@ export default function SecurityMonitor() {
           </Card>
         </div>
 
-        {/* Cloudflare Stats Row */}
-        {cfData?.summary && cfData.summary.total > 0 && (
+        {/* Cloudflare Stats Row — shows total HTTP traffic even without firewall events */}
+        {(cfData?.httpSummary?.totalRequests || cfData?.summary?.total || 0) > 0 && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <Card className="border-orange-500/30">
               <CardContent className="p-4 flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-orange-500/10"><Cloud className="w-5 h-5 text-orange-500" /></div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{cfData.summary.total}</p>
-                  <p className="text-xs text-muted-foreground">CF Events (1h)</p>
+                  <p className="text-2xl font-bold text-foreground">
+                    {cfData?.httpSummary?.totalRequests?.toLocaleString() || 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">CF Requests (1h)</p>
                 </div>
               </CardContent>
             </Card>
@@ -791,31 +805,33 @@ export default function SecurityMonitor() {
                 <div className="p-2 rounded-lg bg-destructive/10"><ShieldAlert className="w-5 h-5 text-destructive" /></div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {(cfData.summary.actions?.block || 0) + (cfData.summary.actions?.drop || 0)}
+                    {cfData?.summary?.total || 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground">CF FW Events</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-destructive/30">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-destructive/10"><Ban className="w-5 h-5 text-destructive" /></div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">
+                    {(cfData?.summary?.actions?.block || 0) + (cfData?.summary?.actions?.drop || 0)}
                   </p>
                   <p className="text-xs text-muted-foreground">CF Blocks</p>
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-yellow-500/30">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-yellow-500/10"><Shield className="w-5 h-5 text-yellow-500" /></div>
-                <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {(cfData.summary.actions?.challenge || 0) + (cfData.summary.actions?.managed_challenge || 0) + (cfData.summary.actions?.js_challenge || 0)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">CF Challenges</p>
-                </div>
-              </CardContent>
-            </Card>
             <Card className="border-orange-500/30">
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-orange-500/10"><Globe className="w-5 h-5 text-orange-500" /></div>
+                <div className="p-2 rounded-lg bg-orange-500/10"><Activity className="w-5 h-5 text-orange-500" /></div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">
-                    {new Set(cfData.events.map(e => e.clientIP)).size}
+                    {cfData?.httpSummary?.totalBytes
+                      ? `${(cfData.httpSummary.totalBytes / (1024 * 1024)).toFixed(1)} MB`
+                      : "0 MB"}
                   </p>
-                  <p className="text-xs text-muted-foreground">CF Unique IPs</p>
+                  <p className="text-xs text-muted-foreground">CF Bandwidth (1h)</p>
                 </div>
               </CardContent>
             </Card>
@@ -834,9 +850,36 @@ export default function SecurityMonitor() {
 
           {/* ── OVERVIEW TAB ────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Traffic Timeline */}
+            {/* Cloudflare HTTP Traffic Timeline */}
+            {(cfData?.httpTimeline?.length || 0) > 0 && (
+              <Card className="border-orange-500/20">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Cloud className="w-4 h-4 text-orange-500" /> Cloudflare Traffic (Last Hour)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={(cfData?.httpTimeline || []).map(p => ({
+                        time: new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                        requests: p.requests,
+                      }))}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis dataKey="time" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                        <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                        <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
+                        <Area type="monotone" dataKey="requests" stroke="#f97316" fill="rgba(249, 115, 22, 0.2)" name="CF Requests" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* WAF Traffic Timeline */}
             <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-base">Traffic Timeline (Last Hour)</CardTitle></CardHeader>
+              <CardHeader className="pb-2"><CardTitle className="text-base">WAF Traffic Timeline (Last Hour)</CardTitle></CardHeader>
               <CardContent>
                 {(dashboard?.timeline?.length || 0) > 0 ? (
                   <div className="h-64">

@@ -1296,7 +1296,7 @@ serve(async (req) => {
         const cfSince = url.searchParams.get("since") || new Date(Date.now() - 3600000).toISOString();
 
         const graphqlQuery = {
-          query: `query($zoneTag: string, $filter: FirewallEventsAdaptiveFilter_InputObject) {
+          query: `query($zoneTag: string, $filter: FirewallEventsAdaptiveFilter_InputObject, $httpFilter: ZoneHttpRequestsAdaptiveGroupsFilter_InputObject) {
             viewer {
               zones(filter: { zoneTag: $zoneTag }) {
                 firewallEventsAdaptive(
@@ -1317,12 +1317,31 @@ serve(async (req) => {
                   ruleId
                   rayName
                 }
+                httpRequestsAdaptiveGroups(
+                  filter: $httpFilter
+                  limit: 60
+                  orderBy: [datetimeMinute_ASC]
+                ) {
+                  dimensions {
+                    datetimeMinute
+                  }
+                  count
+                  sum {
+                    edgeResponseBytes
+                  }
+                  avg {
+                    sampleInterval
+                  }
+                }
               }
             }
           }`,
           variables: {
             zoneTag: cfZone,
             filter: {
+              datetime_gt: cfSince,
+            },
+            httpFilter: {
               datetime_gt: cfSince,
             },
           },
@@ -1342,16 +1361,18 @@ serve(async (req) => {
             const errText = await cfRes.text();
             console.error(`[CF] Cloudflare API error: ${cfRes.status} ${errText}`);
             return new Response(
-              JSON.stringify({ error: `Cloudflare API returned ${cfRes.status}`, events: [] }),
+              JSON.stringify({ error: `Cloudflare API returned ${cfRes.status}`, events: [], httpTimeline: [] }),
               { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
 
           const cfData = await cfRes.json();
+          console.log("[CF] GraphQL response:", JSON.stringify(cfData?.errors || "no errors"));
           const zones = cfData?.data?.viewer?.zones;
           const events = zones?.[0]?.firewallEventsAdaptive || [];
+          const httpGroups = zones?.[0]?.httpRequestsAdaptiveGroups || [];
 
-          // Build summary stats
+          // Build summary stats from firewall events
           const actionCounts: Record<string, number> = {};
           const sourceCounts: Record<string, number> = {};
           const countryCounts: Record<string, number> = {};
@@ -1363,6 +1384,17 @@ serve(async (req) => {
             }
           }
 
+          // Build HTTP timeline from httpRequestsAdaptiveGroups
+          const httpTimeline = httpGroups.map((g: { dimensions: { datetimeMinute: string }; count: number; sum: { edgeResponseBytes: number } }) => ({
+            time: g.dimensions.datetimeMinute,
+            requests: g.count,
+            bytes: g.sum?.edgeResponseBytes || 0,
+          }));
+
+          // Total HTTP requests in the period
+          const totalHttpRequests = httpGroups.reduce((sum: number, g: { count: number }) => sum + g.count, 0);
+          const totalBytes = httpGroups.reduce((sum: number, g: { sum: { edgeResponseBytes: number } }) => sum + (g.sum?.edgeResponseBytes || 0), 0);
+
           return new Response(
             JSON.stringify({
               events,
@@ -1371,6 +1403,12 @@ serve(async (req) => {
                 actions: actionCounts,
                 sources: sourceCounts,
                 countries: countryCounts,
+              },
+              httpTimeline,
+              httpSummary: {
+                totalRequests: totalHttpRequests,
+                totalBytes,
+                dataPoints: httpTimeline.length,
               },
             }),
             { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
