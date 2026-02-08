@@ -30,15 +30,11 @@ ErrorDocument 403 /403.html
   RewriteRule ^ index.html [L]
 </IfModule>
 
-# ── Rate Limiting with mod_evasive (if installed) ────────────────────────────
-<IfModule mod_evasive20.c>
-  DOSHashTableSize 3097
-  DOSPageCount 10
-  DOSSiteCount 100
-  DOSPageInterval 1
-  DOSSiteInterval 1
-  DOSBlockingPeriod 60
-</IfModule>
+# ── Rate Limiting with mod_evasive ────────────────────────────────────────────
+# NOTE: mod_evasive directives (DOSPageCount, etc.) must go in your
+# Apache virtualhost config (/etc/apache2/sites-available/), NOT here.
+# .htaccess does not support mod_evasive directives.
+# See: sudo nano /etc/apache2/conf-available/evasive.conf
 
 # ── Connection limits with mod_reqtimeout (usually enabled by default) ───────
 <IfModule mod_reqtimeout.c>
