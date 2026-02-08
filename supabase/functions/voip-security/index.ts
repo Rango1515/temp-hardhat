@@ -367,7 +367,7 @@ async function sendDdosDiscordAlert(
       body: JSON.stringify({
         username: "HardHat WAF",
         avatar_url: "https://hardhathosting.work/hardhat-icon.png",
-        content: "@everyone 🚨 **DDoS ATTACK IN PROGRESS**", // Ping everyone for DDoS
+        content: "🚨 **DDoS ATTACK IN PROGRESS**",
         embeds: [embed],
       }),
     });
