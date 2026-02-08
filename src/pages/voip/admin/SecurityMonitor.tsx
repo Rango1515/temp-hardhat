@@ -368,10 +368,11 @@ export default function SecurityMonitor() {
 
           {/* ── OVERVIEW TAB ────────────────────────────────── */}
           <TabsContent value="overview" className="space-y-6">
-            {(dashboard?.timeline?.length || 0) > 0 && (
-              <Card>
-                <CardHeader className="pb-2"><CardTitle className="text-base">Traffic Timeline (Last Hour)</CardTitle></CardHeader>
-                <CardContent>
+            {/* Traffic Timeline */}
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-base">Traffic Timeline (Last Hour)</CardTitle></CardHeader>
+              <CardContent>
+                {(dashboard?.timeline?.length || 0) > 0 ? (
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={dashboard?.timeline || []}>
@@ -384,25 +385,57 @@ export default function SecurityMonitor() {
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-8">No traffic data recorded yet. Activity will appear here once requests are logged.</p>
+                )}
+              </CardContent>
+            </Card>
 
-            {(dashboard?.topIPs?.length || 0) > 0 && (
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Top IPs */}
               <Card>
                 <CardHeader className="pb-2"><CardTitle className="text-base">Top IPs (24h)</CardTitle></CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {dashboard?.topIPs?.map((entry, i) => (
-                      <div key={i} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/30 p-1 rounded" onClick={() => filterByIp(entry.ip)}>
-                        <CopyIpButton ip={entry.ip} />
-                        <Badge variant="outline">{entry.count} req</Badge>
-                      </div>
-                    ))}
-                  </div>
+                  {(dashboard?.topIPs?.length || 0) > 0 ? (
+                    <div className="space-y-2">
+                      {dashboard?.topIPs?.map((entry, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/30 p-2 rounded" onClick={() => filterByIp(entry.ip)}>
+                          <CopyIpButton ip={entry.ip} />
+                          <Badge variant="outline">{entry.count} req</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No IP data yet</p>
+                  )}
                 </CardContent>
               </Card>
-            )}
+
+              {/* Recent Security Alerts */}
+              <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">Recent Security Alerts</CardTitle></CardHeader>
+                <CardContent>
+                  {(dashboard?.recentAlerts?.length || 0) > 0 ? (
+                    <div className="space-y-2">
+                      {dashboard?.recentAlerts?.map((alert, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm p-2 rounded bg-destructive/5 border border-destructive/10">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <CopyIpButton ip={alert.ip_address} />
+                              <Badge variant="destructive" className="text-[10px]">{alert.rule_triggered}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{alert.endpoint} — {formatTime(alert.timestamp)}</p>
+                          </div>
+                          <Button size="sm" variant="ghost" className="flex-shrink-0 h-7 text-xs" onClick={() => filterByIp(alert.ip_address)}>View</Button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground text-center py-4">No security alerts — all clear 🛡️</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* ── TRAFFIC LOGS TAB ─────────────────────────── */}
