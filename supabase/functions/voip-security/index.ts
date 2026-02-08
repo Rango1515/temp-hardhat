@@ -8,6 +8,11 @@ import { verifyJWT, extractToken } from "../_shared/auth.ts";
 const ipHits: Map<string, number[]> = new Map();
 const SENSITIVE_ENDPOINTS = ["voip-leads", "voip-auth", "voip-admin", "voip-admin-ext", "voip-leads-ext"];
 
+// ── Discord alert throttle (per IP, prevent webhook spam during floods) ─────
+// Map<ip, timestamp_ms_of_last_alert>
+const discordAlertThrottle: Map<string, number> = new Map();
+const DISCORD_THROTTLE_MS = 5 * 60 * 1000; // 5 minute cooldown per IP
+
 // ── Fingerprint tracking (IP + User-Agent combo) ────────────────────────────
 // Map<fingerprint, Array<timestamp_ms>>
 const fingerprintHits: Map<string, number[]> = new Map();
@@ -243,17 +248,38 @@ async function getDiscordWebhookUrl(): Promise<string | null> {
   return Deno.env.get("DISCORD_WEBHOOK_URL") || null;
 }
 
-// ── Discord webhook alert ────────────────────────────────────────────────────
+// ── Discord webhook alert (with per-IP throttle) ────────────────────────────
 async function sendDiscordAlert(
   ip: string,
   ruleLabel: string,
   durationMinutes: number,
-  context: { endpoint?: string; ua?: string | null; source?: string }
+  context: { endpoint?: string; ua?: string | null; source?: string },
+  options?: { force?: boolean }
 ) {
+  // Throttle: skip if we already alerted for this IP recently (unless forced)
+  if (!options?.force) {
+    const lastAlertTime = discordAlertThrottle.get(ip);
+    if (lastAlertTime && (Date.now() - lastAlertTime) < DISCORD_THROTTLE_MS) {
+      console.log(`[WAF] Discord alert throttled for IP ${ip} (last alert ${Math.round((Date.now() - lastAlertTime) / 1000)}s ago)`);
+      return;
+    }
+  }
+
   const webhookUrl = await getDiscordWebhookUrl();
   if (!webhookUrl) {
     console.warn("[WAF] Discord webhook URL not configured, skipping alert");
     return;
+  }
+
+  // Record this alert time BEFORE sending (prevents concurrent sends)
+  discordAlertThrottle.set(ip, Date.now());
+
+  // Clean up old throttle entries (keep map small)
+  if (discordAlertThrottle.size > 200) {
+    const cutoff = Date.now() - DISCORD_THROTTLE_MS;
+    for (const [k, v] of discordAlertThrottle.entries()) {
+      if (v < cutoff) discordAlertThrottle.delete(k);
+    }
   }
 
   const isEscalated = durationMinutes > 15;
@@ -391,6 +417,16 @@ serve(async (req) => {
 
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
+
+  // ── Public endpoint: check-block (no auth required) ─────────────────
+  if (action === "check-block" && req.method === "POST") {
+    const ip = reqIp;
+    const blocked = await isIpBlocked(ip);
+    return new Response(
+      JSON.stringify({ blocked, ip }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 
   // ── Public endpoint: log-public (no auth required) ──────────────────
   if (action === "log-public" && req.method === "POST") {
@@ -780,7 +816,7 @@ serve(async (req) => {
         sendDiscordAlert(ip, "Manual Admin Block", durationMinutes, {
           endpoint: "admin/security",
           source: "manual_block",
-        });
+        }, { force: true });
 
         return new Response(JSON.stringify({ message: `IP ${ip} blocked` }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
