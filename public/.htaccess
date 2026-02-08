@@ -1,11 +1,75 @@
- <IfModule mod_rewrite.c>
-   RewriteEngine On
- 
-   # Allow real files and folders to load normally
-   RewriteCond %{REQUEST_FILENAME} -f [OR]
-   RewriteCond %{REQUEST_FILENAME} -d
-   RewriteRule ^ - [L]
- 
-   # Everything else goes to React SPA entry
-   RewriteRule ^ index.html [L]
- </IfModule>
+# ── DDoS / Flood Protection ──────────────────────────────────────────────────
+# Block known attack tools by User-Agent
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Block common DDoS/stresser user agents
+  RewriteCond %{HTTP_USER_AGENT} (havij|sqlmap|nikto|wget|curl|python|httperf|bench|ab|siege|wrk|bombardier|slowloris|hulk|goldeneye|xerxes|loic|hoic|ufonet|slowhttptest|torshammer|rudy|arme|apachebench|hping|nmap) [NC]
+  RewriteRule ^ - [F,L]
+
+  # Block empty user agents (most flood tools don't set one)
+  RewriteCond %{HTTP_USER_AGENT} ^$ 
+  RewriteRule ^ - [F,L]
+
+  # Block requests with no referer AND no cookie (likely bots on repeat hits)
+  # Only for the root path to avoid blocking first-time visitors on deep links
+  # RewriteCond %{REQUEST_URI} ^/$
+  # RewriteCond %{HTTP_REFERER} ^$
+  # RewriteCond %{HTTP_COOKIE} ^$
+  # RewriteRule ^ - [F,L]
+
+  # Allow real files and folders to load normally
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Everything else goes to React SPA entry
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# ── Rate Limiting with mod_evasive (if installed) ────────────────────────────
+<IfModule mod_evasive20.c>
+  DOSHashTableSize 3097
+  DOSPageCount 10
+  DOSSiteCount 100
+  DOSPageInterval 1
+  DOSSiteInterval 1
+  DOSBlockingPeriod 60
+</IfModule>
+
+# ── Connection limits with mod_reqtimeout (usually enabled by default) ───────
+<IfModule mod_reqtimeout.c>
+  RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
+</IfModule>
+
+# ── Disable server signature to reduce info leakage ─────────────────────────
+ServerSignature Off
+
+# ── Prevent directory listing ────────────────────────────────────────────────
+Options -Indexes
+
+# ── Security Headers ─────────────────────────────────────────────────────────
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set X-XSS-Protection "1; mode=block"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# ── Caching for static assets (reduces server load during floods) ────────────
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/webp "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType font/woff "access plus 1 year"
+</IfModule>
+
+# ── Compress responses (smaller = faster = less server strain) ───────────────
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css application/javascript application/json image/svg+xml
+</IfModule>
