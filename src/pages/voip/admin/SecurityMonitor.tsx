@@ -68,7 +68,8 @@ interface WafRule {
 // ── Helpers ───────────────────────────────────────────────────────
 function CopyIpButton({ ip }: { ip: string }) {
   const { toast } = useToast();
-  const copy = () => {
+  const copy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     navigator.clipboard.writeText(ip).then(() => {
       toast({ title: "Copied", description: ip });
     });
@@ -183,7 +184,7 @@ export default function SecurityMonitor() {
 
   // Auto-refresh dashboard every 30s
   useEffect(() => {
-    const interval = setInterval(fetchDashboard, 30000);
+    const interval = setInterval(fetchDashboard, 20000);
     return () => clearInterval(interval);
   }, [fetchDashboard]);
 
@@ -341,17 +342,19 @@ export default function SecurityMonitor() {
               </div>
             </CardContent>
           </Card>
-          <Card className="cursor-pointer hover:bg-muted/30 transition-colors"
-            onClick={() => dashboard?.topIPs?.[0] && filterByIp(dashboard.topIPs[0].ip)}>
+          <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-muted"><Globe className="w-5 h-5 text-muted-foreground" /></div>
-              <div>
+              <div className="flex-1 min-w-0">
                 {dashboard?.topIPs?.[0] ? (
-                  <CopyIpButton ip={dashboard.topIPs[0].ip} />
+                  <div className="flex items-center gap-2">
+                    <CopyIpButton ip={dashboard.topIPs[0].ip} />
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => filterByIp(dashboard.topIPs[0].ip)}>View Logs</Button>
+                  </div>
                 ) : (
                   <p className="text-sm font-mono font-bold text-foreground">None</p>
                 )}
-                <p className="text-xs text-muted-foreground">Top Traffic IP — Click to filter</p>
+                <p className="text-xs text-muted-foreground">Top Traffic IP</p>
               </div>
             </CardContent>
           </Card>
@@ -399,9 +402,12 @@ export default function SecurityMonitor() {
                   {(dashboard?.topIPs?.length || 0) > 0 ? (
                     <div className="space-y-2">
                       {dashboard?.topIPs?.map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm cursor-pointer hover:bg-muted/30 p-2 rounded" onClick={() => filterByIp(entry.ip)}>
+                        <div key={i} className="flex items-center justify-between text-sm p-2 rounded hover:bg-muted/30">
                           <CopyIpButton ip={entry.ip} />
-                          <Badge variant="outline">{entry.count} req</Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline">{entry.count} req</Badge>
+                            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => filterByIp(entry.ip)}>View</Button>
+                          </div>
                         </div>
                       ))}
                     </div>

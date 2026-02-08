@@ -16,6 +16,8 @@ export function usePageTracker() {
     // Use sendBeacon for minimal impact, fall back to fetch
     const payload = JSON.stringify({
       page: window.location.pathname,
+      hostname: window.location.hostname,
+      origin: window.location.origin,
       referrer: document.referrer || null,
       userAgent: navigator.userAgent,
     });
