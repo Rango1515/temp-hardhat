@@ -659,8 +659,10 @@ serve(async (req) => {
         });
       }
 
-      // Sampled logging: always log suspicious, sample normal
-      const shouldLog = triggered || isFailedLogin || shouldSample();
+      // Always log page loads (PAGE_LOAD method) so DB counts are accurate for WAF
+      // Sample normal API requests at 1-in-5 to reduce write volume
+      const isPageLoad = reqMethod === "PAGE_LOAD";
+      const shouldLog = triggered || isFailedLogin || isPageLoad || shouldSample();
 
       if (shouldLog) {
         const { error: logErr } = await supabase.from("voip_request_logs").insert({
@@ -679,8 +681,18 @@ serve(async (req) => {
         if (logErr) console.error("[WAF] Log insert failed:", logErr);
       }
 
+      // Return blocked: true when we actually triggered a block
+      const responseBody: Record<string, unknown> = {
+        status: logStatus,
+        rule: ruleLabel || null,
+        blocked: !!triggered,
+      };
+      if (triggered) {
+        responseBody.duration = triggered.block_duration_minutes;
+      }
+
       return new Response(
-        JSON.stringify({ status: logStatus, rule: ruleLabel || null, blocked: false }),
+        JSON.stringify(responseBody),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

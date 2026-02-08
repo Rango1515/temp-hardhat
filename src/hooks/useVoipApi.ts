@@ -200,13 +200,14 @@ export function useVoipApi() {
           try {
             const errorData = await response.json();
             
-            // If WAF blocked this IP, redirect to the block page
+            // If WAF blocked this IP, store block info and redirect
             if (response.status === 403 && errorData.blocked && errorData.rule) {
-              const ruleSlug = errorData.rule
-                .toLowerCase()
-                .replace(/\s+/g, "_")
-                .replace(/[^a-z_]/g, "");
-              window.location.href = `/blocked.html?rule=${ruleSlug}`;
+              const duration = errorData.duration || 1;
+              const blockExpiry = Date.now() + duration * 60 * 1000;
+              localStorage.setItem("waf_block_until", String(blockExpiry));
+              localStorage.setItem("waf_block_rule", errorData.rule);
+              localStorage.setItem("waf_block_duration_min", String(duration));
+              window.location.href = "/blocked.html";
               return { data: null, error: "Access blocked by security policy" };
             }
             
