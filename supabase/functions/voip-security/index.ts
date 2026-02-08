@@ -1455,6 +1455,80 @@ serve(async (req) => {
         }
       }
 
+      // ── Cloudflare DDoS alert to Discord ────────────
+      case "cloudflare-ddos-discord": {
+        if (req.method !== "POST") {
+          return new Response(JSON.stringify({ error: "Method not allowed" }),
+            { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const webhookUrl = await getDiscordWebhookUrl();
+        if (!webhookUrl) {
+          return new Response(
+            JSON.stringify({ error: "No Discord webhook configured" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const ddosBody = await req.json();
+        const { uniqueIps, totalEvents, topIps, topActions, topPaths } = ddosBody;
+
+        const ipList = (topIps || []).slice(0, 10).map((e: { ip: string; count: number }) =>
+          `\`${e.ip}\` (${e.count}x)`
+        ).join(", ");
+
+        const actionBreakdown = Object.entries(topActions || {})
+          .map(([action, count]) => `${action}: ${count}`)
+          .join(", ");
+
+        const targetPaths = (topPaths || []).slice(0, 5).map((p: string) => `\`${p}\``).join(", ");
+
+        const ddosEmbed = {
+          title: "🔴 Cloudflare DDoS Attack Detected",
+          description: `**${totalEvents}** block/challenge events from **${uniqueIps}** unique IPs detected in the last hour via Cloudflare firewall analytics.`,
+          color: 0xcc0000,
+          fields: [
+            { name: "🌐 Top Attacking IPs", value: ipList || "N/A", inline: false },
+            { name: "📛 Actions", value: actionBreakdown || "N/A", inline: true },
+            { name: "🎯 Targets", value: targetPaths || "/", inline: true },
+            { name: "📊 Scale", value: `${uniqueIps} unique sources`, inline: true },
+            { name: "📡 Data Source", value: "Cloudflare Firewall Events", inline: true },
+            { name: "🛡️ Status", value: "Auto-detected from Cloudflare analytics", inline: true },
+          ],
+          footer: { text: "HardHat Hosting WAF — Cloudflare DDoS Detection" },
+          timestamp: new Date().toISOString(),
+        };
+
+        try {
+          const res = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: "HardHat WAF",
+              avatar_url: "https://hardhathosting.work/hardhat-icon.png",
+              content: "🚨 **CLOUDFLARE DDoS ATTACK DETECTED**",
+              embeds: [ddosEmbed],
+            }),
+          });
+
+          if (!res.ok) {
+            console.error(`[CF-DDoS] Discord alert failed: ${res.status}`);
+            return new Response(
+              JSON.stringify({ error: `Discord returned ${res.status}` }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          console.log(`[CF-DDoS] Discord DDoS alert sent (${uniqueIps} IPs, ${totalEvents} events)`);
+          return new Response(JSON.stringify({ message: "DDoS alert sent to Discord" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+          console.error("[CF-DDoS] Discord alert error:", e);
+          return new Response(JSON.stringify({ error: String(e) }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
