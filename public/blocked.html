@@ -369,7 +369,35 @@
     var storedDurationMin = parseInt(localStorage.getItem(BLOCK_DURATION_KEY) || '1', 10);
     var now = Date.now();
 
-    // If block expired or not set, redirect home
+    // ── ALWAYS check the server first ─────────────────────────────
+    // This handles whitelisted IPs — server returns blocked:false,
+    // so we clear localStorage and redirect home immediately.
+    (function() {
+      fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.blocked) {
+          // Server says NOT blocked (whitelisted or expired)
+          localStorage.removeItem(BLOCK_KEY);
+          localStorage.removeItem(BLOCK_RULE_KEY);
+          localStorage.removeItem(BLOCK_DURATION_KEY);
+          window.location.href = '/';
+        } else if (data.remaining_seconds) {
+          // Server confirms blocked — update localStorage with accurate time
+          var newExpiry = Date.now() + data.remaining_seconds * 1000;
+          localStorage.setItem(BLOCK_KEY, String(newExpiry));
+        }
+      })
+      .catch(function() {
+        // Can't reach server — fall through to localStorage-based display
+      });
+    })();
+
+    // If block expired or not set in localStorage, redirect home
     if (!storedExpiry || storedExpiry <= now) {
       localStorage.removeItem(BLOCK_KEY);
       localStorage.removeItem(BLOCK_RULE_KEY);

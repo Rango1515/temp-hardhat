@@ -479,7 +479,12 @@ export default function SecurityMonitor() {
           <Card className="border-destructive bg-destructive/10 relative">
             <CardContent className="p-4">
               <button
-                onClick={() => setAlertDismissed(true)}
+                onClick={async () => {
+                  setAlertDismissed(true);
+                  // Also clear the suspicious logs that feed the sidebar badge
+                  await apiCall("voip-security", { method: "DELETE", params: { action: "clear-logs", target: "suspicious" } });
+                  fetchDashboard();
+                }}
                 className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-background/50"
                 aria-label="Dismiss alert"
               >
