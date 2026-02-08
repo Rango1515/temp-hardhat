@@ -978,29 +978,56 @@ export default function SecurityMonitor() {
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={(() => {
-                        // Merge WAF timeline and CF timeline by time key
-                        const timeMap = new Map<string, { time: string; wafTotal: number; wafSuspicious: number; cfRequests: number }>();
+                        // Merge WAF timeline and CF timeline by normalized 24h time key
+                        const timeMap = new Map<string, { sortKey: number; time: string; wafTotal: number; wafSuspicious: number; cfRequests: number }>();
+
+                        // Helper: normalize any time string to "HH:mm" (24h) and a sortable timestamp
+                        const normalizeTime = (raw: string): { key: string; sort: number } => {
+                          const d = new Date(raw);
+                          if (!isNaN(d.getTime())) {
+                            const hh = d.getHours().toString().padStart(2, '0');
+                            const mm = d.getMinutes().toString().padStart(2, '0');
+                            return { key: `${hh}:${mm}`, sort: d.getTime() };
+                          }
+                          // Already a formatted string like "02:15 AM" — parse it
+                          const match = raw.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+                          if (match) {
+                            let h = parseInt(match[1], 10);
+                            const m = parseInt(match[2], 10);
+                            if (match[3]?.toUpperCase() === 'PM' && h < 12) h += 12;
+                            if (match[3]?.toUpperCase() === 'AM' && h === 12) h = 0;
+                            return { key: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`, sort: h * 60 + m };
+                          }
+                          return { key: raw, sort: 0 };
+                        };
 
                         // Add WAF data
                         for (const p of (dashboard?.timeline || [])) {
-                          timeMap.set(p.time, { time: p.time, wafTotal: p.total, wafSuspicious: p.suspicious, cfRequests: 0 });
-                        }
-
-                        // Add CF data (normalize time key to match)
-                        for (const p of (cfData?.httpTimeline || [])) {
-                          const timeKey = new Date(p.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                          const existing = timeMap.get(timeKey);
+                          const { key, sort } = normalizeTime(p.time);
+                          const existing = timeMap.get(key);
                           if (existing) {
-                            existing.cfRequests = p.requests;
+                            existing.wafTotal += p.total;
+                            existing.wafSuspicious += p.suspicious;
                           } else {
-                            timeMap.set(timeKey, { time: timeKey, wafTotal: 0, wafSuspicious: 0, cfRequests: p.requests });
+                            timeMap.set(key, { sortKey: sort, time: key, wafTotal: p.total, wafSuspicious: p.suspicious, cfRequests: 0 });
                           }
                         }
 
-                        return Array.from(timeMap.values()).sort((a, b) => a.time.localeCompare(b.time));
+                        // Add CF data
+                        for (const p of (cfData?.httpTimeline || [])) {
+                          const { key, sort } = normalizeTime(p.time);
+                          const existing = timeMap.get(key);
+                          if (existing) {
+                            existing.cfRequests = p.requests;
+                          } else {
+                            timeMap.set(key, { sortKey: sort, time: key, wafTotal: 0, wafSuspicious: 0, cfRequests: p.requests });
+                          }
+                        }
+
+                        return Array.from(timeMap.values()).sort((a, b) => a.sortKey - b.sortKey);
                       })()}>
                         <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                        <XAxis dataKey="time" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
+                        <XAxis dataKey="time" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} interval="preserveStartEnd" />
                         <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                         <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
                         <Area type="monotone" dataKey="cfRequests" stroke="#f97316" fill="rgba(249, 115, 22, 0.15)" name="CF Requests" />
