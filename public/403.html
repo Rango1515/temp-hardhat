@@ -3,10 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rate Limited — HardHat Hosting</title>
+  <title>Redirecting — HardHat Hosting</title>
   <link rel="icon" type="image/png" href="/hardhat-icon.png">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       min-height: 100vh;
       display: flex;
@@ -15,144 +14,27 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #0a0a0a;
       color: #e5e5e5;
-      padding: 1.5rem;
     }
-    .container { max-width: 480px; width: 100%; text-align: center; }
-    .shield {
-      width: 80px; height: 80px; margin: 0 auto 2rem;
-      background: rgba(239, 68, 68, 0.1);
-      border: 2px solid rgba(239, 68, 68, 0.3);
-      border-radius: 16px;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .shield svg { width: 40px; height: 40px; color: #ef4444; }
-    .code {
-      font-size: 5rem; font-weight: 900;
-      color: rgba(255, 255, 255, 0.06);
-      line-height: 1; margin-bottom: -1rem; user-select: none;
-    }
-    h1 { font-size: 1.5rem; font-weight: 700; color: #f5f5f5; margin-bottom: 0.5rem; }
-    .description { color: #a3a3a3; line-height: 1.6; margin-bottom: 2rem; }
-    .info-box {
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 2rem;
-    }
-    .info-box p { font-size: 0.875rem; color: #a3a3a3; line-height: 1.5; }
-    .info-box strong { color: #d4d4d4; }
-    .countdown {
-      display: flex; align-items: center; justify-content: center;
-      gap: 0.5rem; font-size: 0.875rem; color: #737373; margin-bottom: 1.5rem;
-    }
-    .countdown svg { width: 16px; height: 16px; }
-    .countdown #timer { font-weight: 600; color: #f97316; font-variant-numeric: tabular-nums; }
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 0.5rem; padding: 0.625rem 1.25rem; border-radius: 8px;
-      font-size: 0.875rem; font-weight: 500; cursor: pointer;
-      transition: all 0.15s ease; border: none; font-family: inherit;
-    }
-    .btn-primary { background: #f97316; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #ea580c; }
-    .btn-disabled { opacity: 0.5; cursor: not-allowed; }
-    .status-msg { font-size: 0.8rem; color: #ef4444; margin-top: 0.75rem; min-height: 1.2em; }
-    .footer { margin-top: 2rem; font-size: 0.75rem; color: rgba(255, 255, 255, 0.2); }
-    .footer a { color: #f97316; text-decoration: none; }
-    .footer a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="code">403</div>
-    <div class="shield">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        <line x1="4" y1="4" x2="20" y2="20"/>
-      </svg>
-    </div>
-    <h1>You've Been Rate Limited</h1>
-    <p class="description">
-      Our security system detected too many requests from your IP address.
-      This is an automated protection to keep the site safe for everyone.
-    </p>
-    <div class="info-box">
-      <p>
-        <strong>Why am I seeing this?</strong><br>
-        Rapid page refreshes, automated scripts, or unusual traffic patterns
-        triggered our flood protection. This block is <strong>temporary</strong>.
-      </p>
-    </div>
-    <div class="countdown">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
-      </svg>
-      <span>Auto-retry in <span id="timer">60</span>s</span>
-    </div>
-    <div>
-      <button class="btn btn-primary btn-disabled" id="retryBtn" disabled>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
-          <polyline points="23 4 23 10 17 10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-        <span id="retryLabel">Wait 60s</span>
-      </button>
-    </div>
-    <p class="status-msg" id="statusMsg"></p>
-    <div class="footer">
-      <p>If this keeps happening, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p>
-    </div>
-  </div>
-
+  <p>Redirecting…</p>
   <script>
-    // ── Prevent all navigation (back, forward, refresh) ──
-    history.pushState(null, '', location.href);
-    window.addEventListener('popstate', function() {
-      history.pushState(null, '', location.href);
-    });
-
-    // ── FULLY CLIENT-SIDE: No API calls on load (prevents redirect loop) ──
+    // 403.html is a legacy page — redirect everything to the single canonical block page.
+    // Preserve any query params (e.g., ?rule=rate_flood)
     var BLOCK_KEY = 'waf_block_until';
-    var BLOCK_DURATION = 60; // seconds
-
-    // Calculate remaining time from localStorage, or start fresh
     var storedExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
-    var now = Date.now();
 
-    if (!storedExpiry || storedExpiry < now) {
-      // First time seeing this page or expired — set a new block timer
-      storedExpiry = now + BLOCK_DURATION * 1000;
-      localStorage.setItem(BLOCK_KEY, String(storedExpiry));
+    if (storedExpiry && Date.now() < storedExpiry) {
+      // Still blocked — go to canonical block page
+      window.location.replace('/blocked.html');
+    } else {
+      // Not blocked — go home
+      localStorage.removeItem(BLOCK_KEY);
+      localStorage.removeItem('waf_block_rule');
+      localStorage.removeItem('waf_block_duration_min');
+      window.location.replace('/');
     }
-
-    var remaining = Math.max(1, Math.ceil((storedExpiry - now) / 1000));
-
-    var timerEl = document.getElementById('timer');
-    var retryBtn = document.getElementById('retryBtn');
-    var retryLabel = document.getElementById('retryLabel');
-    var statusMsg = document.getElementById('statusMsg');
-
-    timerEl.textContent = remaining;
-    retryLabel.textContent = 'Wait ' + remaining + 's';
-
-    var interval = setInterval(function() {
-      remaining--;
-      if (remaining <= 0) {
-        clearInterval(interval);
-        timerEl.textContent = '0';
-        // Enable button
-        retryBtn.disabled = false;
-        retryBtn.classList.remove('btn-disabled');
-        retryLabel.textContent = 'Try Again';
-        retryBtn.onclick = function() {
-          localStorage.removeItem(BLOCK_KEY);
-          window.location.href = '/';
-        };
-        return;
-      }
-      timerEl.textContent = remaining;
-      retryLabel.textContent = 'Wait ' + remaining + 's';
-    }, 1000);
   </script>
 </body>
 </html>

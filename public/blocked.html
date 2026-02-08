@@ -229,6 +229,14 @@
       text-decoration: underline;
     }
 
+    .status-msg {
+      font-size: 0.8rem;
+      color: #ef4444;
+      margin-top: 0.75rem;
+      min-height: 1.2em;
+      text-align: center;
+    }
+
     @media (min-width: 640px) {
       .actions {
         flex-direction: row;
@@ -239,94 +247,83 @@
 </head>
 <body>
   <div class="container" id="root">
-    <!-- Content injected by JS based on rule query param -->
+    <!-- Content injected by JS -->
   </div>
 
   <script>
-    // ── Rule definitions ──────────────────────────────────────────────────
-    const RULES = {
+    // ══════════════════════════════════════════════════════════════
+    // BLOCK PAGE — Single canonical page for all WAF blocks.
+    // Uses ONLY localStorage — zero API calls on load.
+    // ══════════════════════════════════════════════════════════════
+
+    var BLOCK_KEY = 'waf_block_until';
+    var BLOCK_RULE_KEY = 'waf_block_rule';
+    var BLOCK_DURATION_KEY = 'waf_block_duration_min';
+    var SUPABASE_URL = 'https://sqtbqtpudoossunaaofx.supabase.co';
+
+    // ── Rule definitions ──────────────────────────────────────────
+    var RULES = {
       "rate_flood": {
         theme: "rate-flood",
         badge: "RATE FLOOD",
         title: "Rate Flood Detected",
-        description: "You triggered our rate flood protection by sending too many requests in a short burst. This is typically caused by rapid page refreshing or automated scripts.",
+        description: "You triggered our rate flood protection by sending too many requests in a short burst.",
         icon: "flood",
-        why: "Your IP exceeded the maximum allowed requests within a 10-second window. This limit exists to prevent denial-of-service attacks.",
-        threshold: "> 60 requests / 10 seconds",
-        blockDuration: "1 minute",
-        retrySeconds: 60,
+        why: "Your IP exceeded the maximum allowed requests within a short window. This limit prevents denial-of-service attacks.",
       },
       "sustained_flood": {
         theme: "sustained-flood",
         badge: "SUSTAINED FLOOD",
         title: "Sustained Flood Detected",
-        description: "Our system detected a sustained high volume of requests from your IP address over an extended period, consistent with a flood attack pattern.",
+        description: "Our system detected a sustained high volume of requests from your IP address over an extended period.",
         icon: "waves",
-        why: "Your IP maintained an abnormally high request rate over 60 seconds. This protection prevents resource exhaustion attacks.",
-        threshold: "> 300 requests / 60 seconds",
-        blockDuration: "60 minutes",
-        retrySeconds: 300,
+        why: "Your IP maintained an abnormally high request rate. This protection prevents resource exhaustion attacks.",
       },
       "brute_force": {
         theme: "brute-force",
         badge: "BRUTE FORCE",
         title: "Brute Force Attempt Blocked",
-        description: "Too many failed login attempts were detected from your IP address. This protection prevents unauthorized access to accounts.",
+        description: "Too many failed login attempts were detected from your IP address.",
         icon: "lock",
-        why: "Multiple consecutive failed login attempts suggest a password-guessing attack. Your IP has been temporarily locked out of authentication endpoints.",
-        threshold: "> 15 failed logins / 2 minutes",
-        blockDuration: "15 minutes",
-        retrySeconds: 180,
+        why: "Multiple consecutive failed login attempts suggest a password-guessing attack.",
       },
       "endpoint_abuse": {
         theme: "endpoint-abuse",
         badge: "ENDPOINT ABUSE",
         title: "Sensitive Endpoint Abuse",
-        description: "Excessive requests to protected system endpoints were detected from your IP. Access to administrative and data routes has been temporarily restricted.",
+        description: "Excessive requests to protected system endpoints were detected from your IP.",
         icon: "shield",
-        why: "Your IP sent an unusually high number of requests to sensitive routes (admin panels, lead data, authentication). This is blocked to prevent data scraping and enumeration attacks.",
-        threshold: "> 30 requests / 30 seconds on sensitive routes",
-        blockDuration: "15 minutes",
-        retrySeconds: 180,
+        why: "Your IP sent an unusually high number of requests to sensitive routes.",
       },
       "connection_flood": {
         theme: "connection-flood",
         badge: "CONNECTION FLOOD",
         title: "Connection Flood Detected",
-        description: "An extreme burst of connections was detected from your IP address within seconds. This pattern is consistent with automated attack tools.",
+        description: "An extreme burst of connections was detected from your IP address within seconds.",
         icon: "zap",
-        why: "Your IP opened more than 20 connections in under 5 seconds. This micro-burst pattern indicates automated flooding rather than normal browsing.",
-        threshold: "> 20 requests / 5 seconds",
-        blockDuration: "5 minutes",
-        retrySeconds: 120,
+        why: "Your IP opened too many connections in a very short window.",
       },
       "automated_tool": {
         theme: "connection-flood",
         badge: "BOT DETECTED",
         title: "Automated Tool Blocked",
-        description: "Our TLS fingerprinting system identified your traffic as originating from an automated tool rather than a standard web browser.",
+        description: "Our TLS fingerprinting system identified your traffic as originating from an automated tool.",
         icon: "bot",
-        why: "The combination of your IP address and request pattern matches known automated tool signatures. Only legitimate browser traffic is permitted.",
-        threshold: "> 15 requests / 5 seconds (same fingerprint)",
-        blockDuration: "Varies (progressive)",
-        retrySeconds: 120,
+        why: "The combination of your IP address and request pattern matches known automated tool signatures.",
       },
     };
 
-    const DEFAULT_RULE = {
+    var DEFAULT_RULE = {
       theme: "default",
       badge: "BLOCKED",
       title: "Access Temporarily Blocked",
       description: "Your IP address has been temporarily blocked due to suspicious activity. This is an automated security measure.",
       icon: "shield",
       why: "Our Web Application Firewall detected activity from your IP that violates our security policies.",
-      threshold: "N/A",
-      blockDuration: "Varies",
-      retrySeconds: 60,
     };
 
-    // ── Icons ─────────────────────────────────────────────────────────────
-    const ICONS = {
+    // ── Icons ─────────────────────────────────────────────────────
+    var ICONS = {
       flood: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
       waves: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>',
       lock: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><line x1="12" y1="16" x2="12" y2="19"/></svg>',
@@ -335,165 +332,168 @@
       bot: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>',
     };
 
-    // ── Parse query params ────────────────────────────────────────────────
-    const params = new URLSearchParams(window.location.search);
-    const ruleKey = (params.get("rule") || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z_]/g, "");
-    const durationParam = params.get("duration");
-
-    const rule = RULES[ruleKey] || DEFAULT_RULE;
-    if (durationParam) {
-      rule.blockDuration = durationParam + " minutes";
-    }
-
-    document.title = rule.title + " — HardHat Hosting";
-
-    // ── Render ─────────────────────────────────────────────────────────────
-    document.getElementById("root").className = "container theme-" + rule.theme;
-    document.getElementById("root").innerHTML = `
-      <div class="code">403</div>
-
-      <div class="icon-box">
-        ${ICONS[rule.icon] || ICONS.shield}
-      </div>
-
-      <div class="rule-badge">${rule.badge}</div>
-
-      <h1>${rule.title}</h1>
-      <p class="description">${rule.description}</p>
-
-      <div class="details-card">
-        <h3>Block Details</h3>
-        <div class="detail-row">
-          <span class="detail-label">Rule Triggered</span>
-          <span class="detail-value">${rule.badge}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Threshold</span>
-          <span class="detail-value">${rule.threshold}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Block Duration</span>
-          <span class="detail-value">${rule.blockDuration}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Your IP</span>
-          <span class="detail-value" id="user-ip">detecting…</span>
-        </div>
-      </div>
-
-      <div class="info-box">
-        <p><strong>Why was I blocked?</strong> ${rule.why}</p>
-      </div>
-
-      <div class="countdown">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
-        <span>Auto-retry in <span id="timer">${rule.retrySeconds}</span>s</span>
-      </div>
-
-      <div class="actions">
-        <button class="btn btn-primary btn-disabled" id="retryBtn" disabled>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-          </svg>
-          Wait <span id="retryTimer">${rule.retrySeconds}</span>s
-        </button>
-      </div>
-
-      <div class="footer">
-        <p>If you believe this is an error, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p>
-      </div>
-    `;
-
-    // ── Lock navigation (prevent back/forward) ──────────────────────────
+    // ══════════════════════════════════════════════════════════════
+    // HARD NAVIGATION LOCK — prevent back, forward, new-tab bypass
+    // ══════════════════════════════════════════════════════════════
     history.pushState(null, '', location.href);
-    window.addEventListener('popstate', function () {
+    window.addEventListener('popstate', function() {
       history.pushState(null, '', location.href);
     });
 
-    // Supabase URL for block status checks
-    var SUPABASE_URL = 'https://sqtbqtpudoossunaaofx.supabase.co';
-
-    // Check if IP is still blocked by calling the public endpoint
-    async function checkIfStillBlocked() {
-      try {
-        var res = await fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        });
-        var data = await res.json();
-        return data.blocked === true;
-      } catch(e) {
-        return true; // Assume blocked if can't reach server
+    // Warn on any attempt to leave
+    window.addEventListener('beforeunload', function(e) {
+      var expiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
+      if (Date.now() < expiry) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
       }
+    });
+
+    // Intercept all link clicks and form submissions
+    document.addEventListener('click', function(e) {
+      var expiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
+      if (Date.now() < expiry) {
+        var target = e.target;
+        while (target && target.tagName !== 'A') target = target.parentElement;
+        if (target && target.tagName === 'A' && target.href && !target.href.startsWith('mailto:')) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    }, true);
+
+    // ── Read block info from localStorage ─────────────────────────
+    var storedExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
+    var storedRule = localStorage.getItem(BLOCK_RULE_KEY) || '';
+    var storedDurationMin = parseInt(localStorage.getItem(BLOCK_DURATION_KEY) || '1', 10);
+    var now = Date.now();
+
+    // If block expired or not set, redirect home
+    if (!storedExpiry || storedExpiry <= now) {
+      localStorage.removeItem(BLOCK_KEY);
+      localStorage.removeItem(BLOCK_RULE_KEY);
+      localStorage.removeItem(BLOCK_DURATION_KEY);
+      window.location.href = '/';
     }
 
-    // On page load, verify the block is real
-    (async function() {
-      var stillBlocked = await checkIfStillBlocked();
-      if (!stillBlocked) {
-        window.location.href = '/';
-        return;
-      }
-    })();
+    // Also check query params (in case redirected from server with ?rule=xxx)
+    var params = new URLSearchParams(window.location.search);
+    var paramRule = (params.get('rule') || '').toLowerCase().replace(/\s+/g, '_').replace(/[^a-z_]/g, '');
 
-    // Status message element (add dynamically)
-    var statusDiv = document.createElement('p');
-    statusDiv.style.cssText = 'font-size:0.8rem;color:#ef4444;margin-top:0.75rem;min-height:1.2em;text-align:center;';
-    statusDiv.id = 'statusMsg';
-    document.querySelector('.actions').after(statusDiv);
+    // Use stored rule first, fall back to query param
+    var ruleKey = storedRule || paramRule;
+    var rule = RULES[ruleKey] || DEFAULT_RULE;
 
-    // ── Countdown timer ───────────────────────────────────────────────────
-    let seconds = rule.retrySeconds;
-    const timerEl = document.getElementById("timer");
-    const retryTimerEl = document.getElementById("retryTimer");
-    const retryBtn = document.getElementById("retryBtn");
+    // Calculate remaining seconds from localStorage expiry
+    var remainingSeconds = Math.max(1, Math.ceil((storedExpiry - now) / 1000));
 
-    setInterval(() => {
-      seconds--;
-      if (seconds <= 0) {
+    document.title = rule.title + ' — HardHat Hosting';
+
+    // ── Render ─────────────────────────────────────────────────────
+    var root = document.getElementById('root');
+    root.className = 'container theme-' + rule.theme;
+    root.innerHTML = '' +
+      '<div class="code">403</div>' +
+      '<div class="icon-box">' + (ICONS[rule.icon] || ICONS.shield) + '</div>' +
+      '<div class="rule-badge">' + rule.badge + '</div>' +
+      '<h1>' + rule.title + '</h1>' +
+      '<p class="description">' + rule.description + '</p>' +
+      '<div class="details-card">' +
+        '<h3>Block Details</h3>' +
+        '<div class="detail-row"><span class="detail-label">Rule Triggered</span><span class="detail-value">' + rule.badge + '</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Block Duration</span><span class="detail-value">' + storedDurationMin + ' minute' + (storedDurationMin !== 1 ? 's' : '') + '</span></div>' +
+        '<div class="detail-row"><span class="detail-label">Your IP</span><span class="detail-value" id="user-ip">detecting…</span></div>' +
+      '</div>' +
+      '<div class="info-box"><p><strong>Why was I blocked?</strong> ' + rule.why + '</p></div>' +
+      '<div class="countdown">' +
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' +
+        '<span>Auto-retry in <span id="timer">' + remainingSeconds + '</span>s</span>' +
+      '</div>' +
+      '<div class="actions">' +
+        '<button class="btn btn-primary btn-disabled" id="retryBtn" disabled>' +
+          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>' +
+          '<span id="retryLabel">Wait ' + remainingSeconds + 's</span>' +
+        '</button>' +
+      '</div>' +
+      '<p class="status-msg" id="statusMsg"></p>' +
+      '<div class="footer"><p>If you believe this is an error, contact <a href="mailto:admin@hardhathosting.work">admin@hardhathosting.work</a></p></div>';
+
+    // ── Countdown timer (purely from localStorage, zero API calls) ──
+    var timerEl = document.getElementById('timer');
+    var retryBtn = document.getElementById('retryBtn');
+    var retryLabel = document.getElementById('retryLabel');
+    var statusMsg = document.getElementById('statusMsg');
+    var seconds = remainingSeconds;
+
+    var countdownInterval = setInterval(function() {
+      // Re-read from localStorage in case it was updated
+      var currentExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
+      var left = Math.ceil((currentExpiry - Date.now()) / 1000);
+
+      if (left <= 0) {
+        clearInterval(countdownInterval);
+        timerEl.textContent = '0';
         retryBtn.disabled = false;
         retryBtn.classList.remove('btn-disabled');
-        retryBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Try Again';
-        retryBtn.onclick = async function() {
+        retryLabel.textContent = 'Try Again';
+        retryBtn.onclick = function() {
           retryBtn.disabled = true;
           retryBtn.classList.add('btn-disabled');
-          retryBtn.innerHTML = 'Checking...';
-          statusDiv.textContent = '';
+          retryLabel.textContent = 'Checking...';
+          statusMsg.textContent = '';
 
-          var stillBlocked = await checkIfStillBlocked();
-          if (stillBlocked) {
-            statusDiv.textContent = 'Your IP is still blocked. Please wait longer.';
-            retryBtn.disabled = false;
-            retryBtn.classList.remove('btn-disabled');
-            retryBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Try Again';
-          } else {
-            window.location.href = '/';
-          }
+          // Verify with server that block actually expired
+          checkIfStillBlocked().then(function(result) {
+            if (result.blocked) {
+              // Server says still blocked — update localStorage with new expiry
+              if (result.remainingSeconds > 0) {
+                var newExpiry = Date.now() + result.remainingSeconds * 1000;
+                localStorage.setItem(BLOCK_KEY, String(newExpiry));
+              }
+              statusMsg.textContent = 'Your IP is still blocked. Please wait longer.';
+              // Reload page to restart countdown
+              setTimeout(function() { location.reload(); }, 1500);
+            } else {
+              // Block expired — clean up and go home
+              localStorage.removeItem(BLOCK_KEY);
+              localStorage.removeItem(BLOCK_RULE_KEY);
+              localStorage.removeItem(BLOCK_DURATION_KEY);
+              window.location.href = '/';
+            }
+          });
         };
         return;
       }
-      timerEl.textContent = seconds;
-      retryTimerEl.textContent = seconds;
+
+      timerEl.textContent = left;
+      retryLabel.textContent = 'Wait ' + left + 's';
     }, 1000);
 
-    // Periodically check if block has expired (every 15s)
-    setInterval(async function() {
-      var stillBlocked = await checkIfStillBlocked();
-      if (!stillBlocked) {
-        window.location.href = '/';
-      }
-    }, 15000);
+    // ── Server check function (only called when user clicks Try Again) ──
+    function checkIfStillBlocked() {
+      return fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        return {
+          blocked: data.blocked === true,
+          remainingSeconds: data.remaining_seconds || 0
+        };
+      })
+      .catch(function() {
+        return { blocked: true, remainingSeconds: 60 };
+      });
+    }
 
-    // ── Try to detect user's IP (optional, cosmetic) ──────────────────────
-    fetch("https://api.ipify.org?format=json")
-      .then(r => r.json())
-      .then(d => { document.getElementById("user-ip").textContent = d.ip || "unknown"; })
-      .catch(() => { document.getElementById("user-ip").textContent = "hidden"; });
+    // ── Cosmetic IP detection ─────────────────────────────────────
+    fetch('https://api.ipify.org?format=json')
+      .then(function(r) { return r.json(); })
+      .then(function(d) { document.getElementById('user-ip').textContent = d.ip || 'unknown'; })
+      .catch(function() { document.getElementById('user-ip').textContent = 'hidden'; });
   </script>
 </body>
 </html>
