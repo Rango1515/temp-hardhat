@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from "@/components/ui/label";
 import {
   Shield, ShieldAlert, Ban, Activity, Globe, AlertTriangle, Trash2,
-  RefreshCw, Loader2, Unlock, Copy, Radio, Settings2, Timer, Bell,
+  RefreshCw, Loader2, Unlock, Copy, Radio, Settings2, Timer, Bell, ShieldCheck, Plus, X,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -67,7 +67,13 @@ interface WafRule {
   enabled: boolean;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────
+interface WhitelistedIP {
+  id: number;
+  ip_address: string;
+  label: string | null;
+  created_at: string;
+}
+
 function CopyIpButton({ ip }: { ip: string }) {
   const { toast } = useToast();
   const copy = (e: React.MouseEvent) => {
@@ -138,7 +144,11 @@ export default function SecurityMonitor() {
   const [wafRules, setWafRules] = useState<WafRule[]>([]);
   const [editingRule, setEditingRule] = useState<WafRule | null>(null);
 
-  // Active tab
+  // Whitelisted IPs
+  const [whitelistedIps, setWhitelistedIps] = useState<WhitelistedIP[]>([]);
+  const [whitelistIpInput, setWhitelistIpInput] = useState("");
+  const [whitelistLabel, setWhitelistLabel] = useState("");
+
   const [activeTab, setActiveTab] = useState("overview");
 
   // Discord webhook dialog
@@ -184,13 +194,18 @@ export default function SecurityMonitor() {
     if (result.data) setWafRules(result.data.rules);
   }, [apiCall]);
 
+  const fetchWhitelist = useCallback(async () => {
+    const result = await apiCall<{ ips: WhitelistedIP[] }>("voip-security", { params: { action: "whitelist" } });
+    if (result.data) setWhitelistedIps(result.data.ips);
+  }, [apiCall]);
+
   // Initial load — fetches everything once
   const initialLoadDone = useRef(false);
   useEffect(() => {
     if (initialLoadDone.current) return;
     initialLoadDone.current = true;
     setLoading(true);
-    Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules()])
+    Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules(), fetchWhitelist()])
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -245,9 +260,35 @@ export default function SecurityMonitor() {
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules()]);
+    await Promise.all([fetchDashboard(), fetchTrafficLogs(), fetchBlockedIps(), fetchWafRules(), fetchWhitelist()]);
     setLoading(false);
-  }, [fetchDashboard, fetchTrafficLogs, fetchBlockedIps, fetchWafRules]);
+  }, [fetchDashboard, fetchTrafficLogs, fetchBlockedIps, fetchWafRules, fetchWhitelist]);
+
+  const handleAddWhitelist = async () => {
+    const ip = whitelistIpInput.trim();
+    if (!ip) return;
+    const result = await apiCall("voip-security", {
+      method: "POST", params: { action: "whitelist" },
+      body: { ip, label: whitelistLabel || null },
+    });
+    if (result.error) toast({ title: "Error", description: result.error, variant: "destructive" });
+    else {
+      toast({ title: "IP Whitelisted", description: `${ip} is now exempt from all WAF rules.` });
+      setWhitelistIpInput("");
+      setWhitelistLabel("");
+      fetchWhitelist();
+      fetchBlockedIps(); // IP may have been auto-unblocked
+    }
+  };
+
+  const handleRemoveWhitelist = async (id: number) => {
+    if (!confirm("Remove this IP from the whitelist? It will be subject to WAF rules again.")) return;
+    const result = await apiCall("voip-security", {
+      method: "DELETE", params: { action: "whitelist", id: id.toString() },
+    });
+    if (result.error) toast({ title: "Error", description: result.error, variant: "destructive" });
+    else { toast({ title: "Removed from whitelist" }); fetchWhitelist(); }
+  };
 
   const handleClearLogs = async (target: string) => {
     if (!confirm(`Clear ${target} logs? This cannot be undone.`)) return;
@@ -508,11 +549,12 @@ export default function SecurityMonitor() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 w-full max-w-lg">
+          <TabsList className="grid grid-cols-5 w-full max-w-2xl">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="traffic">Traffic Logs</TabsTrigger>
             <TabsTrigger value="blocks">Blocked IPs</TabsTrigger>
             <TabsTrigger value="waf">WAF Rules</TabsTrigger>
+            <TabsTrigger value="whitelist">Whitelist</TabsTrigger>
           </TabsList>
 
           {/* ── OVERVIEW TAB ────────────────────────────────── */}
@@ -811,6 +853,58 @@ export default function SecurityMonitor() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ── WHITELIST TAB ────────────────────────────── */}
+          <TabsContent value="whitelist" className="space-y-4">
+            <div className="grid lg:grid-cols-2 gap-6">
+              {/* Add to Whitelist Form */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> Add to Whitelist</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Input placeholder="IP Address (e.g. 71.83.199.165)" value={whitelistIpInput} onChange={(e) => setWhitelistIpInput(e.target.value)} />
+                  <Input placeholder="Label (e.g. Admin IP, Office)" value={whitelistLabel} onChange={(e) => setWhitelistLabel(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">
+                    Whitelisted IPs are completely exempt from all WAF rules — they will never be rate-limited or blocked.
+                    If the IP is currently blocked, it will be automatically unblocked.
+                  </p>
+                  <Button className="w-full" onClick={handleAddWhitelist} disabled={!whitelistIpInput.trim()}>
+                    <Plus className="w-4 h-4 mr-1" /> Add to Whitelist
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Active Whitelist */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4" /> Whitelisted IPs ({whitelistedIps.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {whitelistedIps.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">No whitelisted IPs</p>
+                  ) : (
+                    <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                      {whitelistedIps.map((w) => (
+                        <div key={w.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 gap-2">
+                          <div className="min-w-0 flex-1">
+                            <CopyIpButton ip={w.ip_address} />
+                            {w.label && <p className="text-xs text-muted-foreground mt-0.5">{w.label}</p>}
+                            <p className="text-xs text-muted-foreground mt-0.5">Added {formatTime(w.created_at)}</p>
+                          </div>
+                          <Button size="sm" variant="ghost" className="flex-shrink-0 text-destructive hover:text-destructive" onClick={() => handleRemoveWhitelist(w.id)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

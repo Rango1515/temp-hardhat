@@ -110,7 +110,26 @@ async function getWafRules(): Promise<WafRule[]> {
 let blockedIpCache: Set<string> = new Set();
 let blockedCacheTime = 0;
 
+// Cache whitelisted IPs (refresh every 30s)
+let whitelistedIpCache: Set<string> = new Set();
+let whitelistCacheTime = 0;
+
+async function isIpWhitelisted(ip: string): Promise<boolean> {
+  if (Date.now() - whitelistCacheTime < 30_000 && whitelistedIpCache.size > 0) {
+    return whitelistedIpCache.has(ip);
+  }
+  const { data } = await supabase
+    .from("voip_whitelisted_ips")
+    .select("ip_address");
+  whitelistedIpCache = new Set((data || []).map(d => d.ip_address));
+  whitelistCacheTime = Date.now();
+  return whitelistedIpCache.has(ip);
+}
+
 async function isIpBlocked(ip: string): Promise<boolean> {
+  // Whitelisted IPs are NEVER blocked
+  if (await isIpWhitelisted(ip)) return false;
+
   if (Date.now() - blockedCacheTime < 10_000) {
     return blockedIpCache.has(ip);
   }
@@ -198,6 +217,11 @@ async function checkWafRules(
   isSensitive: boolean,
   isFailedLogin: boolean
 ): Promise<{ triggered: WafRule | null; ruleLabel: string | null }> {
+  // Whitelisted IPs skip ALL WAF checks
+  if (await isIpWhitelisted(ip)) {
+    return { triggered: null, ruleLabel: null };
+  }
+
   const rules = await getWafRules();
   let triggered: WafRule | null = null;
   let ruleLabel: string | null = null;
@@ -1161,6 +1185,77 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({ message: "Cleanup completed" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // ── Whitelist CRUD ─────────────────────────────────
+      case "whitelist": {
+        if (req.method === "GET") {
+          const { data, error } = await supabase
+            .from("voip_whitelisted_ips")
+            .select("*")
+            .order("created_at", { ascending: false });
+          if (error) throw error;
+          return new Response(JSON.stringify({ ips: data || [] }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        if (req.method === "POST") {
+          const { ip, label } = await req.json();
+          if (!ip) {
+            return new Response(JSON.stringify({ error: "IP address is required" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+          const { error } = await supabase.from("voip_whitelisted_ips").insert({
+            ip_address: ip.trim(),
+            label: label || null,
+            added_by: userId,
+          });
+          if (error) {
+            if (error.code === "23505") {
+              return new Response(JSON.stringify({ error: "IP already whitelisted" }),
+                { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+            throw error;
+          }
+          whitelistCacheTime = 0; // invalidate cache
+
+          // Also unblock this IP if currently blocked
+          await supabase.from("voip_blocked_ips")
+            .update({ status: "manual_unblock" })
+            .eq("ip_address", ip.trim())
+            .eq("status", "active");
+          blockedCacheTime = 0;
+
+          await supabase.from("voip_admin_audit_log").insert({
+            admin_id: userId, action: "whitelist_ip", entity_type: "security",
+            details: { ip: ip.trim(), label },
+          });
+
+          return new Response(JSON.stringify({ message: `IP ${ip} whitelisted` }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        if (req.method === "DELETE") {
+          const whitelistId = url.searchParams.get("id");
+          if (!whitelistId) {
+            return new Response(JSON.stringify({ error: "Whitelist entry ID required" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
+          const { error } = await supabase.from("voip_whitelisted_ips")
+            .delete().eq("id", parseInt(whitelistId));
+          if (error) throw error;
+          whitelistCacheTime = 0;
+
+          await supabase.from("voip_admin_audit_log").insert({
+            admin_id: userId, action: "remove_whitelist_ip", entity_type: "security",
+            details: { whitelist_id: whitelistId },
+          });
+
+          return new Response(JSON.stringify({ message: "IP removed from whitelist" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        break;
       }
 
       default:
