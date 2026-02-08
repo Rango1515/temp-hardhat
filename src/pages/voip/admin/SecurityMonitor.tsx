@@ -150,6 +150,7 @@ export default function SecurityMonitor() {
   const [whitelistLabel, setWhitelistLabel] = useState("");
 
   const [activeTab, setActiveTab] = useState("overview");
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
   // Discord webhook dialog
   const [discordOpen, setDiscordOpen] = useState(false);
@@ -391,7 +392,7 @@ export default function SecurityMonitor() {
     return <VoipLayout><div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div></VoipLayout>;
   }
 
-  const hasActiveAlert = (dashboard?.recentAlerts?.length || 0) > 0;
+  const hasActiveAlert = !alertDismissed && (dashboard?.recentAlerts?.length || 0) > 0;
 
   return (
     <VoipLayout>
@@ -475,9 +476,16 @@ export default function SecurityMonitor() {
 
         {/* Attack Alert Banner */}
         {hasActiveAlert && (
-          <Card className="border-destructive bg-destructive/10">
+          <Card className="border-destructive bg-destructive/10 relative">
             <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <button
+                onClick={() => setAlertDismissed(true)}
+                className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-background/50"
+                aria-label="Dismiss alert"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pr-6">
                 <div className="flex items-center gap-3">
                   <ShieldAlert className="w-8 h-8 text-destructive animate-pulse" />
                   <div>
