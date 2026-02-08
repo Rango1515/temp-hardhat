@@ -467,12 +467,12 @@ async function blockIp(
     // Collect all the IPs for the alert
     const attackingIps = Array.from(recentBlockedIps.keys()).slice(0, 20);
 
-    sendDdosDiscordAlert(uniqueBlockedCount, attackingIps, ruleLabel, context);
+    await sendDdosDiscordAlert(uniqueBlockedCount, attackingIps, ruleLabel, context);
 
     console.warn(`[WAF] 🚨 DDoS DETECTED: ${uniqueBlockedCount} unique IPs blocked in last 60s`);
   } else if (uniqueBlockedCount < DDOS_IP_THRESHOLD) {
     // Normal single-IP block — send individual alert (throttled per-IP)
-    sendDiscordAlert(ip, ruleLabel, actualDuration, context);
+    await sendDiscordAlert(ip, ruleLabel, actualDuration, context);
   }
   // If DDoS threshold met but cooldown active, skip individual alert too (already notified)
 
@@ -528,22 +528,20 @@ serve(async (req) => {
     const ruleSlug = extractRuleSlug(blockRecord?.reason || "");
     const reqUa = req.headers.get("user-agent");
 
-    // Log blocked request (sampled 1-in-3) so it shows in suspicious events
-    if (Math.random() < 0.33) {
-      await supabase.from("voip_request_logs").insert({
-        ip_address: reqIp,
-        method: req.method,
-        path: new URL(req.url).pathname,
-        status_code: 403,
-        user_agent: reqUa,
-        is_suspicious: true,
-        is_blocked: true,
-        rule_triggered: ruleSlug || blockRecord?.reason || "blocked_ip",
-        action_taken: "blocked_early_exit",
-      }).then(({ error }) => {
-        if (error) console.error("[WAF] Blocked request log failed:", error);
-      });
-    }
+    // Always log blocked requests so they appear in traffic logs and update counters
+    await supabase.from("voip_request_logs").insert({
+      ip_address: reqIp,
+      method: req.method,
+      path: action || new URL(req.url).pathname,
+      status_code: 403,
+      user_agent: reqUa,
+      is_suspicious: true,
+      is_blocked: true,
+      rule_triggered: ruleSlug || blockRecord?.reason || "blocked_ip",
+      action_taken: "blocked_early_exit",
+    }).then(({ error }) => {
+      if (error) console.error("[WAF] Blocked request log failed:", error);
+    });
 
     return new Response(
       JSON.stringify({ error: "Forbidden", blocked: true, rule: ruleSlug }),
