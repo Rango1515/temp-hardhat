@@ -98,6 +98,65 @@ interface CloudflareData {
   error?: string;
 }
 
+// DDoS detection thresholds from Cloudflare events
+const CF_DDOS_BLOCK_THRESHOLD = 10; // 10+ block/challenge events = DDoS alert
+const CF_DDOS_UNIQUE_IP_THRESHOLD = 5; // 5+ unique attacking IPs = DDoS alert
+
+interface DdosAlert {
+  uniqueIps: number;
+  totalEvents: number;
+  topIps: { ip: string; count: number }[];
+  topActions: Record<string, number>;
+  topPaths: string[];
+  detectedAt: string;
+}
+
+function detectCfDdos(cfData: CloudflareData | null): DdosAlert | null {
+  if (!cfData?.events?.length) return null;
+
+  // Count block/challenge actions (these indicate attacks)
+  const attackActions = ["block", "challenge", "managed_challenge", "js_challenge", "drop"];
+  const attackEvents = cfData.events.filter(ev => attackActions.includes(ev.action));
+  if (attackEvents.length < CF_DDOS_BLOCK_THRESHOLD) return null;
+
+  // Count unique IPs
+  const ipCounts = new Map<string, number>();
+  for (const ev of attackEvents) {
+    ipCounts.set(ev.clientIP, (ipCounts.get(ev.clientIP) || 0) + 1);
+  }
+
+  if (ipCounts.size < CF_DDOS_UNIQUE_IP_THRESHOLD && attackEvents.length < CF_DDOS_BLOCK_THRESHOLD * 2) return null;
+
+  // Build alert data
+  const topIps = Array.from(ipCounts.entries())
+    .map(([ip, count]) => ({ ip, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const topActions: Record<string, number> = {};
+  for (const ev of attackEvents) {
+    topActions[ev.action] = (topActions[ev.action] || 0) + 1;
+  }
+
+  const pathCounts = new Map<string, number>();
+  for (const ev of attackEvents) {
+    pathCounts.set(ev.clientRequestPath || "/", (pathCounts.get(ev.clientRequestPath || "/") || 0) + 1);
+  }
+  const topPaths = Array.from(pathCounts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([path]) => path);
+
+  return {
+    uniqueIps: ipCounts.size,
+    totalEvents: attackEvents.length,
+    topIps,
+    topActions,
+    topPaths,
+    detectedAt: new Date().toISOString(),
+  };
+}
+
 function CopyIpButton({ ip }: { ip: string }) {
   const { toast } = useToast();
   const copy = (e: React.MouseEvent) => {
@@ -181,6 +240,11 @@ export default function SecurityMonitor() {
   const [cfLoading, setCfLoading] = useState(false);
   const [cfForwarding, setCfForwarding] = useState(false);
 
+  // DDoS detection from Cloudflare
+  const [cfDdosAlert, setCfDdosAlert] = useState<DdosAlert | null>(null);
+  const [cfDdosDismissed, setCfDdosDismissed] = useState(false);
+  const ddosAlertSentRef = useRef(false); // prevent duplicate Discord sends
+
   // Discord webhook dialog
   const [discordOpen, setDiscordOpen] = useState(false);
   const [discordUrl, setDiscordUrl] = useState("");
@@ -231,8 +295,28 @@ export default function SecurityMonitor() {
 
   const fetchCloudflareEvents = useCallback(async () => {
     setCfLoading(true);
-    const result = await apiCall<CloudflareData>("voip-security", { params: { action: "cloudflare-events", limit: "50" } });
-    if (result.data) setCfData(result.data);
+    const result = await apiCall<CloudflareData>("voip-security", { params: { action: "cloudflare-events", limit: "100" } });
+    if (result.data) {
+      setCfData(result.data);
+      // Run DDoS detection on fresh data
+      const ddos = detectCfDdos(result.data);
+      setCfDdosAlert(ddos);
+      // Auto-send DDoS alert to Discord (only once per session until dismissed)
+      if (ddos && !ddosAlertSentRef.current) {
+        ddosAlertSentRef.current = true;
+        apiCall("voip-security", {
+          method: "POST",
+          params: { action: "cloudflare-ddos-discord" },
+          body: {
+            uniqueIps: ddos.uniqueIps,
+            totalEvents: ddos.totalEvents,
+            topIps: ddos.topIps.slice(0, 10),
+            topActions: ddos.topActions,
+            topPaths: ddos.topPaths,
+          },
+        }).catch(() => {});
+      }
+    }
     setCfLoading(false);
   }, [apiCall]);
 
@@ -263,11 +347,14 @@ export default function SecurityMonitor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-refresh dashboard every 20s (lightweight — only dashboard stats)
+  // Auto-refresh dashboard + Cloudflare every 20s (DDoS detection stays live)
   useEffect(() => {
-    const interval = setInterval(fetchDashboard, 20000);
+    const interval = setInterval(() => {
+      fetchDashboard();
+      fetchCloudflareEvents();
+    }, 20000);
     return () => clearInterval(interval);
-  }, [fetchDashboard]);
+  }, [fetchDashboard, fetchCloudflareEvents]);
 
   // Refetch traffic logs ONLY when filters change (not on initial mount — handled above)
   const filtersChanged = useRef(false);
@@ -567,7 +654,79 @@ export default function SecurityMonitor() {
           </Card>
         )}
 
-        {/* Stats Cards */}
+        {/* Cloudflare DDoS Alert Banner */}
+        {cfDdosAlert && !cfDdosDismissed && (
+          <Card className="border-destructive bg-destructive/15 relative animate-pulse-once">
+            <CardContent className="p-4">
+              <button
+                onClick={() => {
+                  setCfDdosDismissed(true);
+                  ddosAlertSentRef.current = false; // allow re-detect on next refresh
+                }}
+                className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-md hover:bg-background/50"
+                aria-label="Dismiss DDoS alert"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex flex-col gap-3 pr-6">
+                <div className="flex items-center gap-3">
+                  <Cloud className="w-8 h-8 text-destructive animate-pulse flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-bold text-destructive text-lg">🔴 Cloudflare DDoS Attack Detected</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      <strong>{cfDdosAlert.totalEvents}</strong> block/challenge events from <strong>{cfDdosAlert.uniqueIps}</strong> unique IPs detected in the last hour via Cloudflare.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 ml-11">
+                  {Object.entries(cfDdosAlert.topActions).map(([action, count]) => (
+                    <Badge key={action} variant="destructive" className="text-xs">
+                      {action}: {count}
+                    </Badge>
+                  ))}
+                  {cfDdosAlert.topPaths.map((path) => (
+                    <Badge key={path} variant="outline" className="text-xs">
+                      Target: {path}
+                    </Badge>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2 ml-11">
+                  {cfDdosAlert.topIps.slice(0, 5).map((entry) => (
+                    <div key={entry.ip} className="flex items-center gap-1.5">
+                      <CopyIpButton ip={entry.ip} />
+                      <Badge variant="outline" className="text-[10px]">{entry.count}x</Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 text-[10px] px-1.5"
+                        onClick={() => handleBlockIp(entry.ip, "Cloudflare DDoS attack")}
+                      >
+                        <Ban className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 ml-11">
+                  <Button size="sm" variant="destructive" onClick={() => {
+                    cfDdosAlert.topIps.slice(0, 5).forEach(entry => {
+                      handleBlockIp(entry.ip, "Cloudflare DDoS - mass block");
+                    });
+                  }}>
+                    <Ban className="w-4 h-4 mr-1" /> Block All Top IPs
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setCfDdosDismissed(true);
+                    ddosAlertSentRef.current = false;
+                  }}>
+                    Dismiss
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
