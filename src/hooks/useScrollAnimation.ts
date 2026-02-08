@@ -1,4 +1,32 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+// ── Shared IntersectionObserver (one per threshold) ─────────────────────────
+type ObserverCallback = (entry: IntersectionObserverEntry) => void;
+
+const observerMap = new Map<number, {
+  observer: IntersectionObserver;
+  callbacks: Map<Element, ObserverCallback>;
+}>();
+
+function getSharedObserver(threshold: number, rootMargin: string) {
+  const key = threshold;
+  if (observerMap.has(key)) return observerMap.get(key)!;
+
+  const callbacks = new Map<Element, ObserverCallback>();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        const cb = callbacks.get(entry.target);
+        if (cb) cb(entry);
+      });
+    },
+    { threshold, rootMargin }
+  );
+
+  const entry = { observer, callbacks };
+  observerMap.set(key, entry);
+  return entry;
+}
 
 interface UseScrollAnimationOptions {
   threshold?: number;
@@ -24,27 +52,27 @@ export const useScrollAnimation = (options: UseScrollAnimationOptions = {}) => {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            if (triggerOnce) {
-              setHasAnimated(true);
-              observer.unobserve(element);
-            }
-          } else if (!triggerOnce) {
-            setIsVisible(false);
-          }
-        });
-      },
-      { threshold, rootMargin }
-    );
+    const { observer, callbacks } = getSharedObserver(threshold, rootMargin);
 
+    const handleEntry = (entry: IntersectionObserverEntry) => {
+      if (entry.isIntersecting) {
+        setIsVisible(true);
+        if (triggerOnce) {
+          setHasAnimated(true);
+          observer.unobserve(element);
+          callbacks.delete(element);
+        }
+      } else if (!triggerOnce) {
+        setIsVisible(false);
+      }
+    };
+
+    callbacks.set(element, handleEntry);
     observer.observe(element);
 
     return () => {
       observer.unobserve(element);
+      callbacks.delete(element);
     };
   }, [threshold, rootMargin, triggerOnce]);
 

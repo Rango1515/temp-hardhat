@@ -8,6 +8,13 @@ import { verifyJWT, extractToken } from "../_shared/auth.ts";
 const ipHits: Map<string, number[]> = new Map();
 const SENSITIVE_ENDPOINTS = ["voip-leads", "voip-auth", "voip-admin", "voip-admin-ext", "voip-leads-ext"];
 
+// ── Fingerprint tracking (IP + User-Agent combo) ────────────────────────────
+// Map<fingerprint, Array<timestamp_ms>>
+const fingerprintHits: Map<string, number[]> = new Map();
+function buildFingerprint(ip: string, ua: string | null): string {
+  return `${ip}::${(ua || "unknown").slice(0, 80)}`;
+}
+
 // Prune entries older than 2 minutes
 function pruneHits(ip: string) {
   const hits = ipHits.get(ip);
@@ -25,11 +32,38 @@ function countHitsInWindow(ip: string, windowMs: number): number {
   return hits.filter(t => t > cutoff).length;
 }
 
-function recordHit(ip: string) {
+function recordHit(ip: string, ua: string | null = null) {
   pruneHits(ip);
+  const now = Date.now();
   const hits = ipHits.get(ip) || [];
-  hits.push(Date.now());
+  hits.push(now);
   ipHits.set(ip, hits);
+
+  // Also record fingerprint hit
+  if (ua) {
+    const fp = buildFingerprint(ip, ua);
+    const fpHits = fingerprintHits.get(fp) || [];
+    const cutoff = now - 120_000;
+    const pruned = fpHits.filter(t => t > cutoff);
+    pruned.push(now);
+    fingerprintHits.set(fp, pruned);
+
+    // Prune old fingerprints every ~100 recordings
+    if (fingerprintHits.size > 500) {
+      for (const [k, v] of fingerprintHits.entries()) {
+        const fresh = v.filter(t => t > cutoff);
+        if (fresh.length === 0) fingerprintHits.delete(k);
+        else fingerprintHits.set(k, fresh);
+      }
+    }
+  }
+}
+
+function countFingerprintHitsInWindow(fp: string, windowMs: number): number {
+  const hits = fingerprintHits.get(fp);
+  if (!hits) return 0;
+  const cutoff = Date.now() - windowMs;
+  return hits.filter(t => t > cutoff).length;
 }
 
 // Cache WAF rules (refresh every 60s)
@@ -94,10 +128,141 @@ function extractIp(req: Request): string {
   );
 }
 
-// Sampling: log ~1 in N requests for normal traffic (random-based for multi-isolate)
+// Sampling: log ~1 in N requests for normal traffic
 const SAMPLE_RATE = 5;
 function shouldSample(): boolean {
   return Math.random() < (1 / SAMPLE_RATE);
+}
+
+// ── DB-backed rate counting (cross-isolate accuracy) ────────────────────────
+async function getDbHitCount(ip: string, windowSeconds: number): Promise<number> {
+  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
+  const { count } = await supabase
+    .from("voip_request_logs")
+    .select("*", { count: "exact", head: true })
+    .eq("ip_address", ip)
+    .gte("timestamp", since);
+  return count || 0;
+}
+
+// ── Progressive block escalation ────────────────────────────────────────────
+async function getEscalatedDuration(ip: string, baseDurationMinutes: number): Promise<number> {
+  const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
+  const { count: priorBlocks } = await supabase
+    .from("voip_blocked_ips")
+    .select("*", { count: "exact", head: true })
+    .eq("ip_address", ip)
+    .gte("blocked_at", twentyFourHoursAgo);
+
+  const blockCount = priorBlocks || 0;
+
+  // After 3 auto-blocks in 24h, escalate to 24 hours
+  if (blockCount >= 3) return 24 * 60;
+
+  // Double for each prior block, cap at 24h
+  const escalationFactor = Math.min(
+    Math.pow(2, blockCount),
+    (24 * 60) / baseDurationMinutes
+  );
+  return Math.min(baseDurationMinutes * escalationFactor, 24 * 60);
+}
+
+// ── Unified WAF check (in-memory + DB fallback + fingerprint) ───────────────
+async function checkWafRules(
+  ip: string,
+  ua: string | null,
+  isSensitive: boolean,
+  isFailedLogin: boolean
+): Promise<{ triggered: WafRule | null; ruleLabel: string | null }> {
+  const rules = await getWafRules();
+  let triggered: WafRule | null = null;
+  let ruleLabel: string | null = null;
+
+  for (const rule of rules) {
+    if (rule.scope === "sensitive_only" && !isSensitive) continue;
+    if (rule.rule_type === "brute_force" && !isFailedLogin) continue;
+
+    const windowMs = rule.time_window_seconds * 1000;
+    const memoryCount = countHitsInWindow(ip, windowMs);
+
+    // Direct trigger from in-memory
+    if (memoryCount > rule.max_requests) {
+      triggered = rule;
+      ruleLabel = rule.name;
+      break;
+    }
+
+    // DB fallback: only query if memory shows >50% of threshold (reduces unnecessary DB queries)
+    if (memoryCount > rule.max_requests * 0.5) {
+      const dbCount = await getDbHitCount(ip, rule.time_window_seconds);
+      if (dbCount > rule.max_requests) {
+        triggered = rule;
+        ruleLabel = `${rule.name} (cross-isolate)`;
+        break;
+      }
+    }
+  }
+
+  // Fingerprint check: detect automated tools hitting faster than normal
+  if (!triggered && ua) {
+    const fp = buildFingerprint(ip, ua);
+    const fpCount5s = countFingerprintHitsInWindow(fp, 5000);
+    // If same fingerprint fires >15 requests in 5 seconds, it's an automated tool
+    if (fpCount5s > 15) {
+      // Find the most restrictive applicable rule
+      const floodRule = rules.find(r => r.scope === "all" && r.rule_type === "rate_limit" && r.enabled);
+      if (floodRule) {
+        triggered = floodRule;
+        ruleLabel = "automated_tool_detected";
+      }
+    }
+  }
+
+  return { triggered, ruleLabel };
+}
+
+// ── Block an IP with escalation ─────────────────────────────────────────────
+async function blockIp(
+  ip: string,
+  rule: WafRule,
+  ruleLabel: string,
+  context: { endpoint?: string; ua?: string | null; userId?: number | null; source?: string }
+) {
+  const actualDuration = await getEscalatedDuration(ip, rule.block_duration_minutes);
+  const expiresAt = new Date(Date.now() + actualDuration * 60_000).toISOString();
+
+  await supabase.from("voip_blocked_ips").insert({
+    ip_address: ip,
+    reason: `WAF Rule: ${ruleLabel} (escalated to ${actualDuration}m)`,
+    blocked_by: null,
+    expires_at: expiresAt,
+    status: "active",
+    rule_id: rule.id,
+    scope: rule.scope,
+    created_by_type: "system",
+  });
+
+  // Invalidate cache immediately
+  blockedCacheTime = 0;
+
+  // Log to security_logs for the alert banner
+  await supabase.from("voip_security_logs").insert({
+    ip_address: ip,
+    endpoint: context.endpoint || "/",
+    user_agent: context.ua || null,
+    status: "suspicious",
+    user_id: context.userId || null,
+    rule_triggered: ruleLabel,
+    details: {
+      source: context.source || "waf",
+      auto_blocked: true,
+      block_duration_minutes: actualDuration,
+      base_duration_minutes: rule.block_duration_minutes,
+      escalated: actualDuration > rule.block_duration_minutes,
+    },
+  });
+
+  console.warn(`[WAF] IP ${ip} auto-blocked by "${ruleLabel}" for ${actualDuration}m (base: ${rule.block_duration_minutes}m)`);
 }
 
 serve(async (req) => {
@@ -105,72 +270,40 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // ── EARLY EXIT: Check blocked IP before ANYTHING else ─────────────────
+  const reqIp = extractIp(req);
+  if (await isIpBlocked(reqIp)) {
+    return new Response("Forbidden", { status: 403, headers: corsHeaders });
+  }
+
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
   // ── Public endpoint: log-public (no auth required) ──────────────────
-  // This allows public pages (home, demos, etc.) to log visits + enforce WAF
   if (action === "log-public" && req.method === "POST") {
     try {
       const body = await req.json();
       const { page, referrer, userAgent: ua, hostname: clientHostname } = body;
-      const ip = extractIp(req);
+      const ip = reqIp;
 
-      // Fast block check
-      const blocked = await isIpBlocked(ip);
-      if (blocked) {
-        return new Response(
-          JSON.stringify({ status: "blocked" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Record hit in memory for WAF
-      recordHit(ip);
+      // Record hit in memory for WAF (include UA for fingerprinting)
+      recordHit(ip, ua);
 
       // Check WAF rules (public pages are NOT sensitive)
-      const rules = await getWafRules();
-      let triggered: WafRule | null = null;
-
-      for (const rule of rules) {
-        if (rule.scope === "sensitive_only") continue;
-        if (rule.rule_type === "brute_force") continue;
-
-        const hitCount = countHitsInWindow(ip, rule.time_window_seconds * 1000);
-        if (hitCount > rule.max_requests) {
-          triggered = rule;
-          break;
-        }
-      }
+      const { triggered, ruleLabel } = await checkWafRules(ip, ua, false, false);
 
       let actionTaken: string | null = null;
 
       if (triggered) {
         actionTaken = "auto_blocked";
-        const expiresAt = new Date(Date.now() + triggered.block_duration_minutes * 60_000).toISOString();
-        await supabase.from("voip_blocked_ips").insert({
-          ip_address: ip,
-          reason: `WAF Rule: ${triggered.name} (public page flood)`,
-          blocked_by: null,
-          expires_at: expiresAt,
-          status: "active",
-          rule_id: triggered.id,
-          scope: triggered.scope,
-          created_by_type: "system",
-        });
-        blockedCacheTime = 0;
-
-        await supabase.from("voip_security_logs").insert({
-          ip_address: ip,
+        await blockIp(ip, triggered, ruleLabel || triggered.name, {
           endpoint: page || "/",
-          user_agent: ua || null,
-          status: "suspicious",
-          rule_triggered: triggered.name,
-          details: { source: "public_page", auto_blocked: true },
+          ua,
+          source: "public_page",
         });
       }
 
-      // Always log public page visits (they're infrequent compared to API calls)
+      // Always log public page visits
       // Store hostname in referer column to distinguish production vs preview traffic
       const { error: insertErr } = await supabase.from("voip_request_logs").insert({
         ip_address: ip,
@@ -181,7 +314,7 @@ serve(async (req) => {
         referer: clientHostname || referrer || null,
         is_suspicious: !!triggered,
         is_blocked: false,
-        rule_triggered: triggered?.name || null,
+        rule_triggered: ruleLabel || null,
         action_taken: actionTaken,
       });
       if (insertErr) console.error("[WAF] Public log insert error:", JSON.stringify(insertErr));
@@ -223,49 +356,14 @@ serve(async (req) => {
     if (action === "log-request" && req.method === "POST") {
       const body = await req.json();
       const { endpoint, method: reqMethod, userAgent, isFailedLogin, statusCode, responseMs } = body;
-      const ip = extractIp(req);
+      const ip = reqIp;
 
-      // Fast in-memory block check
-      const blocked = await isIpBlocked(ip);
-      if (blocked) {
-        // Minimal log for blocked traffic
-        if (shouldSample()) {
-          const { error: blkErr } = await supabase.from("voip_request_logs").insert({
-            ip_address: ip,
-            method: reqMethod || "GET",
-            path: endpoint || "unknown",
-            status_code: 403,
-            user_agent: userAgent,
-            user_id: userId,
-            is_blocked: true,
-            action_taken: "blocked",
-          });
-          if (blkErr) console.error("[WAF] Blocked log insert error:", blkErr);
-        }
-        return new Response(
-          JSON.stringify({ status: "blocked" }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Record hit in memory
-      recordHit(ip);
+      // Record hit in memory (include UA for fingerprinting)
+      recordHit(ip, userAgent);
 
       // Check WAF rules
-      const rules = await getWafRules();
-      let triggered: WafRule | null = null;
       const isSensitive = SENSITIVE_ENDPOINTS.some(e => (endpoint || "").includes(e));
-
-      for (const rule of rules) {
-        if (rule.scope === "sensitive_only" && !isSensitive) continue;
-        if (rule.rule_type === "brute_force" && !isFailedLogin) continue;
-
-        const hitCount = countHitsInWindow(ip, rule.time_window_seconds * 1000);
-        if (hitCount > rule.max_requests) {
-          triggered = rule;
-          break;
-        }
-      }
+      const { triggered, ruleLabel } = await checkWafRules(ip, userAgent, isSensitive, !!isFailedLogin);
 
       let logStatus = "normal";
       let actionTaken: string | null = null;
@@ -274,34 +372,12 @@ serve(async (req) => {
         logStatus = "suspicious";
         actionTaken = "auto_blocked";
 
-        // Auto-block the IP
-        const expiresAt = new Date(Date.now() + triggered.block_duration_minutes * 60_000).toISOString();
-        await supabase.from("voip_blocked_ips").insert({
-          ip_address: ip,
-          reason: `WAF Rule: ${triggered.name} (${countHitsInWindow(ip, triggered.time_window_seconds * 1000)} requests in ${triggered.time_window_seconds}s)`,
-          blocked_by: null,
-          expires_at: expiresAt,
-          status: "active",
-          rule_id: triggered.id,
-          scope: triggered.scope,
-          created_by_type: "system",
-        });
-
-        // Invalidate cache
-        blockedCacheTime = 0;
-
-        // Also log to security_logs for the alert banner
-        await supabase.from("voip_security_logs").insert({
-          ip_address: ip,
+        await blockIp(ip, triggered, ruleLabel || triggered.name, {
           endpoint: endpoint || "unknown",
-          user_agent: userAgent,
-          status: "suspicious",
-          user_id: userId,
-          rule_triggered: triggered.name,
-          details: { method: reqMethod, rule_id: triggered.id, auto_blocked: true },
+          ua: userAgent,
+          userId,
+          source: "authenticated",
         });
-
-        console.warn(`[WAF] IP ${ip} auto-blocked by rule "${triggered.name}" for ${triggered.block_duration_minutes}m`);
       }
 
       // Sampled logging: always log suspicious, sample normal
@@ -318,14 +394,14 @@ serve(async (req) => {
           user_id: userId,
           is_suspicious: !!triggered,
           is_blocked: false,
-          rule_triggered: triggered?.name || (isFailedLogin ? "failed_login" : null),
+          rule_triggered: ruleLabel || (isFailedLogin ? "failed_login" : null),
           action_taken: actionTaken,
         });
         if (logErr) console.error("[WAF] Log insert failed:", logErr);
       }
 
       return new Response(
-        JSON.stringify({ status: logStatus, rule: triggered?.name || null, blocked: false }),
+        JSON.stringify({ status: logStatus, rule: ruleLabel || null, blocked: false }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -363,7 +439,7 @@ serve(async (req) => {
         // Active alerts (suspicious in last 5 min from security_logs)
         const { data: recentAlerts } = await supabase
           .from("voip_security_logs")
-          .select("ip_address, endpoint, rule_triggered, timestamp")
+          .select("ip_address, endpoint, rule_triggered, timestamp, details")
           .eq("status", "suspicious")
           .gte("timestamp", fiveMinutesAgo)
           .order("timestamp", { ascending: false })
@@ -666,7 +742,6 @@ serve(async (req) => {
           return new Response(JSON.stringify({ error: "Method not allowed" }),
             { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
-        // Keep detailed logs 7 days, security_logs 30 days
         const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
         const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
 
