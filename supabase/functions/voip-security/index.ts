@@ -18,6 +18,7 @@ const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
 const DDOS_WINDOW_MS = 60_000; // 1-minute window
 const DDOS_IP_THRESHOLD = 5; // 5+ unique IPs blocked in 1 minute = DDoS
 const DDOS_ALERT_COOLDOWN_MS = 600_000; // 10 minute buffer between DDoS Discord alerts
+let lastDdosAlertTime = 0; // In-memory DDoS alert cooldown for cloudflare-ddos-discord endpoint
 
 // ── Fingerprint tracking (IP + User-Agent combo) ────────────────────────────
 // Map<fingerprint, Array<timestamp_ms>>
@@ -287,39 +288,57 @@ async function sendDiscordAlert(
   context: { endpoint?: string; ua?: string | null; source?: string },
   options?: { force?: boolean }
 ) {
+  console.log(`[WAF-Discord] sendDiscordAlert called for IP ${ip}, rule: ${ruleLabel}, duration: ${durationMinutes}m, force: ${!!options?.force}`);
+
   // DB-backed throttle: check voip_app_config for last alert time (survives cold starts)
   const throttleKey = `discord_alert_${ip.replace(/[^a-zA-Z0-9._:-]/g, "_")}`;
 
   if (!options?.force) {
-    const { data: existing } = await supabase
-      .from("voip_app_config")
-      .select("value, updated_at")
-      .eq("key", throttleKey)
-      .maybeSingle();
+    try {
+      const { data: existing, error: throttleErr } = await supabase
+        .from("voip_app_config")
+        .select("value, updated_at")
+        .eq("key", throttleKey)
+        .maybeSingle();
 
-    if (existing) {
-      const lastAlertMs = new Date(existing.updated_at).getTime();
-      const elapsed = Date.now() - lastAlertMs;
-      if (elapsed < DISCORD_THROTTLE_MS) {
-        console.log(`[WAF] Discord alert throttled for IP ${ip} (last alert ${Math.round(elapsed / 1000)}s ago, DB-backed)`);
-        return;
+      if (throttleErr) {
+        console.error(`[WAF-Discord] Throttle check failed:`, throttleErr);
       }
+
+      if (existing) {
+        const lastAlertMs = new Date(existing.updated_at).getTime();
+        const elapsed = Date.now() - lastAlertMs;
+        if (elapsed < DISCORD_THROTTLE_MS) {
+          console.log(`[WAF-Discord] Alert throttled for IP ${ip} (last alert ${Math.round(elapsed / 1000)}s ago)`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(`[WAF-Discord] Throttle check error:`, e);
     }
   }
 
   const webhookUrl = await getDiscordWebhookUrl();
   if (!webhookUrl) {
-    console.warn("[WAF] Discord webhook URL not configured, skipping alert");
+    console.warn("[WAF-Discord] No webhook URL configured, skipping alert");
     return;
   }
+  console.log(`[WAF-Discord] Webhook URL found, sending alert for IP ${ip}`);
 
   // Record this alert time in DB BEFORE sending (prevents concurrent isolate sends)
-  await supabase
-    .from("voip_app_config")
-    .upsert(
-      { key: throttleKey, value: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { onConflict: "key" }
-    );
+  try {
+    const { error: upsertErr } = await supabase
+      .from("voip_app_config")
+      .upsert(
+        { key: throttleKey, value: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { onConflict: "key" }
+      );
+    if (upsertErr) {
+      console.error(`[WAF-Discord] Throttle upsert failed:`, upsertErr);
+    }
+  } catch (e) {
+    console.error(`[WAF-Discord] Throttle upsert error:`, e);
+  }
 
   const isEscalated = durationMinutes > 15;
   const color = isEscalated ? 0xff0000 : 0xff6600;
@@ -354,12 +373,13 @@ async function sendDiscordAlert(
       }),
     });
     if (!res.ok) {
-      console.error(`[WAF] Discord webhook failed: ${res.status} ${await res.text()}`);
+      const errText = await res.text();
+      console.error(`[WAF-Discord] Webhook failed: ${res.status} ${errText}`);
     } else {
-      console.log(`[WAF] Discord alert sent for IP ${ip}`);
+      console.log(`[WAF-Discord] ✅ Alert sent successfully for IP ${ip}`);
     }
   } catch (e) {
-    console.error("[WAF] Discord webhook error:", e);
+    console.error("[WAF-Discord] Webhook error:", e);
   }
 }
 
@@ -736,6 +756,9 @@ serve(async (req) => {
         const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
         const fiveMinutesAgo = new Date(Date.now() - 300000).toISOString();
 
+        // Timeline range parameter: "1h" (default), "24h", "all"
+        const timelineRange = url.searchParams.get("timeline_range") || "1h";
+
         const { count: totalRequests } = await supabase
           .from("voip_request_logs")
           .select("*", { count: "exact", head: true })
@@ -777,24 +800,42 @@ serve(async (req) => {
           .slice(0, 5)
           .map(([ip, count]) => ({ ip, count }));
 
-        // Timeline (last hour)
-        const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+        // Timeline — dynamic range based on parameter
+        let timelineSince: string;
+        let bucketFormat: "minute" | "hour" = "minute";
+        if (timelineRange === "24h") {
+          timelineSince = twentyFourHoursAgo;
+          bucketFormat = "hour";
+        } else if (timelineRange === "all") {
+          // All time = last 7 days (capped by retention)
+          timelineSince = new Date(Date.now() - 7 * 86400000).toISOString();
+          bucketFormat = "hour";
+        } else {
+          timelineSince = new Date(Date.now() - 3600000).toISOString();
+          bucketFormat = "minute";
+        }
+
         const { data: timelineLogs } = await supabase
           .from("voip_request_logs")
           .select("timestamp, is_suspicious")
-          .gte("timestamp", oneHourAgo)
+          .gte("timestamp", timelineSince)
           .order("timestamp", { ascending: true })
           .limit(1000);
 
         const timeline: Record<string, { total: number; suspicious: number }> = {};
         (timelineLogs || []).forEach(l => {
-          const minute = l.timestamp.slice(0, 16);
-          if (!timeline[minute]) timeline[minute] = { total: 0, suspicious: 0 };
-          timeline[minute].total++;
-          if (l.is_suspicious) timeline[minute].suspicious++;
+          // Bucket by minute or hour depending on range
+          const bucket = bucketFormat === "minute"
+            ? l.timestamp.slice(0, 16) // "YYYY-MM-DDTHH:mm"
+            : l.timestamp.slice(0, 13); // "YYYY-MM-DDTHH"
+          if (!timeline[bucket]) timeline[bucket] = { total: 0, suspicious: 0 };
+          timeline[bucket].total++;
+          if (l.is_suspicious) timeline[bucket].suspicious++;
         });
         const timelineArray = Object.entries(timeline).map(([time, data]) => ({
-          time: time.split("T")[1] || time,
+          time: bucketFormat === "minute"
+            ? (time.split("T")[1] || time)
+            : (time.split("T")[1] ? time.split("T")[1] + ":00" : time),
           total: data.total,
           suspicious: data.suspicious,
         }));
