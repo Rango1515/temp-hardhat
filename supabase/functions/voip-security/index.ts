@@ -11,6 +11,7 @@ const SENSITIVE_ENDPOINTS = ["voip-leads", "voip-auth", "voip-admin", "voip-admi
 // ── Discord alert throttle (per IP, prevent webhook spam during floods) ─────
 // Map<ip, timestamp_ms_of_last_alert>
 const discordAlertThrottle: Map<string, number> = new Map();
+const DISCORD_THROTTLE_MS = 5 * 60 * 1000; // 5 minute cooldown per IP
 // ── DDoS detection (multiple unique IPs blocked in short window) ────────────
 // Track recently blocked IPs within a rolling window
 const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
@@ -458,8 +459,36 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  // ── EARLY EXIT: Check blocked IP before ANYTHING else ─────────────────
+  // ── Extract IP first ──────────────────────────────────────────────────
   const reqIp = extractIp(req);
+
+  const url = new URL(req.url);
+  const action = url.searchParams.get("action");
+
+  // ── Public endpoint: check-block (MUST run BEFORE the blocked-IP early exit) ──
+  if (action === "check-block" && req.method === "POST") {
+    const blocked = await isIpBlocked(reqIp);
+    let remainingSeconds = 0;
+    if (blocked) {
+      const { data: blockRec } = await supabase
+        .from("voip_blocked_ips")
+        .select("expires_at")
+        .eq("ip_address", reqIp)
+        .eq("status", "active")
+        .order("blocked_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (blockRec?.expires_at) {
+        remainingSeconds = Math.max(0, Math.round((new Date(blockRec.expires_at).getTime() - Date.now()) / 1000));
+      }
+    }
+    return new Response(
+      JSON.stringify({ blocked, ip: reqIp, remaining_seconds: remainingSeconds }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
+  // ── EARLY EXIT: Check blocked IP before ANYTHING else ─────────────────
   if (await isIpBlocked(reqIp)) {
     // Look up the block reason to return the rule name
     const { data: blockRecord } = await supabase
@@ -497,18 +526,8 @@ serve(async (req) => {
     );
   }
 
-  const url = new URL(req.url);
-  const action = url.searchParams.get("action");
 
-  // ── Public endpoint: check-block (no auth required) ─────────────────
-  if (action === "check-block" && req.method === "POST") {
-    const ip = reqIp;
-    const blocked = await isIpBlocked(ip);
-    return new Response(
-      JSON.stringify({ blocked, ip }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
+  // ── Public endpoint: log-public (no auth required) ──────────────────
 
   // ── Public endpoint: log-public (no auth required) ──────────────────
   if (action === "log-public" && req.method === "POST") {
