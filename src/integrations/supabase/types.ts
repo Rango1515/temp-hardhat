@@ -281,6 +281,35 @@ export type Database = {
           },
         ]
       }
+      voip_app_config: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: number | null
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: number | null
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: number | null
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_app_config_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_appointments: {
         Row: {
           created_at: string | null

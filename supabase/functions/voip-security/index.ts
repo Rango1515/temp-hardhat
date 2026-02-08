@@ -231,6 +231,18 @@ async function checkWafRules(
   return { triggered, ruleLabel };
 }
 
+// ── Discord webhook URL helper ───────────────────────────────────────────────
+async function getDiscordWebhookUrl(): Promise<string | null> {
+  // Try DB first (admin-configurable), fallback to env secret
+  const { data } = await supabase
+    .from("voip_app_config")
+    .select("value")
+    .eq("key", "discord_webhook_url")
+    .maybeSingle();
+  if (data?.value) return data.value;
+  return Deno.env.get("DISCORD_WEBHOOK_URL") || null;
+}
+
 // ── Discord webhook alert ────────────────────────────────────────────────────
 async function sendDiscordAlert(
   ip: string,
@@ -238,9 +250,9 @@ async function sendDiscordAlert(
   durationMinutes: number,
   context: { endpoint?: string; ua?: string | null; source?: string }
 ) {
-  const webhookUrl = Deno.env.get("DISCORD_WEBHOOK_URL");
+  const webhookUrl = await getDiscordWebhookUrl();
   if (!webhookUrl) {
-    console.warn("[WAF] DISCORD_WEBHOOK_URL not configured, skipping alert");
+    console.warn("[WAF] Discord webhook URL not configured, skipping alert");
     return;
   }
 
@@ -830,6 +842,75 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({ message: "Logs cleared" }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // ── Discord webhook config ──────────────────────────
+      case "discord-webhook": {
+        if (req.method === "GET") {
+          const { data } = await supabase
+            .from("voip_app_config")
+            .select("value, updated_at")
+            .eq("key", "discord_webhook_url")
+            .maybeSingle();
+
+          // Mask the URL for display (show first 40 chars + ...)
+          const raw = data?.value || Deno.env.get("DISCORD_WEBHOOK_URL") || "";
+          const masked = raw ? (raw.length > 45 ? raw.slice(0, 45) + "..." : raw) : "";
+          const source = data?.value ? "database" : (raw ? "environment" : "not_set");
+
+          return new Response(
+            JSON.stringify({ url: masked, source, updatedAt: data?.updated_at || null }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (req.method === "POST") {
+          const { url: newUrl } = await req.json();
+          if (!newUrl || !newUrl.startsWith("https://discord.com/api/webhooks/")) {
+            return new Response(
+              JSON.stringify({ error: "Invalid Discord webhook URL. Must start with https://discord.com/api/webhooks/" }),
+              { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const { error } = await supabase.from("voip_app_config").upsert({
+            key: "discord_webhook_url",
+            value: newUrl,
+            updated_at: new Date().toISOString(),
+            updated_by: userId,
+          }, { onConflict: "key" });
+
+          if (error) throw error;
+
+          await supabase.from("voip_admin_audit_log").insert({
+            admin_id: userId,
+            action: "update_discord_webhook",
+            entity_type: "config",
+            details: { masked_url: newUrl.slice(0, 45) + "..." },
+          });
+
+          return new Response(
+            JSON.stringify({ message: "Discord webhook URL updated" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        if (req.method === "DELETE") {
+          await supabase.from("voip_app_config").delete().eq("key", "discord_webhook_url");
+
+          await supabase.from("voip_admin_audit_log").insert({
+            admin_id: userId,
+            action: "remove_discord_webhook",
+            entity_type: "config",
+          });
+
+          return new Response(
+            JSON.stringify({ message: "Discord webhook URL removed" }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        break;
       }
 
       // ── Suspicious count (sidebar badge) ────────────────
