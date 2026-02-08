@@ -1768,6 +1768,38 @@ export type Database = {
         }
         Relationships: []
       }
+      voip_whitelisted_ips: {
+        Row: {
+          added_by: number | null
+          created_at: string
+          id: number
+          ip_address: string
+          label: string | null
+        }
+        Insert: {
+          added_by?: number | null
+          created_at?: string
+          id?: number
+          ip_address: string
+          label?: string | null
+        }
+        Update: {
+          added_by?: number | null
+          created_at?: string
+          id?: number
+          ip_address?: string
+          label?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_whitelisted_ips_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_worker_lead_history: {
         Row: {
           created_at: string | null
