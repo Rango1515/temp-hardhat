@@ -294,6 +294,24 @@ serve(async (req) => {
       .maybeSingle();
 
     const ruleSlug = extractRuleSlug(blockRecord?.reason || "");
+    const reqUa = req.headers.get("user-agent");
+
+    // Log blocked request (sampled 1-in-3) so it shows in suspicious events
+    if (Math.random() < 0.33) {
+      await supabase.from("voip_request_logs").insert({
+        ip_address: reqIp,
+        method: req.method,
+        path: new URL(req.url).pathname,
+        status_code: 403,
+        user_agent: reqUa,
+        is_suspicious: true,
+        is_blocked: true,
+        rule_triggered: ruleSlug || blockRecord?.reason || "blocked_ip",
+        action_taken: "blocked_early_exit",
+      }).then(({ error }) => {
+        if (error) console.error("[WAF] Blocked request log failed:", error);
+      });
+    }
 
     return new Response(
       JSON.stringify({ error: "Forbidden", blocked: true, rule: ruleSlug }),
@@ -467,14 +485,14 @@ serve(async (req) => {
           .select("*", { count: "exact", head: true })
           .eq("status", "active");
 
-        // Active alerts (suspicious in last 5 min from security_logs)
+        // Active alerts (suspicious in last 24h from security_logs)
         const { data: recentAlerts } = await supabase
           .from("voip_security_logs")
           .select("ip_address, endpoint, rule_triggered, timestamp, details")
           .eq("status", "suspicious")
-          .gte("timestamp", fiveMinutesAgo)
+          .gte("timestamp", twentyFourHoursAgo)
           .order("timestamp", { ascending: false })
-          .limit(5);
+          .limit(10);
 
         // Top IPs (last 24h)
         const { data: allLogs24h } = await supabase
