@@ -1004,6 +1004,11 @@ serve(async (req) => {
         if (target === "security" || target === "all") {
           await supabase.from("voip_security_logs").delete().gte("id", 0);
         }
+        if (target === "suspicious") {
+          // Clear only suspicious request logs and security alert logs
+          await supabase.from("voip_request_logs").delete().eq("is_suspicious", true);
+          await supabase.from("voip_security_logs").delete().gte("id", 0);
+        }
 
         await supabase.from("voip_admin_audit_log").insert({
           admin_id: userId, action: "clear_security_logs", entity_type: "security", details: { target },
@@ -1152,15 +1157,32 @@ serve(async (req) => {
       case "suspicious-count": {
         const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
 
+        // Get whitelisted IPs to exclude from count
+        const { data: wlIps } = await supabase.from("voip_whitelisted_ips").select("ip_address");
+        const whitelistedIpList = (wlIps || []).map((r: { ip_address: string }) => r.ip_address);
+
         // Count suspicious request logs (last hour) + active blocked IPs
+        // Exclude whitelisted IPs from suspicious count
+        let suspiciousQuery = supabase.from("voip_request_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("is_suspicious", true)
+          .gte("timestamp", oneHourAgo);
+
+        let blockedQuery = supabase.from("voip_blocked_ips")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "active");
+
+        // Exclude whitelisted IPs if any exist
+        if (whitelistedIpList.length > 0) {
+          for (const wlIp of whitelistedIpList) {
+            suspiciousQuery = suspiciousQuery.neq("ip_address", wlIp);
+            blockedQuery = blockedQuery.neq("ip_address", wlIp);
+          }
+        }
+
         const [suspiciousResult, blockedResult] = await Promise.all([
-          supabase.from("voip_request_logs")
-            .select("*", { count: "exact", head: true })
-            .eq("is_suspicious", true)
-            .gte("timestamp", oneHourAgo),
-          supabase.from("voip_blocked_ips")
-            .select("*", { count: "exact", head: true })
-            .eq("status", "active"),
+          suspiciousQuery,
+          blockedQuery,
         ]);
 
         const total = (suspiciousResult.count || 0) + (blockedResult.count || 0);
