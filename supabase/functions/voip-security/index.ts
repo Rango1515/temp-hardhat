@@ -458,7 +458,8 @@ async function blockIp(
   const actualDuration = await getEscalatedDuration(ip, rule.block_duration_minutes);
   const expiresAt = new Date(Date.now() + actualDuration * 60_000).toISOString();
 
-  await supabase.from("voip_blocked_ips").insert({
+  // Try to insert block — use a unique constraint approach to prevent duplicates
+  const { error: insertErr } = await supabase.from("voip_blocked_ips").insert({
     ip_address: ip,
     reason: `WAF Rule: ${ruleLabel} (escalated to ${actualDuration}m)`,
     blocked_by: null,
@@ -468,6 +469,11 @@ async function blockIp(
     scope: rule.scope,
     created_by_type: "system",
   });
+
+  if (insertErr) {
+    console.error(`[WAF] Block insert error for ${ip}:`, insertErr);
+    return; // If insert failed, don't send alerts
+  }
 
   // Invalidate cache immediately
   blockedCacheTime = 0;
@@ -490,7 +496,7 @@ async function blockIp(
     },
   });
 
-  // ── DDoS detection: track this block and check for mass-block pattern ──
+  // ── Discord notifications (ONLY fires once since hasActiveBlock guard above prevents duplicates) ──
   const now = Date.now();
   recentBlockedIps.set(ip, now);
 
@@ -518,7 +524,6 @@ async function blockIp(
   }
 
   if (uniqueBlockedCount >= DDOS_IP_THRESHOLD && ddosCooldownOk) {
-    // DDoS detected! Record cooldown in DB then send consolidated alert
     await supabase
       .from("voip_app_config")
       .upsert(
@@ -531,10 +536,9 @@ async function blockIp(
 
     console.warn(`[WAF] 🚨 DDoS DETECTED: ${uniqueBlockedCount} unique IPs blocked in last 60s`);
   } else if (uniqueBlockedCount < DDOS_IP_THRESHOLD) {
-    // Normal single-IP block — send individual alert (throttled per-IP via DB)
+    // Normal single-IP block — send ONE individual alert (throttled per-IP via DB)
     await sendDiscordAlert(ip, ruleLabel, actualDuration, context);
   }
-  // If DDoS threshold met but cooldown active, skip individual alert too (already notified)
 
   console.warn(`[WAF] IP ${ip} auto-blocked by "${ruleLabel}" for ${actualDuration}m (base: ${rule.block_duration_minutes}m)`);
 }
