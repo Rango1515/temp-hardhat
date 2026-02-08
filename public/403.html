@@ -131,8 +131,13 @@
       color: #fff;
     }
 
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
       background: #ea580c;
+    }
+
+    .btn-disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .btn-outline {
@@ -207,20 +212,13 @@
     </div>
 
     <div class="actions">
-      <button class="btn btn-primary" onclick="window.location.reload()">
+      <button class="btn btn-primary btn-disabled" id="retryBtn" disabled>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"/>
           <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
         </svg>
-        Try Again
+        Wait <span id="retryTimer">60</span>s
       </button>
-      <a href="/" class="btn btn-outline">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-          <polyline points="9 22 9 12 15 12 15 22"/>
-        </svg>
-        Go Home
-      </a>
     </div>
 
     <div class="footer">
@@ -229,14 +227,27 @@
   </div>
 
   <script>
+    // Prevent navigating away via back/forward
+    history.pushState(null, '', location.href);
+    window.addEventListener('popstate', function () {
+      history.pushState(null, '', location.href);
+    });
+
     let seconds = 60;
     const timerEl = document.getElementById('timer');
+    const retryTimerEl = document.getElementById('retryTimer');
+    const retryBtn = document.getElementById('retryBtn');
     const interval = setInterval(() => {
       seconds--;
       timerEl.textContent = seconds;
+      retryTimerEl.textContent = seconds;
       if (seconds <= 0) {
         clearInterval(interval);
-        window.location.reload();
+        retryBtn.disabled = false;
+        retryBtn.classList.remove('btn-disabled');
+        retryBtn.textContent = '';
+        retryBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> Try Again';
+        retryBtn.onclick = function() { window.location.reload(); };
       }
     }, 1000);
   </script>
