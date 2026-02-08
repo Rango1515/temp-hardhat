@@ -25,8 +25,9 @@ interface DashboardData {
   totalRequests: number;
   suspiciousCount: number;
   blockedCount: number;
+  escalatedCount: number;
   topIPs: { ip: string; count: number }[];
-  recentAlerts: { ip_address: string; endpoint: string; rule_triggered: string; timestamp: string }[];
+  recentAlerts: { ip_address: string; endpoint: string; rule_triggered: string; timestamp: string; details?: { escalated?: boolean; block_duration_minutes?: number } }[];
   timeline: { time: string; total: number; suspicious: number }[];
 }
 
@@ -246,6 +247,7 @@ export default function SecurityMonitor() {
 
   const [activeTab, setActiveTab] = useState("overview");
   const [timelineRange, setTimelineRange] = useState<"1h" | "24h" | "all">("1h");
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(() => sessionStorage.getItem("waf_alert_dismissed") === "true");
   const lastAlertCount = useRef(0);
   const dismissAlert = useCallback(() => { setAlertDismissed(true); sessionStorage.setItem("waf_alert_dismissed", "true"); sessionStorage.setItem("security_alerts_cleared", "true"); window.dispatchEvent(new Event("security-alerts-cleared")); }, []);
@@ -411,7 +413,8 @@ export default function SecurityMonitor() {
 
   // Refetch dashboard when timeline range changes
   useEffect(() => {
-    fetchDashboard();
+    setTimelineLoading(true);
+    fetchDashboard().finally(() => setTimelineLoading(false));
   }, [timelineRange]);
 
   // Refetch traffic logs ONLY when filters change (not on initial mount — handled above)
@@ -865,7 +868,7 @@ export default function SecurityMonitor() {
 
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <Card>
             <CardContent className="p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/10"><Activity className="w-5 h-5 text-primary" /></div>
@@ -890,6 +893,15 @@ export default function SecurityMonitor() {
               <div>
                 <p className="text-2xl font-bold text-foreground">{dashboard?.blockedCount || 0}</p>
                 <p className="text-xs text-muted-foreground">Blocked IPs</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className={`${(dashboard?.escalatedCount || 0) > 0 ? "border-destructive/50" : ""}`}>
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-destructive/20"><ShieldAlert className="w-5 h-5 text-destructive" /></div>
+              <div>
+                <p className="text-2xl font-bold text-foreground">{dashboard?.escalatedCount || 0}</p>
+                <p className="text-xs text-muted-foreground">Escalated (24h)</p>
               </div>
             </CardContent>
           </Card>
@@ -998,53 +1010,50 @@ export default function SecurityMonitor() {
                 </div>
               </CardHeader>
               <CardContent>
-                {((dashboard?.timeline?.length || 0) > 0 || (cfData?.httpTimeline?.length || 0) > 0) ? (
+                {timelineLoading ? (
+                  <div className="flex items-center justify-center h-72">
+                    <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                    <span className="ml-2 text-sm text-muted-foreground">Loading timeline...</span>
+                  </div>
+                ) : ((dashboard?.timeline?.length || 0) > 0 || (cfData?.httpTimeline?.length || 0) > 0) ? (
                   <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={(() => {
-                        // Merge WAF timeline and CF timeline by normalized 24h time key
                         const timeMap = new Map<string, { sortKey: number; time: string; wafTotal: number; wafSuspicious: number; cfRequests: number }>();
 
-                        // Helper: normalize any time string to "HH:mm" (24h) and a sortable timestamp
-                        const normalizeTime = (raw: string): { key: string; sort: number } => {
+                        const formatTimeKey = (raw: string): { key: string; sort: number } => {
+                          if (timelineRange === "all" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+                            const d = new Date(raw + "T00:00:00");
+                            return { key: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), sort: d.getTime() };
+                          }
+                          if (timelineRange === "24h" && /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(raw)) {
+                            const d = new Date(raw + ":00:00");
+                            return { key: `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${d.getHours().toString().padStart(2, '0')}:00`, sort: d.getTime() };
+                          }
+                          if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) {
+                            const d = new Date(raw + ":00");
+                            return { key: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`, sort: d.getTime() };
+                          }
                           const d = new Date(raw);
                           if (!isNaN(d.getTime())) {
-                            const hh = d.getHours().toString().padStart(2, '0');
-                            const mm = d.getMinutes().toString().padStart(2, '0');
-                            return { key: `${hh}:${mm}`, sort: d.getTime() };
-                          }
-                          // Already a formatted string like "02:15 AM" — parse it
-                          const match = raw.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
-                          if (match) {
-                            let h = parseInt(match[1], 10);
-                            const m = parseInt(match[2], 10);
-                            if (match[3]?.toUpperCase() === 'PM' && h < 12) h += 12;
-                            if (match[3]?.toUpperCase() === 'AM' && h === 12) h = 0;
-                            return { key: `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`, sort: h * 60 + m };
+                            return { key: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`, sort: d.getTime() };
                           }
                           return { key: raw, sort: 0 };
                         };
 
-                        // Add WAF data
                         for (const p of (dashboard?.timeline || [])) {
-                          const { key, sort } = normalizeTime(p.time);
+                          const { key, sort } = formatTimeKey(p.time);
                           const existing = timeMap.get(key);
-                          if (existing) {
-                            existing.wafTotal += p.total;
-                            existing.wafSuspicious += p.suspicious;
-                          } else {
-                            timeMap.set(key, { sortKey: sort, time: key, wafTotal: p.total, wafSuspicious: p.suspicious, cfRequests: 0 });
-                          }
+                          if (existing) { existing.wafTotal += p.total; existing.wafSuspicious += p.suspicious; }
+                          else { timeMap.set(key, { sortKey: sort, time: key, wafTotal: p.total, wafSuspicious: p.suspicious, cfRequests: 0 }); }
                         }
 
-                        // Add CF data
-                        for (const p of (cfData?.httpTimeline || [])) {
-                          const { key, sort } = normalizeTime(p.time);
-                          const existing = timeMap.get(key);
-                          if (existing) {
-                            existing.cfRequests = p.requests;
-                          } else {
-                            timeMap.set(key, { sortKey: sort, time: key, wafTotal: 0, wafSuspicious: 0, cfRequests: p.requests });
+                        if (timelineRange === "1h") {
+                          for (const p of (cfData?.httpTimeline || [])) {
+                            const { key, sort } = formatTimeKey(p.time);
+                            const existing = timeMap.get(key);
+                            if (existing) { existing.cfRequests = p.requests; }
+                            else { timeMap.set(key, { sortKey: sort, time: key, wafTotal: 0, wafSuspicious: 0, cfRequests: p.requests }); }
                           }
                         }
 
@@ -1054,7 +1063,7 @@ export default function SecurityMonitor() {
                         <XAxis dataKey="time" className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} interval="preserveStartEnd" />
                         <YAxis className="text-xs" tick={{ fill: "hsl(var(--muted-foreground))" }} />
                         <Tooltip contentStyle={{ backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", color: "hsl(var(--foreground))" }} />
-                        <Area type="monotone" dataKey="cfRequests" stroke="#f97316" fill="rgba(249, 115, 22, 0.15)" name="CF Requests" />
+                        {timelineRange === "1h" && <Area type="monotone" dataKey="cfRequests" stroke="#f97316" fill="rgba(249, 115, 22, 0.15)" name="CF Requests" />}
                         <Area type="monotone" dataKey="wafTotal" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.2)" name="WAF Total" />
                         <Area type="monotone" dataKey="wafSuspicious" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive) / 0.2)" name="WAF Suspicious" />
                       </AreaChart>
@@ -1096,11 +1105,12 @@ export default function SecurityMonitor() {
                   {(dashboard?.recentAlerts?.length || 0) > 0 ? (
                     <div className="space-y-2">
                       {dashboard?.recentAlerts?.map((alert, i) => (
-                        <div key={i} className="flex items-center justify-between text-sm p-2 rounded bg-destructive/5 border border-destructive/10">
+                        <div key={i} className={`flex items-center justify-between text-sm p-2 rounded border ${alert.details?.escalated ? "bg-destructive/10 border-destructive/30" : "bg-destructive/5 border-destructive/10"}`}>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <CopyIpButton ip={alert.ip_address} />
                               <Badge variant="destructive" className="text-[10px]">{alert.rule_triggered}</Badge>
+                              {alert.details?.escalated && <Badge className="bg-red-600 text-white text-[10px]">ESCALATED</Badge>}
                             </div>
                             <p className="text-xs text-muted-foreground mt-0.5 truncate">{alert.endpoint} — {formatTime(alert.timestamp)}</p>
                           </div>
@@ -1229,6 +1239,7 @@ export default function SecurityMonitor() {
                         <SelectItem value="all">All</SelectItem>
                         <SelectItem value="suspicious">Suspicious</SelectItem>
                         <SelectItem value="blocked">Blocked</SelectItem>
+                        <SelectItem value="escalated">Escalated</SelectItem>
                       </SelectContent>
                     </Select>
                     <Input placeholder="Filter by IP" value={trafficIpFilter} onChange={(e) => { setTrafficIpFilter(e.target.value); setTrafficPage(1); }}
@@ -1355,6 +1366,7 @@ export default function SecurityMonitor() {
                               <CountdownTimer expiresAt={b.expires_at} />
                               <Badge variant="outline" className="text-[10px]">{b.scope === "sensitive_only" ? "Sensitive" : "Full"}</Badge>
                               <Badge variant="secondary" className="text-[10px]">{b.created_by_type}</Badge>
+                              {b.reason?.toLowerCase().includes("escalated") && <Badge className="bg-red-600 text-white text-[10px]">ESCALATED</Badge>}
                             </div>
                           </div>
                           <Button size="sm" variant="ghost" className="flex-shrink-0" onClick={() => handleUnblock(b.id)}>

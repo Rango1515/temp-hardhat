@@ -6,12 +6,11 @@ const BLOCK_RULE_KEY = "waf_block_rule";
 const BLOCK_DURATION_KEY = "waf_block_duration_min";
 
 /**
- * Authenticated page tracker — fires on every page load / route change
- * to check WAF rules against the current IP. Unlike usePageTracker (public),
- * this one sends the auth token and fires on EVERY load (no hasFired guard),
- * so rapid F5 refreshes will actually accumulate hits in the WAF.
+ * Authenticated page tracker — fires on every route change.
+ * Sends PAGE_LOAD method which the backend skips for WAF counting,
+ * so normal page navigation will NEVER trigger rate-limit blocks.
  *
- * If the WAF blocks the IP it redirects to /blocked.html.
+ * If the WAF blocks the IP on a separate API call, it redirects to /blocked.html.
  * Also checks localStorage on load to enforce existing blocks.
  */
 export function useAuthPageTracker() {
@@ -32,7 +31,7 @@ export function useAuthPageTracker() {
       localStorage.removeItem(BLOCK_DURATION_KEY);
     }
 
-    // ── Fire WAF check ──
+    // ── Fire page load log (skipped by WAF — no blocking risk) ──
     const currentToken = localStorage.getItem("voip_token");
     if (!currentToken) return; // Not logged in yet, nothing to track
 
@@ -52,27 +51,8 @@ export function useAuthPageTracker() {
       },
       body: payload,
       keepalive: true,
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        // If the WAF blocked this IP (either from log-request response or 403 early-exit)
-        if (
-          (data?.status === "suspicious" && data?.blocked === true) ||
-          data?.blocked === true
-        ) {
-          const duration = data.duration || 1;
-          const ruleName = data.rule || "";
-
-          const blockExpiry = Date.now() + duration * 60 * 1000;
-          localStorage.setItem(BLOCK_STORAGE_KEY, String(blockExpiry));
-          localStorage.setItem(BLOCK_RULE_KEY, ruleName);
-          localStorage.setItem(BLOCK_DURATION_KEY, String(duration));
-
-          window.location.href = "/blocked.html";
-        }
-      })
-      .catch(() => {
-        // Fire-and-forget — don't break the app if tracking fails
-      });
+    }).catch(() => {
+      // Fire-and-forget — don't break the app if tracking fails
+    });
   }, [location.pathname]);
 }
