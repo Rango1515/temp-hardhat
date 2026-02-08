@@ -231,6 +231,61 @@ async function checkWafRules(
   return { triggered, ruleLabel };
 }
 
+// ── Discord webhook alert ────────────────────────────────────────────────────
+async function sendDiscordAlert(
+  ip: string,
+  ruleLabel: string,
+  durationMinutes: number,
+  context: { endpoint?: string; ua?: string | null; source?: string }
+) {
+  const webhookUrl = Deno.env.get("DISCORD_WEBHOOK_URL");
+  if (!webhookUrl) {
+    console.warn("[WAF] DISCORD_WEBHOOK_URL not configured, skipping alert");
+    return;
+  }
+
+  const isEscalated = durationMinutes > 15;
+  const color = isEscalated ? 0xff0000 : 0xff6600; // Red for escalated, orange for normal
+
+  const embed = {
+    title: "🚨 WAF Auto-Block Triggered",
+    color,
+    fields: [
+      { name: "🌐 IP Address", value: `\`${ip}\``, inline: true },
+      { name: "📛 Rule", value: ruleLabel, inline: true },
+      { name: "⏱️ Duration", value: `${durationMinutes} minutes`, inline: true },
+      { name: "🎯 Endpoint", value: `\`${context.endpoint || "/"}\``, inline: true },
+      { name: "📡 Source", value: context.source || "unknown", inline: true },
+      { name: "🔒 Escalated", value: isEscalated ? "Yes ⚠️" : "No", inline: true },
+    ],
+    footer: { text: "HardHat Hosting WAF" },
+    timestamp: new Date().toISOString(),
+  };
+
+  if (context.ua) {
+    embed.fields.push({ name: "🤖 User Agent", value: `\`${context.ua.slice(0, 200)}\``, inline: false });
+  }
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "HardHat WAF",
+        avatar_url: "https://hardhathosting.work/hardhat-icon.png",
+        embeds: [embed],
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[WAF] Discord webhook failed: ${res.status} ${await res.text()}`);
+    } else {
+      console.log(`[WAF] Discord alert sent for IP ${ip}`);
+    }
+  } catch (e) {
+    console.error("[WAF] Discord webhook error:", e);
+  }
+}
+
 // ── Block an IP with escalation ─────────────────────────────────────────────
 async function blockIp(
   ip: string,
@@ -271,6 +326,9 @@ async function blockIp(
       escalated: actualDuration > rule.block_duration_minutes,
     },
   });
+
+  // Send Discord webhook alert (fire and forget)
+  sendDiscordAlert(ip, ruleLabel, actualDuration, context);
 
   console.warn(`[WAF] IP ${ip} auto-blocked by "${ruleLabel}" for ${actualDuration}m (base: ${rule.block_duration_minutes}m)`);
 }
