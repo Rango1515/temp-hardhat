@@ -18,7 +18,7 @@ const recentBlockedIps: Map<string, number> = new Map(); // ip -> timestamp
 let lastDdosAlertTime = 0;
 const DDOS_WINDOW_MS = 60_000; // 1-minute window
 const DDOS_IP_THRESHOLD = 5; // 5+ unique IPs blocked in 1 minute = DDoS
-const DDOS_ALERT_COOLDOWN_MS = 10 * 60_000; // Only send DDoS alert every 10 minutes
+const DDOS_ALERT_COOLDOWN_MS = 60_000; // 1 minute buffer between DDoS Discord alerts
 
 // ── Fingerprint tracking (IP + User-Agent combo) ────────────────────────────
 // Map<fingerprint, Array<timestamp_ms>>
@@ -1491,12 +1491,22 @@ serve(async (req) => {
         }
       }
 
-      // ── Cloudflare DDoS alert to Discord ────────────
+      // ── DDoS alert to Discord (1-minute server-side cooldown) ────────────
       case "cloudflare-ddos-discord": {
         if (req.method !== "POST") {
           return new Response(JSON.stringify({ error: "Method not allowed" }),
             { status: 405, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
+
+        // Server-side 1-minute cooldown — reuse the same lastDdosAlertTime variable
+        const nowMs = Date.now();
+        if ((nowMs - lastDdosAlertTime) < 60_000) {
+          return new Response(
+            JSON.stringify({ message: "DDoS alert on cooldown", cooldown_remaining_s: Math.ceil((60_000 - (nowMs - lastDdosAlertTime)) / 1000) }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        lastDdosAlertTime = nowMs;
 
         const webhookUrl = await getDiscordWebhookUrl();
         if (!webhookUrl) {
@@ -1520,18 +1530,17 @@ serve(async (req) => {
         const targetPaths = (topPaths || []).slice(0, 5).map((p: string) => `\`${p}\``).join(", ");
 
         const ddosEmbed = {
-          title: "🔴 Cloudflare DDoS Attack Detected",
-          description: `**${totalEvents}** block/challenge events from **${uniqueIps}** unique IPs detected in the last hour via Cloudflare firewall analytics.`,
+          title: "🔴 DDoS Attack Detected",
+          description: `**${totalEvents}** block/challenge events from **${uniqueIps}** unique IPs detected in the last hour.`,
           color: 0xcc0000,
           fields: [
-            { name: "🌐 Top Attacking IPs", value: ipList || "N/A", inline: false },
+            { name: "🌐 Attacking IPs", value: ipList || "N/A", inline: false },
             { name: "📛 Actions", value: actionBreakdown || "N/A", inline: true },
             { name: "🎯 Targets", value: targetPaths || "/", inline: true },
             { name: "📊 Scale", value: `${uniqueIps} unique sources`, inline: true },
-            { name: "📡 Data Source", value: "Cloudflare Firewall Events", inline: true },
-            { name: "🛡️ Status", value: "Auto-detected from Cloudflare analytics", inline: true },
+            { name: "🛡️ Status", value: "Auto-blocked with escalation", inline: true },
           ],
-          footer: { text: "HardHat Hosting WAF — Cloudflare DDoS Detection" },
+          footer: { text: "HardHat Hosting WAF" },
           timestamp: new Date().toISOString(),
         };
 
@@ -1542,7 +1551,7 @@ serve(async (req) => {
             body: JSON.stringify({
               username: "HardHat WAF",
               avatar_url: "https://hardhathosting.work/hardhat-icon.png",
-              content: "🚨 **CLOUDFLARE DDoS ATTACK DETECTED**",
+              content: "🚨 **DDoS ATTACK DETECTED**",
               embeds: [ddosEmbed],
             }),
           });
