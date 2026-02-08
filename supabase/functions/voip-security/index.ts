@@ -559,6 +559,69 @@ serve(async (req) => {
     );
   }
 
+  // ── Public endpoint: escalate-block (called from block page retry button) ──
+  if (action === "escalate-block" && req.method === "POST") {
+    // Find the active block for this IP
+    const { data: activeBlock } = await supabase
+      .from("voip_blocked_ips")
+      .select("id, ip_address, expires_at, reason, rule_id")
+      .eq("ip_address", reqIp)
+      .eq("status", "active")
+      .order("blocked_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!activeBlock) {
+      return new Response(
+        JSON.stringify({ blocked: false, escalated: false }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Escalate: double the remaining time, cap at 24 hours
+    const currentExpiry = new Date(activeBlock.expires_at || Date.now()).getTime();
+    const remainingMs = Math.max(0, currentExpiry - Date.now());
+    const newDurationMs = Math.min(remainingMs * 2 + 60000, 24 * 60 * 60 * 1000); // double + 1min minimum, cap 24h
+    const newExpiry = new Date(Date.now() + newDurationMs).toISOString();
+
+    await supabase
+      .from("voip_blocked_ips")
+      .update({ expires_at: newExpiry })
+      .eq("id", activeBlock.id);
+
+    // Invalidate cache
+    blockedCacheTime = 0;
+
+    // Log escalation
+    await supabase.from("voip_security_logs").insert({
+      ip_address: reqIp,
+      endpoint: "blocked-page-retry",
+      status: "escalated",
+      rule_triggered: activeBlock.reason || "retry_escalation",
+      details: {
+        source: "block_page_retry",
+        escalated: true,
+        new_duration_seconds: Math.round(newDurationMs / 1000),
+        previous_expiry: activeBlock.expires_at,
+        new_expiry: newExpiry,
+      },
+    });
+
+    // Send Discord alert for escalation
+    const ruleLabel = activeBlock.reason || "Retry Escalation";
+    await sendDiscordAlert(reqIp, `${ruleLabel} (retry escalation)`, Math.round(newDurationMs / 60000), {
+      endpoint: "blocked-page-retry",
+      source: "block_page_retry",
+    }, { force: true });
+
+    console.warn(`[WAF] IP ${reqIp} escalated via retry button — new expiry: ${newExpiry} (${Math.round(newDurationMs / 60000)}m)`);
+
+    return new Response(
+      JSON.stringify({ blocked: true, escalated: true, new_expiry_seconds: Math.round(newDurationMs / 1000) }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   // ── EARLY EXIT: Check blocked IP before ANYTHING else ─────────────────
   if (await isIpBlocked(reqIp)) {
     // Look up the block reason to return the rule name

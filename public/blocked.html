@@ -461,6 +461,50 @@
     var retryLabel = document.getElementById('retryLabel');
     var statusMsg = document.getElementById('statusMsg');
 
+    // ── Retry click tracking for escalation ──────────────────
+    var RETRY_COUNT_KEY = 'waf_retry_count';
+    var RETRY_WINDOW_KEY = 'waf_retry_window_start';
+    var ESCALATION_THRESHOLD = 3; // 3+ retries while still blocked = escalate
+    var RETRY_WINDOW_MS = 120000; // 2-minute window for counting retries
+
+    function trackRetryClick() {
+      var now = Date.now();
+      var windowStart = parseInt(localStorage.getItem(RETRY_WINDOW_KEY) || '0', 10);
+      var retryCount = parseInt(localStorage.getItem(RETRY_COUNT_KEY) || '0', 10);
+
+      // Reset window if expired
+      if (now - windowStart > RETRY_WINDOW_MS) {
+        retryCount = 0;
+        windowStart = now;
+        localStorage.setItem(RETRY_WINDOW_KEY, String(now));
+      }
+
+      retryCount++;
+      localStorage.setItem(RETRY_COUNT_KEY, String(retryCount));
+
+      // If threshold reached, request escalation from server
+      if (retryCount >= ESCALATION_THRESHOLD) {
+        fetch(SUPABASE_URL + '/functions/v1/voip-security?action=escalate-block', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ retryCount: retryCount })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.new_expiry_seconds) {
+            var newExpiry = Date.now() + data.new_expiry_seconds * 1000;
+            localStorage.setItem(BLOCK_KEY, String(newExpiry));
+            var newDuration = Math.ceil(data.new_expiry_seconds / 60);
+            localStorage.setItem(BLOCK_DURATION_KEY, String(newDuration));
+          }
+        })
+        .catch(function() {});
+
+        // Reset count after escalation request
+        localStorage.setItem(RETRY_COUNT_KEY, '0');
+      }
+    }
+
     var countdownInterval = setInterval(function() {
       var currentExpiry = parseInt(localStorage.getItem(BLOCK_KEY) || '0', 10);
       var left = Math.ceil((currentExpiry - Date.now()) / 1000);
@@ -477,6 +521,8 @@
           localStorage.removeItem(BLOCK_KEY);
           localStorage.removeItem(BLOCK_RULE_KEY);
           localStorage.removeItem(BLOCK_DURATION_KEY);
+          localStorage.removeItem(RETRY_COUNT_KEY);
+          localStorage.removeItem(RETRY_WINDOW_KEY);
           window.location.href = '/';
           return;
         }
@@ -489,6 +535,9 @@
 
           checkIfStillBlocked().then(function(result) {
             if (result.blocked) {
+              // Track the retry click — this is what triggers escalation
+              trackRetryClick();
+
               if (result.remainingSeconds > 0) {
                 var newExpiry = Date.now() + result.remainingSeconds * 1000;
                 localStorage.setItem(BLOCK_KEY, String(newExpiry));
@@ -499,6 +548,8 @@
               localStorage.removeItem(BLOCK_KEY);
               localStorage.removeItem(BLOCK_RULE_KEY);
               localStorage.removeItem(BLOCK_DURATION_KEY);
+              localStorage.removeItem(RETRY_COUNT_KEY);
+              localStorage.removeItem(RETRY_WINDOW_KEY);
               window.location.href = '/';
             }
           });
