@@ -746,42 +746,47 @@ serve(async (req) => {
       const { endpoint, method: reqMethod, userAgent, isFailedLogin, statusCode, responseMs } = body;
       const ip = reqIp;
 
-      // Skip WAF checks entirely for PAGE_LOAD requests (authenticated browsing)
-      // Normal page navigation should NEVER trigger blocks
-      const isPageLoad = reqMethod === "PAGE_LOAD";
-      if (isPageLoad) {
-        // Just log it (sampled) and return ok — no WAF checks
-        if (shouldSample()) {
-          await supabase.from("voip_request_logs").insert({
-            ip_address: ip,
-            method: reqMethod,
-            path: endpoint || "unknown",
-            status_code: 200,
-            user_agent: userAgent,
-            user_id: userId,
-            is_suspicious: false,
-            is_blocked: false,
-          }).catch(() => {});
-        }
-        return new Response(
-          JSON.stringify({ status: "normal", blocked: false }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      // Record hit in memory (include UA for fingerprinting)
+      // Record hit in memory FIRST (include UA for fingerprinting)
       recordHit(ip, userAgent);
 
-      // Check WAF rules — only for API calls, not page loads
+      // INSERT the log BEFORE checking WAF — ensures concurrent requests see each other
+      // Always insert (no sampling) for accurate WAF DB-backed counting
+      const { error: logErr } = await supabase.from("voip_request_logs").insert({
+        ip_address: ip,
+        method: reqMethod || "GET",
+        path: endpoint || "unknown",
+        status_code: statusCode || 200,
+        response_ms: responseMs || null,
+        user_agent: userAgent,
+        user_id: userId,
+        is_suspicious: false,
+        is_blocked: false,
+        rule_triggered: isFailedLogin ? "failed_login" : null,
+        action_taken: null,
+      });
+      if (logErr) console.error("[WAF] Log insert failed:", logErr);
+
+      // Now check WAF rules (the current request is already in the DB count)
       const isSensitive = SENSITIVE_ENDPOINTS.some(e => (endpoint || "").includes(e));
       const { triggered, ruleLabel } = await checkWafRules(ip, userAgent, isSensitive, !!isFailedLogin);
 
       let logStatus = "normal";
-      let actionTaken: string | null = null;
 
       if (triggered) {
         logStatus = "suspicious";
-        actionTaken = "auto_blocked";
+
+        // Update the log we just inserted to reflect the block
+        // (we already inserted it, so update the most recent one)
+        await supabase.from("voip_request_logs")
+          .update({
+            is_suspicious: true,
+            rule_triggered: ruleLabel || triggered.name,
+            action_taken: "auto_blocked",
+          })
+          .eq("ip_address", ip)
+          .eq("user_id", userId)
+          .order("timestamp", { ascending: false })
+          .limit(1);
 
         await blockIp(ip, triggered, ruleLabel || triggered.name, {
           endpoint: endpoint || "unknown",
@@ -789,26 +794,6 @@ serve(async (req) => {
           userId,
           source: "authenticated",
         });
-      }
-
-      // Sample normal API requests at 1-in-5 to reduce write volume
-      const shouldLog = triggered || isFailedLogin || shouldSample();
-
-      if (shouldLog) {
-        const { error: logErr } = await supabase.from("voip_request_logs").insert({
-          ip_address: ip,
-          method: reqMethod || "GET",
-          path: endpoint || "unknown",
-          status_code: statusCode || 200,
-          response_ms: responseMs || null,
-          user_agent: userAgent,
-          user_id: userId,
-          is_suspicious: !!triggered,
-          is_blocked: false,
-          rule_triggered: ruleLabel || (isFailedLogin ? "failed_login" : null),
-          action_taken: actionTaken,
-        });
-        if (logErr) console.error("[WAF] Log insert failed:", logErr);
       }
 
       // Return blocked: true when we actually triggered a block

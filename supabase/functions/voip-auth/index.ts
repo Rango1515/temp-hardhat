@@ -13,32 +13,111 @@ interface User {
   partner_id?: number | null;
 }
 
-// Rate limiting store (in production, use Redis)
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+// DB-backed brute force detection — survives cold starts
+const BRUTE_FORCE_WINDOW_SECONDS = 120; // 2 minutes
+const BRUTE_FORCE_MAX_ATTEMPTS = 10; // 10 failed logins in 2 min = block
+const BRUTE_FORCE_BLOCK_MINUTES = 15;
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const windowMs = 15 * 60 * 1000; // 15 minutes
-  const maxAttempts = 5;
+async function countFailedLogins(ip: string): Promise<number> {
+  const since = new Date(Date.now() - BRUTE_FORCE_WINDOW_SECONDS * 1000).toISOString();
+  const { count } = await supabase
+    .from("voip_request_logs")
+    .select("*", { count: "exact", head: true })
+    .eq("ip_address", ip)
+    .eq("rule_triggered", "failed_login")
+    .gte("timestamp", since);
+  return count || 0;
+}
 
-  const attempts = loginAttempts.get(ip);
-  if (!attempts) {
-    loginAttempts.set(ip, { count: 1, lastAttempt: now });
-    return true;
+async function recordFailedLogin(ip: string, email: string, ua: string | null) {
+  // Insert into request_logs for DB-backed counting
+  await supabase.from("voip_request_logs").insert({
+    ip_address: ip,
+    method: "POST",
+    path: "voip-auth/login",
+    status_code: 401,
+    user_agent: ua,
+    is_suspicious: true,
+    is_blocked: false,
+    rule_triggered: "failed_login",
+    action_taken: null,
+  });
+}
+
+async function blockIpForBruteForce(ip: string, ua: string | null) {
+  // Check for escalation (prior blocks in 24h)
+  const twentyFourHoursAgo = new Date(Date.now() - 86400000).toISOString();
+  const { count: priorBlocks } = await supabase
+    .from("voip_blocked_ips")
+    .select("*", { count: "exact", head: true })
+    .eq("ip_address", ip)
+    .gte("blocked_at", twentyFourHoursAgo);
+
+  const blockCount = priorBlocks || 0;
+  let duration = BRUTE_FORCE_BLOCK_MINUTES;
+  if (blockCount >= 3) {
+    duration = 24 * 60; // 24 hours after 3 blocks
+  } else if (blockCount > 0) {
+    duration = Math.min(BRUTE_FORCE_BLOCK_MINUTES * Math.pow(2, blockCount), 24 * 60);
   }
 
-  if (now - attempts.lastAttempt > windowMs) {
-    loginAttempts.set(ip, { count: 1, lastAttempt: now });
-    return true;
-  }
+  const expiresAt = new Date(Date.now() + duration * 60_000).toISOString();
 
-  if (attempts.count >= maxAttempts) {
-    return false;
-  }
+  // Find the WAF brute force rule ID
+  const { data: ruleData } = await supabase
+    .from("voip_waf_rules")
+    .select("id")
+    .eq("rule_type", "brute_force")
+    .limit(1)
+    .maybeSingle();
 
-  attempts.count++;
-  attempts.lastAttempt = now;
-  return true;
+  await supabase.from("voip_blocked_ips").insert({
+    ip_address: ip,
+    reason: `Brute Force Login (${blockCount > 0 ? 'escalated to ' + duration + 'm' : duration + 'm'})`,
+    blocked_by: null,
+    expires_at: expiresAt,
+    status: "active",
+    rule_id: ruleData?.id || null,
+    scope: "all",
+    created_by_type: "system",
+  });
+
+  // Log to security_logs
+  await supabase.from("voip_security_logs").insert({
+    ip_address: ip,
+    endpoint: "voip-auth/login",
+    user_agent: ua,
+    status: blockCount > 0 ? "escalated" : "suspicious",
+    rule_triggered: "Brute Force Login",
+    details: {
+      source: "voip-auth",
+      auto_blocked: true,
+      block_duration_minutes: duration,
+      prior_blocks_24h: blockCount,
+      escalated: blockCount > 0,
+    },
+  });
+
+  console.warn(`[voip-auth] IP ${ip} blocked for brute force — ${duration}m (${blockCount} prior blocks)`);
+}
+
+async function isIpBlocked(ip: string): Promise<boolean> {
+  // Expire old blocks first
+  await supabase
+    .from("voip_blocked_ips")
+    .update({ status: "expired" })
+    .eq("status", "active")
+    .lt("expires_at", new Date().toISOString())
+    .not("expires_at", "is", null);
+
+  const { data } = await supabase
+    .from("voip_blocked_ips")
+    .select("id")
+    .eq("ip_address", ip)
+    .eq("status", "active")
+    .limit(1);
+
+  return (data && data.length > 0) || false;
 }
 
 serve(async (req) => {
@@ -88,11 +167,28 @@ serve(async (req) => {
 
     switch (action) {
       case "login": {
-        const ip = req.headers.get("x-forwarded-for") || "unknown";
-        if (!checkRateLimit(ip)) {
-          console.log(`[voip-auth] Rate limit exceeded for IP: ${ip}`);
+        const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || 
+                   req.headers.get("cf-connecting-ip") || 
+                   req.headers.get("x-real-ip") || "unknown";
+        const ua = req.headers.get("user-agent");
+
+        // DB-backed block check — check if this IP is already blocked
+        if (await isIpBlocked(ip)) {
+          console.log(`[voip-auth] IP ${ip} is blocked, rejecting login`);
           return new Response(
-            JSON.stringify({ error: "Too many login attempts. Please try again later." }),
+            JSON.stringify({ error: "Too many failed attempts. Your IP has been temporarily blocked." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Check failed login count from DB
+        const failedCount = await countFailedLogins(ip);
+        if (failedCount >= BRUTE_FORCE_MAX_ATTEMPTS) {
+          // Block this IP
+          await blockIpForBruteForce(ip, ua);
+          console.log(`[voip-auth] IP ${ip} brute force blocked after ${failedCount} failed logins`);
+          return new Response(
+            JSON.stringify({ error: "Too many failed login attempts. Your IP has been temporarily blocked." }),
             { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -124,6 +220,8 @@ serve(async (req) => {
         console.log(`[voip-auth] User query returned ${users?.length || 0} rows`);
 
         if (!users || users.length === 0) {
+          // Record failed login for brute force tracking
+          await recordFailedLogin(ip, email, ua);
           return new Response(
             JSON.stringify({ error: "Invalid email or password" }),
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -161,6 +259,19 @@ serve(async (req) => {
 
         const passwordMatch = await verifyPassword(password, user.password_hash);
         if (!passwordMatch) {
+          // Record failed login for brute force tracking
+          await recordFailedLogin(ip, email, ua);
+          
+          // Check if this failure tips them over the threshold
+          const newCount = await countFailedLogins(ip);
+          if (newCount >= BRUTE_FORCE_MAX_ATTEMPTS) {
+            await blockIpForBruteForce(ip, ua);
+            return new Response(
+              JSON.stringify({ error: "Too many failed login attempts. Your IP has been temporarily blocked." }),
+              { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+          
           return new Response(
             JSON.stringify({ error: "Invalid email or password" }),
             { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }

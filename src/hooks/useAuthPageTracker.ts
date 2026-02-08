@@ -58,8 +58,21 @@ export function useAuthPageTracker() {
       },
       body: payload,
       keepalive: true,
-    }).catch(() => {
-      // Fire-and-forget — don't break the app if tracking fails
-    });
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.blocked) {
+          // WAF triggered — save block info and redirect
+          const durationMin = data.duration || 1;
+          const expiryMs = Date.now() + durationMin * 60 * 1000;
+          localStorage.setItem(BLOCK_STORAGE_KEY, expiryMs.toString());
+          localStorage.setItem(BLOCK_RULE_KEY, data.rule || "rate_limit");
+          localStorage.setItem(BLOCK_DURATION_KEY, durationMin.toString());
+          window.location.href = "/blocked.html";
+        }
+      })
+      .catch(() => {
+        // Fire-and-forget — don't break the app if tracking fails
+      });
   }, [location.pathname]);
 }
