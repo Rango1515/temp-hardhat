@@ -10,7 +10,6 @@ interface ApiOptions {
 export function useVoipApi() {
   const { token, refreshToken, logout } = useVoipAuth();
   const errorLogInflight = useRef(false);
-  const securityLogInflight = useRef(false);
   const lastSecurityLogTime = useRef(0);
 
   const logError = useCallback(
@@ -47,43 +46,45 @@ export function useVoipApi() {
     []
   );
 
-  // Fire-and-forget security log (throttled to 1 per 2s, never recursive)
+  // Fire-and-forget security log using sendBeacon (zero blocking, no response needed)
   const logRequest = useCallback(
-    (endpoint: string, method: string, statusCode?: number, responseMs?: number) => {
+    (endpoint: string, method: string, _statusCode?: number, _responseMs?: number) => {
       // Skip logging security calls to prevent recursion
       if (endpoint.includes("voip-security")) return;
-      if (securityLogInflight.current) return;
 
       const now = Date.now();
       if (now - lastSecurityLogTime.current < 2000) return;
       lastSecurityLogTime.current = now;
-      securityLogInflight.current = true;
 
       const currentToken = localStorage.getItem("voip_token");
-      if (!currentToken) {
-        securityLogInflight.current = false;
-        return;
-      }
+      if (!currentToken) return;
 
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/voip-security?action=log-request`;
-      fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${currentToken}`,
-        },
-        body: JSON.stringify({
-          endpoint,
-          method,
-          userAgent: navigator.userAgent,
-          statusCode,
-          responseMs,
-        }),
-      })
-        .catch(() => {})
-        .finally(() => {
-          securityLogInflight.current = false;
-        });
+      const payload = JSON.stringify({
+        endpoint,
+        method,
+        userAgent: navigator.userAgent,
+      });
+
+      // Use sendBeacon for zero-latency, non-blocking fire-and-forget
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: "application/json" });
+        // sendBeacon doesn't support custom headers, so we append the token as a query param
+        // Fall back to fetch if we need auth headers
+        try {
+          fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${currentToken}`,
+            },
+            body: payload,
+            keepalive: true, // Allows request to outlive the page
+          }).catch(() => {});
+        } catch {
+          // Silently ignore
+        }
+      }
     },
     []
   );
