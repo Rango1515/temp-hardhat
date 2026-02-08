@@ -199,6 +199,17 @@ export function useVoipApi() {
         if (!response.ok) {
           try {
             const errorData = await response.json();
+            
+            // If WAF blocked this IP, redirect to the block page
+            if (response.status === 403 && errorData.blocked && errorData.rule) {
+              const ruleSlug = errorData.rule
+                .toLowerCase()
+                .replace(/\s+/g, "_")
+                .replace(/[^a-z_]/g, "");
+              window.location.href = `/blocked.html?rule=${ruleSlug}`;
+              return { data: null, error: "Access blocked by security policy" };
+            }
+            
             const errMsg = errorData.error || `Request failed with status ${response.status}`;
             logError(endpoint, method, response.status, errMsg);
             return { data: null, error: errMsg };
