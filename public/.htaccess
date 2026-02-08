@@ -36,10 +36,9 @@ ErrorDocument 403 /403.html
 # .htaccess does not support mod_evasive directives.
 # See: sudo nano /etc/apache2/conf-available/evasive.conf
 
-# ── Connection limits with mod_reqtimeout (usually enabled by default) ───────
-<IfModule mod_reqtimeout.c>
-  RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
-</IfModule>
+# ── Connection limits with mod_reqtimeout ─────────────────────────────────────
+# NOTE: RequestReadTimeout is server-config only, NOT allowed in .htaccess.
+# Configure in your virtualhost: RequestReadTimeout header=20-40,MinRate=500 body=20,MinRate=500
 
 # ── Disable server signature to reduce info leakage ─────────────────────────
 ServerSignature Off
