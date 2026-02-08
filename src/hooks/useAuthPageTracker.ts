@@ -17,15 +17,19 @@ export function useAuthPageTracker() {
   const location = useLocation();
 
   useEffect(() => {
-    // ── Check localStorage first: if still blocked, redirect immediately ──
+    // ── Check localStorage first: if still blocked, redirect ──
     const blockUntil = localStorage.getItem(BLOCK_STORAGE_KEY);
     if (blockUntil) {
       const expiryMs = parseInt(blockUntil, 10);
-      if (Date.now() < expiryMs) {
+      const msRemaining = expiryMs - Date.now();
+      
+      if (msRemaining > 2000) {
+        // Only redirect if block has more than 2 seconds remaining
+        // This prevents redirect loops when block is about to expire
         window.location.href = "/blocked.html";
         return;
       }
-      // Block expired — clean up
+      // Block expired or about to expire — clean up
       localStorage.removeItem(BLOCK_STORAGE_KEY);
       localStorage.removeItem(BLOCK_RULE_KEY);
       localStorage.removeItem(BLOCK_DURATION_KEY);

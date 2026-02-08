@@ -370,7 +370,8 @@
       }, true);
     }
 
-    // ── Server check on load ─────────────────────────────
+    // ── Server check on load — sync local timer with server ─────
+    var serverCheckDone = false;
     (function() {
       fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
         method: 'POST',
@@ -379,25 +380,63 @@
       })
       .then(function(r) { return r.json(); })
       .then(function(data) {
+        serverCheckDone = true;
         if (!data.blocked) {
           localStorage.removeItem(BLOCK_KEY);
           localStorage.removeItem(BLOCK_RULE_KEY);
           localStorage.removeItem(BLOCK_DURATION_KEY);
+          localStorage.removeItem('waf_retry_count');
+          localStorage.removeItem('waf_retry_window_start');
           window.location.href = '/';
-        } else if (data.remaining_seconds) {
+        } else if (data.remaining_seconds && data.remaining_seconds > 1) {
+          // Sync localStorage with the server's actual remaining time
           var newExpiry = Date.now() + data.remaining_seconds * 1000;
           localStorage.setItem(BLOCK_KEY, String(newExpiry));
+          // Update remaining seconds for display
+          remainingSeconds = data.remaining_seconds;
         }
       })
-      .catch(function() {});
+      .catch(function() { serverCheckDone = true; });
     })();
 
-    // If block expired or not set, redirect home
+    // If block expired or not set AND no server check pending, redirect home
+    // But DON'T redirect if we haven't checked the server yet — prevents loop
     if (!storedExpiry || storedExpiry <= now) {
-      localStorage.removeItem(BLOCK_KEY);
-      localStorage.removeItem(BLOCK_RULE_KEY);
-      localStorage.removeItem(BLOCK_DURATION_KEY);
-      window.location.href = '/';
+      // Check server first before redirecting
+      fetch(SUPABASE_URL + '/functions/v1/voip-security?action=check-block', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.blocked && data.remaining_seconds > 0) {
+          // Server says still blocked — set localStorage and reload
+          var newExpiry = Date.now() + data.remaining_seconds * 1000;
+          localStorage.setItem(BLOCK_KEY, String(newExpiry));
+          var newDuration = Math.ceil(data.remaining_seconds / 60);
+          localStorage.setItem(BLOCK_DURATION_KEY, String(newDuration));
+          location.reload();
+        } else {
+          // Truly not blocked — safe to go home
+          localStorage.removeItem(BLOCK_KEY);
+          localStorage.removeItem(BLOCK_RULE_KEY);
+          localStorage.removeItem(BLOCK_DURATION_KEY);
+          localStorage.removeItem('waf_retry_count');
+          localStorage.removeItem('waf_retry_window_start');
+          window.location.href = '/';
+        }
+      })
+      .catch(function() {
+        // Can't reach server — clear and go home
+        localStorage.removeItem(BLOCK_KEY);
+        localStorage.removeItem(BLOCK_RULE_KEY);
+        localStorage.removeItem(BLOCK_DURATION_KEY);
+        window.location.href = '/';
+      });
+      // Stop further execution while waiting for server
+      storedExpiry = Date.now() + 60000; // Prevent page from rendering empty
+      remainingSeconds = 60;
     }
 
     // Parse rule
@@ -516,17 +555,7 @@
         retryBtn.classList.remove('btn-disabled');
         retryLabel.textContent = 'Try Again';
 
-        // Auto-redirect for short blocks
-        if (isShortBlock) {
-          localStorage.removeItem(BLOCK_KEY);
-          localStorage.removeItem(BLOCK_RULE_KEY);
-          localStorage.removeItem(BLOCK_DURATION_KEY);
-          localStorage.removeItem(RETRY_COUNT_KEY);
-          localStorage.removeItem(RETRY_WINDOW_KEY);
-          window.location.href = '/';
-          return;
-        }
-
+        // ALWAYS verify with server before redirecting — prevents refresh loops
         retryBtn.onclick = function() {
           retryBtn.disabled = true;
           retryBtn.classList.add('btn-disabled');
@@ -541,6 +570,8 @@
               if (result.remainingSeconds > 0) {
                 var newExpiry = Date.now() + result.remainingSeconds * 1000;
                 localStorage.setItem(BLOCK_KEY, String(newExpiry));
+                var newDuration = Math.ceil(result.remainingSeconds / 60);
+                localStorage.setItem(BLOCK_DURATION_KEY, String(newDuration));
               }
               statusMsg.textContent = 'Your IP is still blocked. Please wait longer.';
               setTimeout(function() { location.reload(); }, 1500);
@@ -554,6 +585,11 @@
             }
           });
         };
+
+        // For short blocks, auto-click the retry button (verifies with server first)
+        if (isShortBlock) {
+          retryBtn.click();
+        }
         return;
       }
 
