@@ -355,30 +355,39 @@ export type Database = {
           blocked_at: string
           blocked_by: number | null
           created_at: string
+          created_by_type: string
           expires_at: string | null
           id: number
           ip_address: string
           reason: string | null
+          rule_id: number | null
+          scope: string
           status: string
         }
         Insert: {
           blocked_at?: string
           blocked_by?: number | null
           created_at?: string
+          created_by_type?: string
           expires_at?: string | null
           id?: number
           ip_address: string
           reason?: string | null
+          rule_id?: number | null
+          scope?: string
           status?: string
         }
         Update: {
           blocked_at?: string
           blocked_by?: number | null
           created_at?: string
+          created_by_type?: string
           expires_at?: string | null
           id?: number
           ip_address?: string
           reason?: string | null
+          rule_id?: number | null
+          scope?: string
           status?: string
         }
         Relationships: [
@@ -387,6 +396,13 @@ export type Database = {
             columns: ["blocked_by"]
             isOneToOne: false
             referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voip_blocked_ips_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "voip_waf_rules"
             referencedColumns: ["id"]
           },
         ]
@@ -1183,6 +1199,68 @@ export type Database = {
           },
         ]
       }
+      voip_request_logs: {
+        Row: {
+          action_taken: string | null
+          country: string | null
+          id: number
+          ip_address: string | null
+          is_blocked: boolean
+          is_suspicious: boolean
+          method: string | null
+          path: string | null
+          referer: string | null
+          response_ms: number | null
+          rule_triggered: string | null
+          status_code: number | null
+          timestamp: string
+          user_agent: string | null
+          user_id: number | null
+        }
+        Insert: {
+          action_taken?: string | null
+          country?: string | null
+          id?: number
+          ip_address?: string | null
+          is_blocked?: boolean
+          is_suspicious?: boolean
+          method?: string | null
+          path?: string | null
+          referer?: string | null
+          response_ms?: number | null
+          rule_triggered?: string | null
+          status_code?: number | null
+          timestamp?: string
+          user_agent?: string | null
+          user_id?: number | null
+        }
+        Update: {
+          action_taken?: string | null
+          country?: string | null
+          id?: number
+          ip_address?: string | null
+          is_blocked?: boolean
+          is_suspicious?: boolean
+          method?: string | null
+          path?: string | null
+          referer?: string | null
+          response_ms?: number | null
+          rule_triggered?: string | null
+          status_code?: number | null
+          timestamp?: string
+          user_agent?: string | null
+          user_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voip_request_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "voip_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voip_revenue_events: {
         Row: {
           amount: number
@@ -1615,6 +1693,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      voip_waf_rules: {
+        Row: {
+          block_duration_minutes: number
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: number
+          max_requests: number
+          name: string
+          rule_type: string
+          scope: string
+          target_endpoints: string[] | null
+          time_window_seconds: number
+          updated_at: string
+        }
+        Insert: {
+          block_duration_minutes?: number
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: number
+          max_requests?: number
+          name: string
+          rule_type: string
+          scope?: string
+          target_endpoints?: string[] | null
+          time_window_seconds?: number
+          updated_at?: string
+        }
+        Update: {
+          block_duration_minutes?: number
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: number
+          max_requests?: number
+          name?: string
+          rule_type?: string
+          scope?: string
+          target_endpoints?: string[] | null
+          time_window_seconds?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       voip_worker_lead_history: {
         Row: {

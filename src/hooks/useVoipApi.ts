@@ -49,7 +49,7 @@ export function useVoipApi() {
 
   // Fire-and-forget security log (throttled to 1 per 2s, never recursive)
   const logRequest = useCallback(
-    (endpoint: string, method: string) => {
+    (endpoint: string, method: string, statusCode?: number, responseMs?: number) => {
       // Skip logging security calls to prevent recursion
       if (endpoint.includes("voip-security")) return;
       if (securityLogInflight.current) return;
@@ -76,6 +76,8 @@ export function useVoipApi() {
           endpoint,
           method,
           userAgent: navigator.userAgent,
+          statusCode,
+          responseMs,
         }),
       })
         .catch(() => {})
@@ -142,8 +144,9 @@ export function useVoipApi() {
 
       try {
         const fullUrl = url.href;
+        const requestStart = Date.now();
 
-        // Fire background security log
+        // Fire background security log (pre-request, status unknown)
         logRequest(endpoint, method);
         
         const response = await fetch(fullUrl, {
