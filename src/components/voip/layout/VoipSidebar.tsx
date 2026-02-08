@@ -179,12 +179,27 @@ const partnerNavItems = [
                >
                  <Icon className="w-5 h-5" />
                  {item.label}
-                   {/* Badge indicator */}
-                    {showBadge && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 min-w-5 h-5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-medium px-1.5">
-                        {badgeCount > 99 ? "99+" : badgeCount}
-                      </span>
-                 )}
+                    {/* Badge indicator */}
+                     {showBadge && (
+                       <span
+                         className={cn(
+                           "absolute right-3 top-1/2 -translate-y-1/2 min-w-5 h-5 flex items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs font-medium px-1.5",
+                           isSecurityBadge && "cursor-pointer hover:bg-destructive/80 transition-colors"
+                         )}
+                         title={isSecurityBadge ? "Click to dismiss" : undefined}
+                         onClick={isSecurityBadge ? async (e) => {
+                           e.preventDefault();
+                           e.stopPropagation();
+                           setSecurityAlertCount(0);
+                           sessionStorage.setItem("security_alerts_cleared", "true");
+                           sessionStorage.setItem("waf_alert_dismissed", "true");
+                           sessionStorage.setItem("cf_ddos_dismissed", "true");
+                           await apiCall("voip-security", { method: "DELETE", params: { action: "clear-logs", target: "suspicious" } });
+                         } : undefined}
+                       >
+                         {badgeCount > 99 ? "99+" : badgeCount}
+                       </span>
+                  )}
                </Link>
              </div>
            );
