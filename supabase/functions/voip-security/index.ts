@@ -94,15 +94,111 @@ function extractIp(req: Request): string {
   );
 }
 
-// Sampling: log 1 in N requests for normal traffic
-const SAMPLE_RATE = 5; // Log every 5th normal request
-let sampleCounter = 0;
+// Sampling: log ~1 in N requests for normal traffic (random-based for multi-isolate)
+const SAMPLE_RATE = 5;
+function shouldSample(): boolean {
+  return Math.random() < (1 / SAMPLE_RATE);
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const url = new URL(req.url);
+  const action = url.searchParams.get("action");
+
+  // ── Public endpoint: log-public (no auth required) ──────────────────
+  // This allows public pages (home, demos, etc.) to log visits + enforce WAF
+  if (action === "log-public" && req.method === "POST") {
+    try {
+      const body = await req.json();
+      const { page, referrer, userAgent: ua } = body;
+      const ip = extractIp(req);
+
+      // Fast block check
+      const blocked = await isIpBlocked(ip);
+      if (blocked) {
+        return new Response(
+          JSON.stringify({ status: "blocked" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Record hit in memory for WAF
+      recordHit(ip);
+
+      // Check WAF rules (public pages are NOT sensitive)
+      const rules = await getWafRules();
+      let triggered: WafRule | null = null;
+
+      for (const rule of rules) {
+        if (rule.scope === "sensitive_only") continue;
+        if (rule.rule_type === "brute_force") continue;
+
+        const hitCount = countHitsInWindow(ip, rule.time_window_seconds * 1000);
+        if (hitCount > rule.max_requests) {
+          triggered = rule;
+          break;
+        }
+      }
+
+      let actionTaken: string | null = null;
+
+      if (triggered) {
+        actionTaken = "auto_blocked";
+        const expiresAt = new Date(Date.now() + triggered.block_duration_minutes * 60_000).toISOString();
+        await supabase.from("voip_blocked_ips").insert({
+          ip_address: ip,
+          reason: `WAF Rule: ${triggered.name} (public page flood)`,
+          blocked_by: null,
+          expires_at: expiresAt,
+          status: "active",
+          rule_id: triggered.id,
+          scope: triggered.scope,
+          created_by_type: "system",
+        });
+        blockedCacheTime = 0;
+
+        await supabase.from("voip_security_logs").insert({
+          ip_address: ip,
+          endpoint: page || "/",
+          user_agent: ua || null,
+          status: "suspicious",
+          rule_triggered: triggered.name,
+          details: { source: "public_page", auto_blocked: true },
+        });
+      }
+
+      // Always log public page visits (they're infrequent compared to API calls)
+      const { error: insertErr } = await supabase.from("voip_request_logs").insert({
+        ip_address: ip,
+        method: "GET",
+        path: page || "/",
+        status_code: 200,
+        user_agent: ua || null,
+        referer: referrer || null,
+        is_suspicious: !!triggered,
+        is_blocked: false,
+        rule_triggered: triggered?.name || null,
+        action_taken: actionTaken,
+      });
+      if (insertErr) console.error("[WAF] Public log insert error:", JSON.stringify(insertErr));
+
+      return new Response(
+        JSON.stringify({ status: triggered ? "blocked" : "ok" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (e) {
+      console.error("[WAF] Public log error:", e);
+      return new Response(
+        JSON.stringify({ status: "ok" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
+  // ── Authenticated endpoints below ──────────────────────────────────────
   const token = extractToken(req.headers.get("Authorization"));
   if (!token) {
     return new Response(
@@ -120,8 +216,6 @@ serve(async (req) => {
   }
 
   const userId = parseInt(payload.sub);
-  const url = new URL(req.url);
-  const action = url.searchParams.get("action");
 
   try {
     // ── log-request (available to all authenticated users) ──────────────
@@ -134,9 +228,8 @@ serve(async (req) => {
       const blocked = await isIpBlocked(ip);
       if (blocked) {
         // Minimal log for blocked traffic
-        sampleCounter++;
-        if (sampleCounter % 10 === 0) {
-          await supabase.from("voip_request_logs").insert({
+        if (shouldSample()) {
+          const { error: blkErr } = await supabase.from("voip_request_logs").insert({
             ip_address: ip,
             method: reqMethod || "GET",
             path: endpoint || "unknown",
@@ -145,7 +238,8 @@ serve(async (req) => {
             user_id: userId,
             is_blocked: true,
             action_taken: "blocked",
-          }).catch(() => {});
+          });
+          if (blkErr) console.error("[WAF] Blocked log insert error:", blkErr);
         }
         return new Response(
           JSON.stringify({ status: "blocked" }),
@@ -210,11 +304,10 @@ serve(async (req) => {
       }
 
       // Sampled logging: always log suspicious, sample normal
-      sampleCounter++;
-      const shouldLog = triggered || isFailedLogin || (sampleCounter % SAMPLE_RATE === 0);
+      const shouldLog = triggered || isFailedLogin || shouldSample();
 
       if (shouldLog) {
-        await supabase.from("voip_request_logs").insert({
+        const { error: logErr } = await supabase.from("voip_request_logs").insert({
           ip_address: ip,
           method: reqMethod || "GET",
           path: endpoint || "unknown",
@@ -226,7 +319,8 @@ serve(async (req) => {
           is_blocked: false,
           rule_triggered: triggered?.name || (isFailedLogin ? "failed_login" : null),
           action_taken: actionTaken,
-        }).catch(e => console.error("[WAF] Log insert failed:", e));
+        });
+        if (logErr) console.error("[WAF] Log insert failed:", logErr);
       }
 
       return new Response(

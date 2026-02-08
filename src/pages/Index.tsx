@@ -7,8 +7,11 @@ import Portfolio from "@/components/Portfolio";
 import Contact from "@/components/Contact";
 import Footer from "@/components/Footer";
 import FloatingCTA from "@/components/FloatingCTA";
+import { usePageTracker } from "@/hooks/usePageTracker";
 
 const Index = () => {
+  usePageTracker();
+
   return (
     <div className="min-h-screen">
       <Header />

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useScrollToTop } from '@/hooks/useSmoothScroll';
+import { usePageTracker } from '@/hooks/usePageTracker';
 
 // Import full multi-page demo components
 import ArchitectureDemo from '@/components/demos/ArchitectureDemo';
@@ -168,6 +169,7 @@ const RoofingDemo = () => (
 const DemoSite = () => {
   const { trade } = useParams<{ trade: string }>();
   useScrollToTop();
+  usePageTracker();
 
   const demoComponents: Record<string, React.FC> = {
     concrete: ConcreteDemo,
